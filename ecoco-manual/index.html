@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>ECOCO App v2.0 教學手冊（網頁版）</title>
+    <meta
+      name="description"
+      content="ECOCO App v2.0 教學手冊（網頁版）。可離線開啟，並可透過瀏覽器列印成 PDF。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">跳到主要內容</a>
+
+    <header class="site-header">
+      <div class="wrap header-grid">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">E</div>
+          <div class="brand-text">
+            <div class="brand-title">ECOCO App v2.0</div>
+            <div class="brand-subtitle">教學手冊（網頁版 / 可列印 PDF）</div>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <button class="btn" type="button" data-action="print">
+            列印 / 匯出 PDF
+          </button>
+          <button class="btn btn-ghost" type="button" data-action="toggle-toc">
+            目錄
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="wrap layout">
+      <nav class="toc" id="toc" aria-label="目錄">
+        <div class="toc-inner">
+          <div class="toc-title">目錄</div>
+          <ol class="toc-list">
+            <li><a href="#about">手冊說明</a></li>
+            <li><a href="#quickstart">快速上手（3 分鐘）</a></li>
+            <li><a href="#install">下載與安裝</a></li>
+            <li><a href="#login">登入 / 註冊</a></li>
+            <li><a href="#home">首頁導覽</a></li>
+            <li><a href="#dropoff">投遞 / 回收流程</a></li>
+            <li><a href="#points">點數 / 獎勵</a></li>
+            <li><a href="#history">紀錄查詢</a></li>
+            <li><a href="#profile">個人資料與設定</a></li>
+            <li><a href="#faq">常見問題</a></li>
+            <li><a href="#figma">Figma 參考連結</a></li>
+            <li><a href="#changelog">版本紀錄</a></li>
+          </ol>
+
+          <div class="toc-note">
+            <div class="tag">提示</div>
+            <p>
+              你可以把 Figma 匯出的截圖放到
+              <code>ecoco-manual/assets/</code>，再依各章節的「截圖檔名」提示替換，
+              手冊就會完整對齊設計稿。
+            </p>
+          </div>
+        </div>
+      </nav>
+
+      <main id="content" class="content" tabindex="-1">
+        <section class="hero">
+          <div class="hero-card">
+            <div class="hero-kicker">ECOCO App v2.0</div>
+            <h1 class="hero-title">教學手冊</h1>
+            <p class="hero-desc">
+              本頁可離線開啟、可搜尋、可列印成 PDF。內容以「使用者任務」方式編排：先完成
+              新手流程，再逐步展開各功能。
+            </p>
+            <div class="hero-meta">
+              <div class="meta-item">
+                <div class="meta-label">適用對象</div>
+                <div class="meta-value">一般使用者 / 門市或據點人員（簡易）</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">建議閱讀</div>
+                <div class="meta-value">快速上手 → 投遞流程 → 點數獎勵</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">最後更新</div>
+                <div class="meta-value" id="last-updated">2026-03-18</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="about" class="section">
+          <h2>手冊說明</h2>
+          <div class="callout">
+            <div class="callout-title">你會在這份手冊看到什麼</div>
+            <ul>
+              <li>以「操作步驟」呈現：每個功能都有目標、前置條件、步驟、結果。</li>
+              <li>以「常見情境」補足：登入收不到驗證、投遞不順、點數未入帳等。</li>
+              <li>保留「截圖位置」：方便把 Figma 圖面輸出後直接替換。</li>
+            </ul>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3>使用方式</h3>
+              <ol>
+                <li>用瀏覽器開啟 <code>ecoco-manual/index.html</code>。</li>
+                <li>按右上角「列印 / 匯出 PDF」。</li>
+                <li>需要補圖時，把截圖放進 <code>assets/</code>，再依提示檔名替換。</li>
+              </ol>
+            </div>
+            <div class="card">
+              <h3>截圖替換規則（建議）</h3>
+              <p class="muted">
+                將 Figma 匯出 PNG（建議寬 1440px 或 1080px）並用下列檔名，手冊會自動顯示。
+              </p>
+              <ul class="compact">
+                <li><code>home.png</code>：首頁</li>
+                <li><code>login.png</code>：登入</li>
+                <li><code>scan.png</code>：投遞/回收（建議改名 dropoff.png）</li>
+                <li><code>points.png</code>：點數/獎勵</li>
+                <li><code>settings.png</code>：設定</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="quickstart" class="section">
+          <h2>快速上手（3 分鐘）</h2>
+          <div class="steps">
+            <div class="step">
+              <div class="step-no">1</div>
+              <div class="step-body">
+                <div class="step-title">下載並登入</div>
+                <p class="muted">首次使用先完成註冊或以既有帳號登入。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">2</div>
+              <div class="step-body">
+                <div class="step-title">到站點設備登入會員並開始投遞</div>
+                <p class="muted">依官網 Q&A：在設備螢幕輸入會員帳號（手機號碼）即可開始。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">3</div>
+              <div class="step-body">
+                <div class="step-title">完成投放 → 查看點數入帳</div>
+                <p class="muted">在「點數/獎勵」或「紀錄」確認本次結果。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="media">
+            <figure class="shot">
+              <img src="./assets/home.png.png" alt="（截圖）ECOCO v2.0 首頁" onerror="this.closest('figure').classList.add('missing')" />
+              <figcaption>
+                截圖：首頁（請放入 <code>assets/home.png.png</code>）。你目前的 <code>assets/</code> 尚未有首頁圖檔，所以這裡會先顯示占位。
+              </figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section id="install" class="section">
+          <h2>下載與安裝</h2>
+          <div class="card">
+            <h3>iOS / Android</h3>
+            <ul>
+              <li><strong>方式 A</strong>：由官方網站或行銷頁導流至商店下載。</li>
+              <li><strong>方式 B</strong>：在 App Store / Google Play 搜尋「ECOCO」。</li>
+            </ul>
+            <div class="divider"></div>
+            <h3>安裝完成後檢查</h3>
+            <ul class="compact">
+              <li>首次開啟能正常進入歡迎頁/登入頁</li>
+              <li>允許通知（建議）：用於入帳/活動提醒</li>
+              <li>相機權限：若 App 功能有用到相機再開啟；站點設備操作不需要</li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="login" class="section">
+          <h2>登入 / 註冊</h2>
+          <div class="grid-2">
+            <div class="card">
+              <h3>註冊（首次）</h3>
+              <ol>
+                <li>開啟 App → 點選「註冊」。</li>
+                <li>輸入手機/Email（依設計稿流程）並取得驗證碼。</li>
+                <li>輸入驗證碼 → 設定密碼/基本資料。</li>
+                <li>完成後自動登入或回到登入頁。</li>
+              </ol>
+              <p class="muted">
+                若流程包含「同意條款/隱私權」，請務必在操作人員訓練時強調。
+              </p>
+            </div>
+            <div class="card">
+              <h3>登入（既有帳號）</h3>
+              <ol>
+                <li>輸入帳號與密碼，或以 OTP 驗證登入（若支援）。</li>
+                <li>需要時完成裝置驗證或重新登入。</li>
+                <li>登入後進入首頁。</li>
+              </ol>
+              <div class="inline-tip">
+                <span class="tag">小技巧</span>
+                <span class="muted">登入常見問題請見「常見問題」章節。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="media">
+            <figure class="shot">
+              <img src="./assets/login.png.png" alt="（截圖）登入/註冊畫面" onerror="this.closest('figure').classList.add('missing')" />
+              <figcaption>截圖：登入（檔名 <code>assets/login.png.png</code>）。</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section id="home" class="section">
+          <h2>首頁導覽</h2>
+          <div class="card">
+            <h3>你通常會在首頁看到</h3>
+            <ul>
+              <li><strong>快速入口</strong>：站點投遞、點數/獎勵、活動/公告。</li>
+              <li><strong>狀態資訊</strong>：目前點數、等級或本月累積（依設計）。</li>
+              <li><strong>導覽列</strong>：首頁、站點/兌換（依版本）、紀錄、我的（或類似命名）。</li>
+            </ul>
+          </div>
+          <div class="checklist">
+            <div class="check-item">
+              <input type="checkbox" id="home-1" />
+              <label for="home-1">能從首頁快速找到站點/使用教學入口</label>
+            </div>
+            <div class="check-item">
+              <input type="checkbox" id="home-2" />
+              <label for="home-2">能清楚找到目前點數/獎勵入口</label>
+            </div>
+            <div class="check-item">
+              <input type="checkbox" id="home-3" />
+              <label for="home-3">能快速找到「紀錄」查詢入口</label>
+            </div>
+          </div>
+        </section>
+
+        <section id="dropoff" class="section">
+          <h2>投遞 / 回收流程（依官網 Q&A 校正）</h2>
+          <div class="callout">
+            <div class="callout-title">重點：不需要帶手機到設備前登入 App</div>
+            <p class="muted">
+              依官網 Q&A：你只需要在設備螢幕輸入會員帳號（手機號碼）登入，投遞的種類/數量與點數會直接記錄在會員帳號內。
+            </p>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3>收瓶機（示意 SOP）</h3>
+              <ol>
+                <li>在設備螢幕按「登錄 / IDENTITY / 登入」並輸入會員帳號（手機號碼）。</li>
+                <li>依設備指示開始投遞：瓶/罐/杯等（以站點實際可回收品項為準）。</li>
+                <li>投遞時保持容器外觀完整、不壓扁、無殘液；瓶身膠膜建議移除；瓶蓋請依站點指示另行回收。</li>
+                <li>完成後按「完成」結束本次投遞。</li>
+                <li>稍後在 App 的「紀錄 / 點數」確認入帳結果。</li>
+              </ol>
+            </div>
+            <div class="card">
+              <h3>電池機（示意 SOP）</h3>
+              <ol>
+                <li>在設備螢幕輸入會員帳號（手機號碼）登入。</li>
+                <li>一次投入一顆乾淨、外觀完整的廢電池（勿丟/塞）。</li>
+                <li>看螢幕點數有更新後再投入下一顆。</li>
+                <li>完成後到 App 查看點數紀錄。</li>
+              </ol>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3>一直退瓶/退電池怎麼辦（常見原因）</h3>
+              <ul class="compact">
+                <li>品項材質不符站點可回收項目。</li>
+                <li>容器被壓扁、殘液未清、膠膜太厚影響辨識。</li>
+                <li>投入速度過快（請依設備提示節奏投遞）。</li>
+                <li>電池外觀不健康（漏液、鏽蝕、凹陷）或投入方式不當。</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>投遞中遇到異常（黑屏/滿袋/本機台已關閉）</h3>
+              <ul class="compact">
+                <li>先停止使用該設備，改至其他站點。</li>
+                <li>點數通常會同步至雲端；若超過官網說明時間仍未入帳，再透過 App/官網客服回報。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="media">
+            <figure class="shot">
+              <img src="./assets/scan.png.png" alt="（截圖）投遞/回收流程畫面" onerror="this.closest('figure').classList.add('missing')" />
+              <figcaption>截圖：投遞/回收流程（檔名 <code>assets/scan.png.png</code>）。</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section id="points" class="section">
+          <h2>點數 / 獎勵</h2>
+          <div class="card">
+            <h3>點數規則（依官網 Q&A）</h3>
+            <ul>
+              <li><strong>點數計算</strong>：收瓶機 PET(1號)/鋁罐/CAN/HDPE(2號) 牛奶瓶每個 2 點；PP(5號) 塑膠杯每個 1 點。</li>
+              <li><strong>電池點數</strong>：1號、2號、9V 方形電池每顆 10 點；3～6號電池每顆 5 點。</li>
+              <li><strong>使用效期</strong>：點數有使用效期，請留意期限。</li>
+              <li><strong>轉贈</strong>：目前未提供點數轉移/轉贈。</li>
+            </ul>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3>查看點數</h3>
+              <ol>
+                <li>從首頁或底部導覽列進入「點數/獎勵」。</li>
+                <li>查看目前可用點數、即將到期點數（若有）。</li>
+                <li>切換頁籤查看「可兌換項目」或「我的券」。</li>
+              </ol>
+            </div>
+            <div class="card">
+              <h3>兌換（示意流程）</h3>
+              <ol>
+                <li>選擇要兌換的獎勵 → 檢視詳情與條件。</li>
+                <li>確認扣點 → 取得兌換券/核銷碼。</li>
+                <li>到合作通路出示核銷碼或按鈕完成使用。</li>
+              </ol>
+              <p class="muted">
+                若你的設計稿有「條款/使用限制」，建議在此章節原封不動貼上。
+              </p>
+            </div>
+          </div>
+
+          <div class="media">
+            <figure class="shot">
+              <img src="./assets/points.png.png" alt="（截圖）點數/獎勵畫面" onerror="this.closest('figure').classList.add('missing')" />
+              <figcaption>截圖：點數/獎勵（檔名 <code>assets/points.png.png</code>）。</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section id="history" class="section">
+          <h2>紀錄查詢</h2>
+          <div class="card">
+            <h3>你可以查到什麼</h3>
+            <ul>
+              <li><strong>投放/回收紀錄</strong>：時間、地點/機台、數量、結果。</li>
+              <li><strong>點數明細</strong>：入帳/扣點、來源、狀態（成功/處理中/失敗）。</li>
+              <li><strong>兌換紀錄</strong>：兌換項目、時間、券狀態。</li>
+            </ul>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3>查詢步驟</h3>
+              <ol>
+                <li>進入「紀錄」。</li>
+                <li>使用篩選：日期區間、類型（回收/點數/兌換）。</li>
+                <li>點選單筆紀錄查看詳情。</li>
+              </ol>
+            </div>
+            <div class="card">
+              <h3>找不到紀錄</h3>
+              <ul class="compact">
+                <li>確認登入帳號正確（是否用到另一個手機/Email）。</li>
+                <li>切換篩選條件（日期區間、類型）。</li>
+                <li>若顯示「處理中」，稍後再刷新。</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="profile" class="section">
+          <h2>個人資料與設定</h2>
+          <div class="grid-2">
+            <div class="card">
+              <h3>常見設定項目</h3>
+              <ul class="compact">
+                <li>個人資料：姓名/暱稱、手機/Email、生日（若需要）</li>
+                <li>通知設定：系統通知、活動通知</li>
+                <li>隱私與安全：密碼更新、裝置管理、登出</li>
+                <li>客服與回報：常見問題、問題回報、聯絡我們</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>建議的安全提醒</h3>
+              <ul class="compact">
+                <li>不要把 OTP / 驗證碼提供給他人</li>
+                <li>共用裝置務必登出</li>
+                <li>遺失手機請立即修改密碼並通知客服（若有）</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="media">
+            <figure class="shot">
+              <img src="./assets/settings.png.png" alt="（截圖）設定畫面" onerror="this.closest('figure').classList.add('missing')" />
+              <figcaption>截圖：設定（檔名 <code>assets/settings.png.png</code>）。</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section id="faq" class="section">
+          <h2>常見問題</h2>
+          <div class="faq">
+            <details>
+              <summary>收不到驗證碼怎麼辦？</summary>
+              <div class="faq-body">
+                <ul class="compact">
+                  <li>確認手機訊號或 Email 垃圾郵件匣。</li>
+                  <li>等待 60 秒後重送；避免短時間連續重送。</li>
+                  <li>若手機有「攔截陌生簡訊」功能，請暫時關閉。</li>
+                </ul>
+              </div>
+            </details>
+            <details>
+              <summary>投遞時一直失敗或 App 異常？</summary>
+              <div class="faq-body">
+                <ul class="compact">
+                  <li>站點設備操作不需要相機權限；若 App 功能需要再開啟。</li>
+                  <li>切換網路、重開 App，或更新到最新版。</li>
+                  <li>若設備一直退瓶/退電池，請先確認品項與投入方式是否符合官網規則。</li>
+                </ul>
+              </div>
+            </details>
+            <details>
+              <summary>點數沒有入帳？</summary>
+              <div class="faq-body">
+                <ul class="compact">
+                  <li>先到「紀錄」確認該筆是否為「處理中」。</li>
+                  <li>確認登入帳號是否正確。</li>
+                  <li>若超過預期時間仍未入帳，請提供交易序號/時間/據點給客服。</li>
+                </ul>
+              </div>
+            </details>
+            <details>
+              <summary>如何聯絡客服？</summary>
+              <div class="faq-body">
+                <p class="muted">
+                  請在此填入 ECOCO 的實際客服管道（App 內入口、Email、電話、LINE 等）。
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section id="figma" class="section">
+          <h2>Figma 圖片對照表</h2>
+          <div class="card">
+            <p class="muted">
+              下表說明「教學手冊每個圖片區塊」對應到哪一張 Figma 畫面，請依照對照表從
+              Figma 匯出 PNG 圖檔，並存成指定檔名放到 <code>assets/</code>。匯出完成後，本手冊就會以
+              「圖片 + 文字」方式完整呈現。
+            </p>
+            <ul class="links">
+              <li>
+                <strong>首頁教學圖片</strong>（檔名：<code>home.png</code>）  
+                建議對應 Figma：ECOCO APP 2.0 首頁總覽畫面（例如 node 0‑1 或首頁 Flow 開頭畫面）。
+              </li>
+              <li>
+                <strong>登入 / 註冊教學圖片</strong>（檔名：<code>login.png</code>）  
+                建議對應 Figma：登入 / 註冊流程畫面（可在 ECOCO APP 2.0 之登入 Flow 節點中選最終稿畫面）。
+              </li>
+              <li>
+                <strong>投遞 / 回收流程圖片</strong>（檔名：<code>scan.png</code>）  
+                建議對應 Figma：站點設備登入、投遞中與投遞完成結果的那一組畫面。
+              </li>
+              <li>
+                <strong>點數 / 獎勵圖片</strong>（檔名：<code>points.png</code>）  
+                建議對應 Figma：顯示目前點數、可兌換項目與我的券的主畫面。
+              </li>
+              <li>
+                <strong>設定 / 個人資料圖片</strong>（檔名：<code>settings.png</code>）  
+                建議對應 Figma：個人資料與設定選單的主畫面（含通知、隱私、安全等選項）。
+              </li>
+            </ul>
+            <p class="muted">
+              若你在 Figma 中有更多教學頁（例如完整 Onboarding Flow、活動教學），可以比照上方規則新增
+              <code>&lt;img&gt;</code> 區塊與檔名，延伸出更細節的「圖片＋文字」教學。
+            </p>
+            <hr class="divider" />
+            <p class="muted">
+              Figma 參考檔案：
+            </p>
+            <ul class="links">
+              <li>
+                <a href="https://www.figma.com/design/ubfMrAagRpXmtJge4x4B6T/2026%E5%AE%98%E7%B6%B2%E6%95%99%E5%AD%B8%E6%9B%B4%E6%96%B0?node-id=0-1&p=f&t=Ysr0dMWXbEXhszn3-0" target="_blank" rel="noreferrer noopener">
+                  2026 官網教學更新（Figma）
+                </a>
+              </li>
+              <li>
+                <a href="https://www.figma.com/design/ioF0lOdj3jXWgxPEatcBBU/ECOCO-APP-2.0?node-id=627-1138&p=f&t=BlX9OrvvbtY6AtFp-0" target="_blank" rel="noreferrer noopener">
+                  ECOCO APP 2.0（node 627-1138）
+                </a>
+              </li>
+              <li>
+                <a href="https://www.figma.com/design/ioF0lOdj3jXWgxPEatcBBU/ECOCO-APP-2.0?node-id=87-686&p=f&t=BlX9OrvvbtY6AtFp-0" target="_blank" rel="noreferrer noopener">
+                  ECOCO APP 2.0（node 87-686）
+                </a>
+              </li>
+              <li>
+                <a href="https://www.figma.com/design/ioF0lOdj3jXWgxPEatcBBU/ECOCO-APP-2.0?node-id=0-1&p=f&t=BlX9OrvvbtY6AtFp-0" target="_blank" rel="noreferrer noopener">
+                  ECOCO APP 2.0（node 0-1）
+                </a>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="changelog" class="section">
+          <h2>版本紀錄</h2>
+          <div class="card">
+            <ul class="compact">
+              <li><strong>v1.0（本檔案）</strong>：建立 ECOCO App v2.0 教學手冊網頁版骨架（可列印 PDF）。</li>
+            </ul>
+          </div>
+        </section>
+
+        <footer class="site-footer">
+          <div class="footer-grid">
+            <div>
+              <div class="footer-title">ECOCO App v2.0 教學手冊</div>
+              <div class="muted">
+                檔案位置：<code>ecoco-manual/index.html</code>
+              </div>
+            </div>
+            <div class="footer-actions">
+              <button class="btn btn-small" type="button" data-action="print">
+                列印 / 匯出 PDF
+              </button>
+              <a class="btn btn-small btn-ghost" href="#content">回到頂部</a>
+            </div>
+          </div>
+        </footer>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        const $ = (sel, root = document) => root.querySelector(sel);
+
+        const toc = $("#toc");
+        const tocToggle = document.querySelector("[data-action='toggle-toc']");
+        const printBtns = document.querySelectorAll("[data-action='print']");
+
+        function setToc(open) {
+          toc.classList.toggle("toc-open", open);
+          document.body.classList.toggle("toc-open", open);
+        }
+
+        tocToggle?.addEventListener("click", () => {
+          setToc(!toc.classList.contains("toc-open"));
+        });
+
+        printBtns.forEach((btn) => {
+          btn.addEventListener("click", () => window.print());
+        });
+
+        // Close TOC when clicking outside (mobile)
+        document.addEventListener("click", (e) => {
+          if (!toc.classList.contains("toc-open")) return;
+          const isInsideToc = toc.contains(e.target);
+          const isToggle = tocToggle && tocToggle.contains(e.target);
+          if (!isInsideToc && !isToggle) setToc(false);
+        });
+
+        // Auto-highlight missing screenshots
+        document.querySelectorAll("figure.shot").forEach((fig) => {
+          const img = fig.querySelector("img");
+          if (!img) return;
+          if (!img.complete || img.naturalWidth === 0) fig.classList.add("missing");
+        });
+
+        // Last updated from file build date (fallback to today)
+        const el = $("#last-updated");
+        if (el && !el.textContent.trim()) {
+          const now = new Date();
+          el.textContent = now.toISOString().slice(0, 10);
+        }
+      })();
+    </script>
+  </body>
+</html>

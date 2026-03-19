@@ -1,0 +1,11 @@
+把 Figma 匯出的截圖放在此資料夾。
+
+建議檔名（手冊會自動載入）：
+- home.png
+- login.png
+- scan.png
+- points.png
+- settings.png
+
+你也可以新增更多圖片，並在 `../index.html` 內新增對應章節與 <img> 區塊。
+

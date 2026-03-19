@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>ECOCO App v2.0 教學手冊（門市/據點人員版）</title>
+    <meta
+      name="description"
+      content="ECOCO App v2.0 教學手冊（門市/據點人員版）。含圖片與 SOP，方便現場協助用戶。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">跳到主要內容</a>
+
+    <header class="site-header">
+      <div class="wrap header-grid">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">E</div>
+          <div class="brand-text">
+            <div class="brand-title">ECOCO App v2.0</div>
+            <div class="brand-subtitle">教學手冊（門市/據點人員版）</div>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <button class="btn" type="button" data-action="print">
+            列印 / 匯出 PDF
+          </button>
+          <button class="btn btn-ghost" type="button" data-action="toggle-toc">
+            目錄
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="wrap layout">
+      <nav class="toc" id="toc" aria-label="目錄">
+        <div class="toc-inner">
+          <div class="toc-title">目錄</div>
+          <ol class="toc-list">
+            <li><a href="#assist">現場協助 30 秒話術</a></li>
+            <li><a href="#register">協助註冊/登入</a></li>
+            <li><a href="#device">設備投遞 SOP</a></li>
+            <li><a href="#troubleshoot">常見狀況排除</a></li>
+            <li><a href="#points">點數與兌換重點</a></li>
+          </ol>
+        </div>
+      </nav>
+
+      <main id="content" class="content" tabindex="-1">
+        <section class="hero">
+          <div class="hero-card">
+            <div class="hero-kicker">ECOCO App v2.0</div>
+            <h1 class="hero-title">教學手冊（門市/據點人員版）</h1>
+            <p class="hero-desc">
+              本手冊提供現場 SOP、話術與排除流程，內容依官網 Q&A 校正，並包含圖片示意供快速對照。
+            </p>
+          </div>
+        </section>
+
+        <section id="assist" class="section">
+          <h2>現場協助 30 秒話術</h2>
+          <div class="card">
+            <ol>
+              <li>「您好，先在設備螢幕輸入您的會員帳號（手機號碼）登入。」</li>
+              <li>「接著依設備指示節奏投遞，容器保持完整不壓扁、無殘液。」</li>
+              <li>「完成後按『完成』，回到 App 就能查看點數與紀錄。」</li>
+            </ol>
+          </div>
+        </section>
+
+        <section id="register" class="section">
+          <h2>協助註冊/登入（依官網 Q&A）</h2>
+          <div class="grid-2">
+            <div class="card">
+              <h3>註冊要點</h3>
+              <ul class="compact">
+                <li>會員帳號為手機號碼。</li>
+                <li>驗證碼為 6 位；密碼 8～20 字元，需含英文字母與數字。</li>
+                <li>若顯示「手機號碼已被註冊過」，請引導用戶走登入或聯絡客服流程。</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>收不到驗證碼</h3>
+              <ul class="compact">
+                <li>確認門號無誤、收訊正常、稍後重發。</li>
+                <li>檢查拒收企業簡訊/攔截 App/黑名單設定。</li>
+                <li>仍無法處理：引導用戶使用 App 內聯絡客服表單（依官網 Q&A）。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="media">
+            <figure class="shot">
+              <img src="./assets/login.png.png" alt="（截圖）登入/註冊畫面" onerror="this.closest('figure').classList.add('missing')" />
+              <figcaption>登入/註冊示意畫面</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section id="device" class="section">
+          <h2>設備投遞 SOP（依官網 Q&A）</h2>
+          <div class="grid-2">
+            <div class="card">
+              <h3>通用原則</h3>
+              <ul class="compact">
+                <li>不需要帶手機到設備前登入 App；設備端輸入帳號即可。</li>
+                <li>各站點允收項目不同，以 App 站點資訊為主。</li>
+                <li>引導用戶放慢速度，依設備節奏一次投入一個/一顆。</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>投遞前提醒</h3>
+              <ul class="compact">
+                <li>容器外觀完整、不壓扁、無殘液；膠膜/封膜依規則處理。</li>
+                <li>電池需外觀完整無凹陷、無鏽蝕、無漏液；勿丟/塞。</li>
+                <li>若設備顯示不允收，請引導用戶改走一般回收管道。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="media">
+            <figure class="shot">
+              <img src="./assets/scan.png.png" alt="（截圖）投遞/回收流程畫面" onerror="this.closest('figure').classList.add('missing')" />
+              <figcaption>投遞/回收流程示意畫面</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section id="troubleshoot" class="section">
+          <h2>常見狀況排除</h2>
+          <div class="grid-2">
+            <div class="card">
+              <h3>一直退瓶/退電池</h3>
+              <ul class="compact">
+                <li>先確認材質/尺寸/品項符合站點允收。</li>
+                <li>容器壓扁、殘液、膠膜過厚都會影響辨識。</li>
+                <li>投遞過快可能判定無效；請引導放慢並等螢幕更新再投下一個。</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>黑屏/滿袋/本機台已關閉</h3>
+              <ul class="compact">
+                <li>請用戶停止使用該設備並改至其他站點。</li>
+                <li>點數多會同步雲端；若超過官網說明時間未入帳，協助用戶回報客服。</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="points" class="section">
+          <h2>點數與兌換重點（依官網 Q&A）</h2>
+          <div class="card">
+            <ul class="compact">
+              <li>收瓶機：PET(1號)/鋁罐/CAN/HDPE(2號) 牛奶瓶每個 2 點；PP(5號) 塑膠杯每個 1 點。</li>
+              <li>電池：1號、2號、9V 方形每顆 10 點；3～6號每顆 5 點。</li>
+              <li>點數有使用效期；未提供點數轉贈。</li>
+              <li>若用戶詢問兌換：引導至 App 的兌換頁閱讀使用說明並依券別方式核銷。</li>
+            </ul>
+          </div>
+
+          <div class="media">
+            <figure class="shot">
+              <img src="./assets/points.png.png" alt="（截圖）點數/獎勵畫面" onerror="this.closest('figure').classList.add('missing')" />
+              <figcaption>點數/兌換示意畫面</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <footer class="site-footer">
+          <div class="footer-grid">
+            <div>
+              <div class="footer-title">ECOCO App v2.0 教學手冊（門市/據點人員版）</div>
+              <div class="muted">可列印匯出 PDF</div>
+            </div>
+            <div class="footer-actions">
+              <button class="btn btn-small" type="button" data-action="print">
+                列印 / 匯出 PDF
+              </button>
+              <a class="btn btn-small btn-ghost" href="#content">回到頂部</a>
+            </div>
+          </div>
+        </footer>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        const toc = document.querySelector("#toc");
+        const tocToggle = document.querySelector("[data-action='toggle-toc']");
+        document.querySelectorAll("[data-action='print']").forEach((btn) => {
+          btn.addEventListener("click", () => window.print());
+        });
+        tocToggle?.addEventListener("click", () => {
+          toc.classList.toggle("toc-open");
+        });
+      })();
+    </script>
+  </body>
+</html>
+
