@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+
+# 環境變數與機密設定
+.env
+secret.json
+secrets.toml
+credentials.json
+
+# 報告與歷史紀錄夾 (為保護客戶資安，不推上 GitHub)
+history_reports/
+*.xlsx
+*.csv
+*.pdf
+*.pptx

@@ -1,0 +1,10 @@
+streamlit
+pandas
+plotly
+openpyxl
+python-pptx
+pdfplumber
+openai
+gspread
+google-auth
+matplotlib
