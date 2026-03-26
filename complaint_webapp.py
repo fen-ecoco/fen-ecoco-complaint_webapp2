@@ -137,31 +137,69 @@ def apply_brand_theme() -> None:
           .ecoco-card{
             border:1px solid #e7e7e7; border-left:6px solid var(--ecoco-orange);
             border-radius:12px; padding:10px 14px; background:white; margin-bottom:10px;
+            color: #555555 !important;
           }
-          .small-muted { color:#666; font-size: 0.9rem; }
-          section[data-testid="stSidebar"]{
+          .ecoco-card b {
+            color: #333333 !important;
+          }
+          .small-muted { color:#666 !important; font-size: 0.9rem; }
+          
+          /* Sidebar background */
+          section[data-testid="stSidebar"] {
             background: linear-gradient(180deg, #0b3f78 0%, #083668 100%);
           }
-          section[data-testid="stSidebar"] *{
-            color:#ffffff !important;
+          
+          /* Sidebar Text Overrides */
+          .side-title {
+            color: #ffffff !important;
+            font-weight: 800; font-size: 1.05rem; margin-bottom: 8px;
           }
-          .side-title{
-            font-weight:800;
-            font-size:1.05rem;
-            margin-bottom:8px;
+          .side-sub {
+            color: #ffffff !important;
+            font-size: 0.78rem; opacity: 0.85; margin-bottom: 14px;
           }
-          .side-sub{
-            font-size:0.78rem;
-            opacity:0.85;
-            margin-bottom:14px;
+          
+          /* Sidebar Buttons Restyling */
+          section[data-testid="stSidebar"] .stButton > button {
+            background-color: var(--ecoco-lightblue) !important;
+            border-color: var(--ecoco-lightblue) !important;
+            color: #333333 !important;
+            border-radius: 12px;
+            min-height: 46px;
+            font-weight: 700;
+            text-align: left;
+            transition: none !important;
           }
-          section[data-testid="stSidebar"] .stButton > button{
-            border-radius:12px;
-            min-height:46px;
-            border:1px solid rgba(255,255,255,0.25);
-            font-weight:700;
-            text-align:left;
+          
+          section[data-testid="stSidebar"] .stButton > button * {
+            color: #333333 !important;
           }
+          
+          /* Active Menu Button / Clicked */
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"],
+          section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"],
+          section[data-testid="stSidebar"] .stButton > button:active {
+            background-color: #FFFFFF !important;
+            border-color: #FFFFFF !important;
+            color: #333333 !important;
+          }
+
+          /* Hover state unchanged (Secondary) */
+          section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]):hover,
+          section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]):focus {
+            background-color: var(--ecoco-lightblue) !important;
+            border-color: var(--ecoco-lightblue) !important;
+            color: #333333 !important;
+          }
+          
+          /* Hover state unchanged (Primary) */
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover,
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"]:focus {
+            background-color: #FFFFFF !important;
+            border-color: #FFFFFF !important;
+            color: #333333 !important;
+          }
+          
         </style>
         """,
         unsafe_allow_html=True,
@@ -843,6 +881,14 @@ def main():
         if st.button("🗂️ 歷史紀錄", use_container_width=True, type="primary" if st.session_state["menu"] == "歷史紀錄" else "secondary"):
             st.session_state["menu"] = "歷史紀錄"
         menu = st.session_state["menu"]
+        
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='text-align: center; font-size: 0.75rem; color: rgba(255,255,255,0.7); margin-top: auto; padding-top: 2rem;'>"
+            "202603© ECOCO宜可可循環經濟 客服課<br>※ 請尊重智慧財產權 ※"
+            "</div>",
+            unsafe_allow_html=True
+        )
 
     if menu == "功能列表區":
         st.markdown(
