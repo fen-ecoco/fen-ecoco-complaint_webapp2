@@ -882,11 +882,13 @@ def main():
             st.session_state["menu"] = "歷史紀錄"
         menu = st.session_state["menu"]
         
-        st.markdown("<br><br><br>", unsafe_allow_html=True)
         st.markdown(
-            "<div style='text-align: center; font-size: 0.75rem; color: rgba(255,255,255,0.7); margin-top: auto; padding-top: 2rem;'>"
-            "202603© ECOCO宜可可循環經濟 客服課<br>※ 請尊重智慧財產權 ※"
-            "</div>",
+            """
+            <div style='height: 40vh;'></div>
+            <div style='text-align: center; font-size: 0.75rem; color: rgba(255,255,255,0.7);'>
+            202603© ECOCO宜可可循環經濟 客服課<br>※ 請尊重智慧財產權 ※
+            </div>
+            """,
             unsafe_allow_html=True
         )
 
