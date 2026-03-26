@@ -178,23 +178,22 @@ def apply_brand_theme() -> None:
           /* Active Menu Button / Clicked */
           section[data-testid="stSidebar"] .stButton > button[kind="primary"],
           section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"],
-          section[data-testid="stSidebar"] .stButton > button:active {
+          section[data-testid="stSidebar"] .stButton > button:active,
+          section[data-testid="stSidebar"] .stButton > button:focus {
             background-color: #FFFFFF !important;
             border-color: #FFFFFF !important;
             color: #333333 !important;
           }
 
           /* Hover state unchanged (Secondary) */
-          section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]):hover,
-          section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]):focus {
+          section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]):hover {
             background-color: var(--ecoco-lightblue) !important;
             border-color: var(--ecoco-lightblue) !important;
             color: #333333 !important;
           }
           
           /* Hover state unchanged (Primary) */
-          section[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover,
-          section[data-testid="stSidebar"] .stButton > button[kind="primary"]:focus {
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
             background-color: #FFFFFF !important;
             border-color: #FFFFFF !important;
             color: #333333 !important;
