@@ -97,9 +97,9 @@ DEPT_OPTIONS = [
 
 DEPT_MAP = {
     "機台問題類型": "營運部",
-    "APP帳號設定問題類型": "開發部",
-    "APP使用問題類型": "開發部",
-    "回收點數問題類型": "企劃部",
+    "APP帳號設定問題類型": "資訊部",
+    "APP使用問題類型": "資訊部",
+    "回收點數問題類型": "",
     "優惠券問題類型": "行銷部",
     "顧客關係類型": "營運部",
 }
@@ -120,6 +120,26 @@ def apply_brand_theme() -> None:
     st.markdown(
         """
         <style>
+          @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap');
+          
+          /* Noto Sans TC Medium (500) */
+          html, body, [class*="css"], [data-testid="stAppViewContainer"] div, span, p, label {
+            font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
+            font-weight: 500;
+          }
+          
+          /* Noto Sans TC Bold (700) */
+          h2, h3, h4, h5, h6, .side-title, section[data-testid="stSidebar"] .stButton > button {
+            font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
+            font-weight: 700 !important;
+          }
+          
+          /* Noto Sans TC Black (900) */
+          h1, .ecoco-banner, strong, b {
+            font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
+            font-weight: 900 !important;
+          }
+
           :root{
             --ecoco-orange:#FF5000;
             --ecoco-blue:#060E9F;
@@ -159,7 +179,7 @@ def apply_brand_theme() -> None:
             font-size: 0.78rem; opacity: 0.85; margin-bottom: 14px;
           }
           
-          /* Sidebar Buttons Restyling */
+          /* Sidebar Buttons — default = lightblue */
           section[data-testid="stSidebar"] .stButton > button {
             background-color: var(--ecoco-lightblue) !important;
             border-color: var(--ecoco-lightblue) !important;
@@ -168,36 +188,27 @@ def apply_brand_theme() -> None:
             min-height: 46px;
             font-weight: 700;
             text-align: left;
-            transition: none !important;
+            transition: background-color 0.12s ease, border-color 0.12s ease !important;
           }
-          
           section[data-testid="stSidebar"] .stButton > button * {
             color: #333333 !important;
           }
-          
-          /* Active Menu Button / Clicked */
-          section[data-testid="stSidebar"] .stButton > button[kind="primary"],
-          section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"],
+          /* Hover = white immediately */
+          section[data-testid="stSidebar"] .stButton > button:hover,
+          section[data-testid="stSidebar"] .stButton > button:focus,
           section[data-testid="stSidebar"] .stButton > button:active,
-          section[data-testid="stSidebar"] .stButton > button:focus {
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"],
+          section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
             background-color: #FFFFFF !important;
             border-color: #FFFFFF !important;
-            color: #333333 !important;
-          }
-
-          /* Hover state unchanged (Secondary) */
-          section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]):hover {
-            background-color: var(--ecoco-lightblue) !important;
-            border-color: var(--ecoco-lightblue) !important;
             color: #333333 !important;
           }
           
-          /* Hover state unchanged (Primary) */
-          section[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
-            background-color: #FFFFFF !important;
-            border-color: #FFFFFF !important;
-            color: #333333 !important;
-          }
+          /* Thicker scrollbar in data_editor */
+          ::-webkit-scrollbar { width: 10px; height: 10px; }
+          ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
+          ::-webkit-scrollbar-thumb { background: #8EB9C9; border-radius: 6px; }
+          ::-webkit-scrollbar-thumb:hover { background: #060E9F; }
           
         </style>
         """,
@@ -381,11 +392,16 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
     return out
 
 
-def save_history(df: pd.DataFrame, source_name: str) -> tuple[Path, str]:
+def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> tuple[Path, str]:
     today = datetime.now().strftime("%Y%m%d")
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = existing_id if existing_id else datetime.now().strftime("%Y%m%d_%H%M%S")
     output_name = f"{today}_分析.xlsx"
     output_path = HISTORY_DIR / f"{ts}_{output_name}"
+    # Remove stale file if overwriting
+    if existing_id:
+        for old in HISTORY_DIR.glob(f"{existing_id}_*.xlsx"):
+            try: old.unlink()
+            except: pass
     df.to_excel(output_path, index=False)
     meta = {
         "id": ts,
@@ -398,6 +414,8 @@ def save_history(df: pd.DataFrame, source_name: str) -> tuple[Path, str]:
     history = []
     if META_FILE.exists():
         history = json.loads(META_FILE.read_text(encoding="utf-8"))
+    # Remove existing entry with same id if overwriting
+    history = [i for i in history if i["id"] != ts]
     history.insert(0, meta)
     META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
     return output_path, output_name
@@ -487,16 +505,37 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
     import io
-    plt.rcParams['font.sans-serif'] = ['Microsoft JhengHei', 'PingFang HK', 'SimHei', 'Arial', 'sans-serif']
-    fig, ax = plt.subplots(figsize=(10, min(10, max(2, int(len(df)*0.5)))))
+    plt.rcParams['font.sans-serif'] = ['Noto Sans TC', 'Microsoft JhengHei', 'PingFang HK', 'SimHei', 'Arial', 'sans-serif']
+    
+    table_df = df.head(40).copy()
+    def wrap_cjk(x):
+        x = str(x)
+        chunks = [x[i:i+10] for i in range(0, len(x), 10)]
+        return "\n".join(chunks)
+        
+    for c in table_df.columns:
+        table_df[c] = table_df[c].apply(wrap_cjk)
+        
+    fig, ax = plt.subplots(figsize=(11, max(3, int(len(table_df) * 0.8)))) 
     ax.axis('tight')
     ax.axis('off')
-    table_df = df.head(40).copy()
-    for c in table_df.columns:
-        table_df[c] = table_df[c].astype(str).apply(lambda x: x[:15] + ".." if len(x)>15 else x)
+    
     table = ax.table(cellText=table_df.values, colLabels=table_df.columns, loc='center', cellLoc='left')
     table.auto_set_font_size(False)
     table.set_fontsize(8)
+    
+    row_heights = {}
+    for (row, col), cell in table.get_celld().items():
+        text_str = cell.get_text().get_text()
+        lines = text_str.count('\n') + 1
+        row_heights[row] = max(row_heights.get(row, 1), lines)
+        
+    for (row, col), cell in table.get_celld().items():
+        if row == 0:
+            cell.set_height(0.06)
+        else:
+            cell.set_height(0.04 + (row_heights[row] * 0.02))
+            
     buf = io.BytesIO()
     with PdfPages(buf) as pdf:
         pdf.savefig(fig, bbox_inches='tight')
@@ -504,44 +543,96 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
     return buf.getvalue()
 
 
-def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str) -> bytes:
-    prs = Presentation()
-    slide1 = prs.slides.add_slide(prs.slide_layouts[5])
-    title = slide1.shapes.title
-    title.text = "ECOCO 客訴分析簡報"
-    tx = slide1.shapes.add_textbox(Inches(0.8), Inches(1.6), Inches(8.8), Inches(3.8)).text_frame
-    tx.clear()
-    p = tx.paragraphs[0]
-    p.text = f"來源檔案：{source_name}"
-    p.font.size = Pt(18)
-    p = tx.add_paragraph()
-    p.text = f"產出日期：{datetime.now().strftime('%Y-%m-%d')}"
-    p.font.size = Pt(16)
-    p = tx.add_paragraph()
-    p.text = "重點摘要："
-    p.font.bold = True
-    p.font.size = Pt(16)
-    for ln in ai_text.splitlines():
-        if ln.strip():
-            q = tx.add_paragraph()
-            q.text = f"- {ln.strip()}"
-            q.level = 1
-            q.font.size = Pt(14)
+def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
+                    template_path: str = r"C:\Users\fen\Desktop\簡報範本.pptx") -> bytes:
+    from pptx.dml.color import RGBColor
+    from pptx.util import Emu
+    
+    # Load template if exists, otherwise blank
+    try:
+        prs = Presentation(template_path)
+        # Use first slide as template layout
+        slide_layout = prs.slide_layouts[6]   # blank
+    except Exception:
+        prs = Presentation()
+        slide_layout = prs.slide_layouts[5]  # fallback blank
 
-    slide2 = prs.slides.add_slide(prs.slide_layouts[5])
-    slide2.shapes.title.text = "問題類型件數與占比"
-    rows = min(len(stats) + 1, 12)
-    cols = 4
-    table = slide2.shapes.add_table(rows, cols, Inches(0.6), Inches(1.3), Inches(11.8), Inches(5.0)).table
-    table.cell(0, 0).text = "問題類型"
-    table.cell(0, 1).text = "件數"
-    table.cell(0, 2).text = "百分比"
-    table.cell(0, 3).text = "歸屬部門"
-    for i, (_, r) in enumerate(stats.head(rows - 1).iterrows(), start=1):
-        table.cell(i, 0).text = str(r["問題類型"])
-        table.cell(i, 1).text = str(r["件數"])
-        table.cell(i, 2).text = f'{r["百分比"]}%'
-        table.cell(i, 3).text = str(r["歸屬部門"])
+    def add_slide_with_bg(prs):
+        slide = prs.slides.add_slide(slide_layout)
+        return slide
+
+    # Slide 1: Summary
+    slide1 = add_slide_with_bg(prs)
+    W = prs.slide_width
+    H = prs.slide_height
+
+    def add_text_box(slide, text, left, top, width, height, size=18, bold=False, color=(0x1a,0x1a,0x1a)):
+        txb = slide.shapes.add_textbox(left, top, width, height)
+        tf = txb.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = text
+        p.font.size = Pt(size)
+        p.font.bold = bold
+        p.font.color.rgb = RGBColor(*color)
+        return txb
+
+    add_text_box(slide1, "ECOCO 客訴分析簡報", Inches(0.5), Inches(0.3), W - Inches(1), Inches(0.7),
+                 size=28, bold=True, color=(0x06,0x0E,0x9F))
+    add_text_box(slide1, f"來源檔案：{source_name}　產出日期：{datetime.now().strftime('%Y-%m-%d')}",
+                 Inches(0.5), Inches(1.0), W - Inches(1), Inches(0.5), size=14)
+    
+    # AI summary text box
+    txb2 = slide1.shapes.add_textbox(Inches(0.5), Inches(1.6), W - Inches(1), H - Inches(2.0))
+    tf2 = txb2.text_frame
+    tf2.word_wrap = True
+    first = True
+    for ln in ai_text.splitlines():
+        if not ln.strip(): continue
+        if first:
+            p = tf2.paragraphs[0]; first = False
+        else:
+            p = tf2.add_paragraph()
+        p.text = ln.strip()
+        p.font.size = Pt(13)
+        p.font.color.rgb = RGBColor(0x31, 0x33, 0x3F)
+
+    # Slide 2: Table
+    slide2 = add_slide_with_bg(prs)
+    add_text_box(slide2, "問題類型件數與占比", Inches(0.5), Inches(0.2), W - Inches(1), Inches(0.6),
+                 size=24, bold=True, color=(0x06,0x0E,0x9F))
+
+    rows_n = min(len(stats) + 1, 15)
+    cols_n = 4
+    table_left = Inches(0.5)
+    table_top = Inches(0.9)
+    table_width = W - Inches(1)
+    table_height = H - Inches(1.3)
+    tbl = slide2.shapes.add_table(rows_n, cols_n, table_left, table_top, table_width, table_height).table
+    
+    headers = ["問題類型", "件數", "百分比", "歸屬部門"]
+    for ci, h in enumerate(headers):
+        cell = tbl.cell(0, ci)
+        cell.text = h
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = RGBColor(0x3E, 0x75, 0xA0)
+        for para in cell.text_frame.paragraphs:
+            for run in para.runs:
+                run.font.bold = True
+                run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                run.font.size = Pt(13)
+
+    for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), start=1):
+        vals = [str(r["問題類型"]), str(r["件數"]), f'{r["百分比"]}%', str(r.get("歸屬部門", ""))]
+        for ci, v in enumerate(vals):
+            cell = tbl.cell(ri, ci)
+            cell.text = v
+            if ri % 2 == 0:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = RGBColor(0xD6, 0xE4, 0xF0)
+            for para in cell.text_frame.paragraphs:
+                for run in para.runs:
+                    run.font.size = Pt(12)
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -649,7 +740,7 @@ def section_1():
         mask = edited["選取"] == True
         if batch_type != "(不變更)":
             edited.loc[mask, "問題類型"] = batch_type
-            edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("未分配")
+            edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("")
         if batch_detail != "(不變更)":
             edited.loc[mask, "問題細項"] = batch_detail
         # Auto-fix rows whose detail mismatches topic
@@ -657,7 +748,9 @@ def section_1():
             lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], []) else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
             axis=1,
         )
-        st.session_state["analysis_df"] = edited
+        st.session_state["analysis_df"] = edited.copy()
+        st.session_state["_batch_applied"] = True
+    if st.session_state.pop("_batch_applied", False):
         st.success("已套用批次編輯。")
     if b4.button("刪除勾選列"):
         st.session_state["analysis_df"] = edited[edited["選取"] != True].copy()
@@ -669,7 +762,8 @@ def section_1():
     dl_format = st.radio("選擇下載格式", ["Excel", "CSV", "PDF"], horizontal=True)
     
     def on_download():
-        save_history(final_df, st.session_state.get("source_name", "unknown"))
+        existing_id = st.session_state.pop("_editing_history_id", "")
+        save_history(final_df, st.session_state.get("source_name", "unknown"), existing_id=existing_id)
         st.session_state["history_saved_msg"] = True
 
     if dl_format == "Excel":
@@ -726,6 +820,41 @@ def section_1():
                 st.success(f"已上傳到 Google Sheet 工作表：{ws_name}")
 
 
+def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: str = ""):
+    """Render charts. stats may be manually edited in section_2."""
+    c1, c2, c3 = st.columns(3)
+    
+    fig1 = px.bar(
+        stats, x="問題類型", y="件數", color="歸屬部門", text="百分比", title="問題類型分布",
+        color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
+    )
+    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
+    fig1.update_layout(height=400)
+    c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
+
+    df_machine = df[df["問題類型"] == "機台問題類型"].copy()
+    if not df_machine.empty:
+        def get_machine_type(row):
+            txt = str(row.get("用戶內容", "")) + " " + str(row.get("主旨", ""))
+            if "方舟" in txt: return "方舟站"
+            if "電池" in txt: return "電池機"
+            return "收瓶機"
+        df_machine["機台機型"] = df_machine.apply(get_machine_type, axis=1)
+        m_stats = df_machine["機台機型"].value_counts().reset_index()
+        m_stats.columns = ["機型", "件數"]
+        fig2 = px.pie(m_stats, names="機型", values="件數", title="機台問題細分比較", hole=0.3)
+        fig2.update_layout(height=400, margin=dict(t=40, b=0, l=0, r=0))
+        c2.plotly_chart(fig2, use_container_width=True, key=f"{key_prefix}_fig2" if key_prefix else None)
+    else:
+        c2.info("無機台相關數據")
+
+    detail_stats = df["問題細項"].value_counts().reset_index().head(10)
+    detail_stats.columns = ["問題細項", "件數"]
+    fig3 = px.bar(detail_stats, x="件數", y="問題細項", orientation='h', title="十大問題細項分佈")
+    fig3.update_layout(height=400, yaxis={'categoryorder':'total ascending'}, margin=dict(t=40, b=0, l=0, r=0))
+    c3.plotly_chart(fig3, use_container_width=True, key=f"{key_prefix}_fig3" if key_prefix else None)
+
+
 def render_charts(df: pd.DataFrame, key_prefix: str = ""):
     stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
     stats["百分比"] = (stats["件數"] / stats["件數"].sum() * 100).round(2)
@@ -778,10 +907,19 @@ def section_2():
     stats["百分比"] = (stats["件數"] / stats["件數"].sum() * 100).round(2)
     stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("未分配")
 
-    st.markdown("#### 類型件數與部門")
-    st.dataframe(stats, use_container_width=True, hide_index=True)
-
-    render_charts(df, key_prefix="sec2")
+    st.markdown("#### 類型件數與部門 (可直接編輯，圖表即時同步)")
+    edited_stats = st.data_editor(
+        stats,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "歸屬部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS)
+        },
+        key="stats_editor",
+        num_rows="fixed",
+    )
+    # Use edited_stats so chart reflects manual changes
+    render_charts_from_stats(edited_stats, df, key_prefix="sec2")
 
     st.markdown("#### AI 問題重點分析")
     st.markdown("##### AI 設定（選填）")
@@ -818,7 +956,13 @@ def section_3():
         out_path = Path(item["output_path"])
         if not out_path.exists():
             continue
-        with st.expander(f"{item['created_at']}｜{item['output_name']}｜來源：{item['source_name']}（{item['rows']}筆）"):
+        # Fixed expander label: clean text, no garbled chars
+        label = (
+            f"📅 {item['created_at'][:10]}  "
+            f"{item.get('source_name','')}  "
+            f"｜ {item['rows']} 筆"
+        )
+        with st.expander(label):
             df_hist = pd.read_excel(out_path)
             tab_data, tab_chart, tab_ai = st.tabs(["📄 資料預覽", "📊 圖表分析", "🤖 AI 重點摘要"])
             
@@ -833,8 +977,9 @@ def section_3():
                     key=f"download_{item['id']}",
                 )
                 if col2.button("✏️ 編輯紀錄", key=f"edit_{item['id']}"):
-                    st.session_state["analysis_df"] = df_hist
+                    st.session_state["analysis_df"] = df_hist.copy()
                     st.session_state["source_name"] = item["source_name"]
+                    st.session_state["_editing_history_id"] = item["id"]
                     st.session_state["menu"] = "上傳檔案區（分析區）"
                     st.rerun()
                 if col3.button("🗑️ 刪除紀錄", key=f"del_{item['id']}"):
