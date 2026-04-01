@@ -204,11 +204,19 @@ def apply_brand_theme() -> None:
             color: #333333 !important;
           }
           
-          /* Thicker scrollbar in data_editor */
+          /* Thicker scrollbar */
           ::-webkit-scrollbar { width: 10px; height: 10px; }
           ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
           ::-webkit-scrollbar-thumb { background: #8EB9C9; border-radius: 6px; }
           ::-webkit-scrollbar-thumb:hover { background: #060E9F; }
+
+          /* File badge */
+          .file-badge {
+            display:inline-block; max-width:100%; padding:3px 10px;
+            background:#eaf4fb; border:1px solid #8EB9C9; border-radius:20px;
+            font-size:0.82rem; color:#333; white-space:nowrap;
+            overflow:hidden; text-overflow:ellipsis; vertical-align:middle;
+          }
           
         </style>
         """,
@@ -534,44 +542,82 @@ def to_csv_bytes(df: pd.DataFrame) -> bytes:
 
 
 def to_pdf_bytes(df: pd.DataFrame) -> bytes:
-    import matplotlib.pyplot as plt
-    from matplotlib.backends.backend_pdf import PdfPages
-    import io
-    plt.rcParams['font.sans-serif'] = ['Noto Sans TC', 'Microsoft JhengHei', 'PingFang HK', 'SimHei', 'Arial', 'sans-serif']
-    
-    table_df = df.head(40).copy()
-    def wrap_cjk(x):
-        x = str(x)
-        chunks = [x[i:i+10] for i in range(0, len(x), 10)]
-        return "\n".join(chunks)
-        
-    for c in table_df.columns:
-        table_df[c] = table_df[c].apply(wrap_cjk)
-        
-    fig, ax = plt.subplots(figsize=(11, max(3, int(len(table_df) * 0.8)))) 
-    ax.axis('tight')
-    ax.axis('off')
-    
-    table = ax.table(cellText=table_df.values, colLabels=table_df.columns, loc='center', cellLoc='left')
-    table.auto_set_font_size(False)
-    table.set_fontsize(8)
-    
-    row_heights = {}
-    for (row, col), cell in table.get_celld().items():
-        text_str = cell.get_text().get_text()
-        lines = text_str.count('\n') + 1
-        row_heights[row] = max(row_heights.get(row, 1), lines)
-        
-    for (row, col), cell in table.get_celld().items():
-        if row == 0:
-            cell.set_height(0.06)
-        else:
-            cell.set_height(0.04 + (row_heights[row] * 0.02))
-            
+    """Generate PDF using reportlab for proper CJK text wrapping in cells."""
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.units import mm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
+        BASE_FONT = 'HeiseiMin-W3'
+    except Exception:
+        BASE_FONT = 'Helvetica'
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.units import mm
+
     buf = io.BytesIO()
-    with PdfPages(buf) as pdf:
-        pdf.savefig(fig, bbox_inches='tight')
-    plt.close(fig)
+    page_w, page_h = landscape(A4)
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=10*mm, rightMargin=10*mm,
+                            topMargin=10*mm, bottomMargin=10*mm)
+
+    styles = getSampleStyleSheet()
+    cell_style = styles['Normal'].clone('cell')
+    cell_style.fontSize = 7
+    cell_style.fontName = BASE_FONT
+    cell_style.wordWrap = 'CJK'
+    cell_style.leading = 10
+
+    header_style = styles['Normal'].clone('hdr')
+    header_style.fontSize = 7
+    header_style.fontName = BASE_FONT
+    header_style.textColor = colors.white
+    header_style.wordWrap = 'CJK'
+
+    table_df = df.head(50).copy()
+    # Drop internal helper columns
+    drop_cols = [c for c in ['選取'] if c in table_df.columns]
+    table_df = table_df.drop(columns=drop_cols).fillna('')
+
+    WRAP_COLS = {'用戶內容', '主旨', '問題主旨'}
+    COL_W_MAP = {}  # col_name -> width in mm
+    num_cols = len(table_df.columns)
+    base_w = (page_w - 20*mm) / num_cols
+
+    def make_cell(val, is_header=False):
+        s = str(val)
+        st = header_style if is_header else cell_style
+        return Paragraph(s, st)
+
+    data = [[make_cell(c, True) for c in table_df.columns]]
+    for _, row in table_df.iterrows():
+        data.append([make_cell(str(v)) for v in row.values])
+
+    col_widths = [base_w] * num_cols
+
+    t = Table(data, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#3E75A0')),
+        ('TEXTCOLOR',  (0,0), (-1,0), colors.white),
+        ('FONTNAME',   (0,0), (-1,-1), BASE_FONT),
+        ('FONTSIZE',   (0,0), (-1,-1), 7),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#EBF4FA')]),
+        ('GRID',       (0,0), (-1,-1), 0.4, colors.HexColor('#CCCCCC')),
+        ('VALIGN',     (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING',(0,0), (-1,-1), 3),
+        ('RIGHTPADDING',(0,0),(-1,-1), 3),
+        ('TOPPADDING', (0,0), (-1,-1), 2),
+        ('BOTTOMPADDING',(0,0),(-1,-1), 2),
+    ]))
+
+    elements = [t]
+    doc.build(elements)
     return buf.getvalue()
 
 
@@ -691,15 +737,17 @@ def section_1():
     st.subheader("功能一：檔案上傳與分析區")
     st.markdown("<div class='ecoco-card'>支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。</div>", unsafe_allow_html=True)
 
-    # Allow user to clear current file and load a new one
+    # File info badge — no long text, just a compact pill with truncated name
     if st.session_state.get("_uploaded_bytes") and st.session_state.get("_uploaded_name"):
-        col_info, col_clear = st.columns([8, 1])
-        col_info.markdown(
-            f"<div style='font-size:0.85rem; color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-top:0.5rem;'>"
-            f"📂 目前檔案：<b>{st.session_state['_uploaded_name']}</b></div>",
+        fname_short = st.session_state['_uploaded_name']
+        if len(fname_short) > 30:
+            fname_short = fname_short[:14] + "..." + fname_short[-12:]
+        col_badge, col_clear = st.columns([9, 1])
+        col_badge.markdown(
+            f"<span class='file-badge'>&#128196; {fname_short}</span>",
             unsafe_allow_html=True
         )
-        if col_clear.button("✖️ 清除", help="清除目前檔案，重新上傳"):
+        if col_clear.button("x 清除", help="清除目前檔案，重新上傳"):
             for key in ["_uploaded_bytes", "_uploaded_name", "_uploaded_type", "analysis_df", "source_name"]:
                 st.session_state.pop(key, None)
             st.rerun()
@@ -828,7 +876,7 @@ def section_1():
     # 已儲存草稿列表
     if st.session_state.get("_draft_list"):
         st.markdown("---")
-        st.markdown("##### 📂 已儲存的草稿")
+        st.markdown("##### 已儲存的草稿")
         for idx, draft in enumerate(st.session_state["_draft_list"]):
             d_col1, d_col2, d_col3, d_col4 = st.columns([5, 1, 1, 1])
             d_col1.markdown(
@@ -1015,28 +1063,61 @@ def section_2():
     if "analysis_df" not in st.session_state:
         st.info("請先在功能一完成分析。")
         return
-    df = st.session_state["analysis_df"]
-    if df.empty:
+    df_full = st.session_state["analysis_df"]
+    if df_full.empty:
         st.warning("目前沒有資料。")
         return
 
+    # --- Date range filter ---
+    date_cols = [c for c in df_full.columns if "日期" in c or "date" in c.lower()]
+    df = df_full.copy()
+    if date_cols:
+        dcol = date_cols[0]
+        try:
+            df[dcol] = pd.to_datetime(df[dcol], errors="coerce")
+            valid_dates = df[dcol].dropna()
+            if not valid_dates.empty:
+                min_d = valid_dates.min().date()
+                max_d = valid_dates.max().date()
+                st.markdown("##### 分析日期區間")
+                dr_col1, dr_col2 = st.columns(2)
+                start_d = dr_col1.date_input("起始日期", value=min_d, min_value=min_d, max_value=max_d)
+                end_d   = dr_col2.date_input("結束日期", value=max_d, min_value=min_d, max_value=max_d)
+                df = df[(df[dcol].dt.date >= start_d) & (df[dcol].dt.date <= end_d)]
+                st.caption(f"目前顯示 {len(df)} 筆 / 共 {len(df_full)} 筆")
+        except Exception:
+            pass
+
     stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
     stats["百分比"] = (stats["件數"] / stats["件數"].sum() * 100).round(2)
-    stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("未分配")
+    stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("")
+
+    # Build totals row
+    total_count = int(stats["件數"].sum())
+    dept_totals = stats.groupby("歸屬部門")["件數"].sum()
+    dept_summary = "  ".join([f"{d}:{int(n)}件" for d, n in dept_totals.items() if d])
+    totals_row = pd.DataFrame([{
+        "問題類型": "[ 合計 ]",
+        "件數": total_count,
+        "百分比": round(stats["百分比"].sum(), 2),
+        "歸屬部門": dept_summary,
+    }])
+    stats_with_total = pd.concat([stats, totals_row], ignore_index=True)
 
     st.markdown("#### 類型件數與部門 (可直接編輯，圖表即時同步)")
     edited_stats = st.data_editor(
-        stats,
+        stats_with_total,
         use_container_width=True,
         hide_index=True,
         column_config={
-            "歸屬部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS)
+            "歸屬部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS + [dept_summary])
         },
         key="stats_editor",
         num_rows="fixed",
     )
-    # Use edited_stats so chart reflects manual changes
-    render_charts_from_stats(edited_stats, df, key_prefix="sec2")
+    # Use main stats (drop totals row) for charts
+    chart_stats = edited_stats[edited_stats["問題類型"] != "[ 合計 ]"]
+    render_charts_from_stats(chart_stats, df, key_prefix="sec2")
 
     st.markdown("#### AI 問題重點分析")
     st.markdown("##### AI 設定（選填）")
@@ -1054,7 +1135,10 @@ def section_2():
         file_name=f"{datetime.now().strftime('%Y%m%d')}_AI重點分析.txt",
         mime="text/plain",
     )
-    ppt_bytes = build_ppt_bytes(stats, ai_text, st.session_state.get("source_name", "unknown"))
+    ppt_bytes = build_ppt_bytes(
+        stats_with_total, ai_text,
+        st.session_state.get("source_name", "unknown")
+    )
     st.download_button(
         "下載分析簡報 PPT",
         data=ppt_bytes,
@@ -1069,16 +1153,29 @@ def section_3():
     if not history:
         st.info("尚無歷史紀錄。")
         return
+
+    # De-duplicate: keep only latest entry per source_name
+    seen_names: dict = {}
+    deduped = []
+    for item in history:
+        sn = item.get("source_name", "")
+        if sn not in seen_names:
+            seen_names[sn] = item
+            deduped.append(item)
+        else:
+            # Keep the newer one (history is already newest-first)
+            pass
+    history = deduped
+
     for item in history:
         out_path = Path(item["output_path"])
         if not out_path.exists():
             continue
-        # Plain text label only - emoji in expander titles causes garbled rendering
-        label = (
-            f"{item['created_at'][:10]}  "
-            f"{item.get('source_name','')}  "
-            f"| {item['rows']} 筆"
-        )
+        # Pure ASCII/CJK label — no emoji that Streamlit converts to text
+        sname = item.get('source_name', '')
+        if len(sname) > 28:
+            sname = sname[:14] + "..." + sname[-10:]
+        label = f"{item['created_at'][:16]}  {sname}  ({item['rows']} 筆)"
         with st.expander(label):
             df_hist = pd.read_excel(out_path)
             tab_data, tab_chart, tab_ai = st.tabs(["📄 資料預覽", "📊 圖表分析", "🤖 AI 重點摘要"])
