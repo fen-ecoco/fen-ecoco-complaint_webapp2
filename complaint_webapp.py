@@ -683,38 +683,62 @@ def section_1():
     st.markdown("<div class='ecoco-card'>支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。</div>", unsafe_allow_html=True)
 
     uploaded = st.file_uploader("上傳檔案", type=["xlsx", "xls", "csv", "pdf"], key="uploader")
-    if not uploaded:
-        return
+    # Persist file bytes across menu switches
+    if uploaded is not None:
+        st.session_state["_uploaded_bytes"] = uploaded.read()
+        st.session_state["_uploaded_name"] = uploaded.name
+        st.session_state["_uploaded_type"] = uploaded.type
 
-    df_raw = make_unique_columns(load_input_file(uploaded))
-    st.caption(f"已載入 `{uploaded.name}`，資料筆數：{len(df_raw)}")
+    # Restore from session if user switched tabs and came back
+    if uploaded is None and st.session_state.get("_uploaded_bytes") is not None:
+        from io import BytesIO
+        fake_file = BytesIO(st.session_state["_uploaded_bytes"])
+        fake_file.name = st.session_state.get("_uploaded_name", "file")
+        df_raw_bytes = load_input_file(fake_file)
+        st.caption(f"已載入 `{fake_file.name}`（從小檔案區復原），資料筆數：{len(df_raw_bytes)}")
+        df_raw = make_unique_columns(df_raw_bytes)
+        uploaded_name = fake_file.name
+    elif uploaded is not None:
+        df_raw = make_unique_columns(load_input_file(
+            io.BytesIO(st.session_state["_uploaded_bytes"])
+        ))
+        uploaded_name = uploaded.name
+        st.caption(f"已載入 `{uploaded.name}`，資料筆數：{len(df_raw)}")
+    else:
+        if "analysis_df" not in st.session_state:
+            st.info("請上傳檔案開始分析。")
+            return
+        # Already analysed, show results without needing the raw file
+        df_raw = None
+        uploaded_name = st.session_state.get("source_name", "")
 
-    cols = list(df_raw.columns)
-    if not cols:
-        st.warning("檔案沒有可用欄位。")
-        return
+    if df_raw is not None:
+        cols = list(df_raw.columns)
+        if not cols:
+            st.warning("檔案沒有可用欄位。")
+            return
 
-    st.markdown("##### 分析前篩選與欄位設定")
-    subject_col = st.selectbox("用戶填寫的主題欄位", options=cols, index=0)
-    content_col = st.selectbox("用戶內容欄位", options=cols, index=min(1, len(cols) - 1))
-    date_opt = ["(無)"] + cols
-    date_col = st.selectbox("日期欄位（選填）", options=date_opt, index=0)
-    pre_keyword = st.text_input("分析前篩選關鍵字（主題/內容，選填）")
-    cfg = AnalysisConfig(subject_col=subject_col, content_col=content_col, date_col=None if date_col == "(無)" else date_col)
+        st.markdown("##### 分析前篩選與欄位設定")
+        subject_col = st.selectbox("用戶填寫的主題欄位", options=cols, index=0)
+        content_col = st.selectbox("用戶內容欄位", options=cols, index=min(1, len(cols) - 1))
+        date_opt = ["(無)"] + cols
+        date_col = st.selectbox("日期欄位（選填）", options=date_opt, index=0)
+        pre_keyword = st.text_input("分析前篩選關鍵字（主題/內容，選填）")
+        cfg = AnalysisConfig(subject_col=subject_col, content_col=content_col,
+                             date_col=None if date_col == "(無)" else date_col)
 
-    if st.button("開始分析", type="primary"):
-        work = df_raw.copy()
-        if pre_keyword:
-            work = work[
-                work[subject_col].astype(str).str.contains(pre_keyword, case=False, na=False)
-                | work[content_col].astype(str).str.contains(pre_keyword, case=False, na=False)
-            ]
-        st.session_state["analysis_df"] = analyze_dataframe(work, cfg)
-        st.session_state["source_name"] = uploaded.name
+        if st.button("開始分析", type="primary"):
+            work = df_raw.copy()
+            if pre_keyword:
+                work = work[
+                    work[subject_col].astype(str).str.contains(pre_keyword, case=False, na=False)
+                    | work[content_col].astype(str).str.contains(pre_keyword, case=False, na=False)
+                ]
+            st.session_state["analysis_df"] = analyze_dataframe(work, cfg)
+            st.session_state["source_name"] = uploaded_name
 
     if "analysis_df" not in st.session_state:
         return
-
     df = st.session_state["analysis_df"]
     c1, c2, c3 = st.columns([2, 2, 1])
     keyword = c1.text_input("篩選：關鍵字（主題/內容）")
@@ -729,6 +753,9 @@ def section_1():
     filter_detail = c3.multiselect("篩選：問題細項", options=valid_details, default=[])
 
     show = make_unique_columns(df.copy())
+    # hide_index=True alone sometimes still shows original integer index;
+    # reset to guarantee no row numbers in data_editor
+    show = show.reset_index(drop=True)
     if keyword:
         show = show[
             show[subject_col].astype(str).str.contains(keyword, case=False, na=False)
