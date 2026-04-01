@@ -369,10 +369,17 @@ def make_unique_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
     out = make_unique_columns(df.copy())
-    # If source already has these columns, overwrite with fresh analysis values.
+
+    # Preserve existing valid 問題類型 + 問題細項 from source file
+    existing_type   = out["問題類型"].copy()   if "問題類型" in out.columns else pd.Series([""] * len(out))
+    existing_detail = out["問題細項"].copy()   if "問題細項" in out.columns else pd.Series([""] * len(out))
+
+    # Drop internal columns before re-adding (but we already saved the values)
     for c in ["問題類型", "問題細項", "選取", "部門", "日期"]:
         if c in out.columns:
             out = out.drop(columns=[c])
+
+    # Run auto-classification for every row
     preds = out.apply(
         lambda r: analyze_complaint(str(r.get(cfg.subject_col, "")), str(r.get(cfg.content_col, ""))),
         axis=1,
@@ -380,13 +387,29 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
     )
     preds.columns = ["問題類型", "問題細項"]
     out = pd.concat([out, preds], axis=1)
-    # Ensure detail always belongs to topic
+
+    # Re-apply preserved values row by row:
+    # if the original row had a VALID (type, detail) pair that matches TOPIC_DETAIL_MAP, keep it.
+    def _merge_row(idx: int, row: pd.Series) -> pd.Series:
+        orig_type   = str(existing_type.iloc[idx]).strip()
+        orig_detail = str(existing_detail.iloc[idx]).strip()
+        # Check validity: type must be a known key and detail must belong to it
+        if (orig_type in TOPIC_DETAIL_MAP
+                and orig_detail in TOPIC_DETAIL_MAP.get(orig_type, [])):
+            row["問題類型"] = orig_type
+            row["問題細項"] = orig_detail
+        return row
+
+    out = pd.DataFrame([_merge_row(i, row) for i, (_, row) in enumerate(out.iterrows())])
+
+    # Final guard: ensure detail always belongs to its topic
     out["問題細項"] = out.apply(
-        lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], []) else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
+        lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], [])
+                  else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
         axis=1,
     )
     out["選取"] = False
-    out["部門"] = out["問題類型"].map(DEPT_MAP).fillna("未分配")
+    out["部門"] = out["問題類型"].map(DEPT_MAP).fillna("")
     if cfg.date_col and cfg.date_col in out.columns:
         out["日期"] = pd.to_datetime(out[cfg.date_col], errors="coerce")
     return out
