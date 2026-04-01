@@ -682,7 +682,20 @@ def section_1():
     st.subheader("功能一：檔案上傳與分析區")
     st.markdown("<div class='ecoco-card'>支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。</div>", unsafe_allow_html=True)
 
-    uploaded = st.file_uploader("上傳檔案", type=["xlsx", "xls", "csv", "pdf"], key="uploader")
+    # Allow user to clear current file and load a new one
+    if st.session_state.get("_uploaded_bytes") and st.session_state.get("_uploaded_name"):
+        col_info, col_clear = st.columns([8, 1])
+        col_info.markdown(
+            f"<div style='font-size:0.85rem; color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-top:0.5rem;'>"
+            f"📂 目前檔案：<b>{st.session_state['_uploaded_name']}</b></div>",
+            unsafe_allow_html=True
+        )
+        if col_clear.button("✖️ 清除", help="清除目前檔案，重新上傳"):
+            for key in ["_uploaded_bytes", "_uploaded_name", "_uploaded_type", "analysis_df", "source_name"]:
+                st.session_state.pop(key, None)
+            st.rerun()
+
+    uploaded = st.file_uploader("上傳新檔案", type=["xlsx", "xls", "csv", "pdf"], key="uploader")
     # Persist file bytes across menu switches
     if uploaded is not None:
         st.session_state["_uploaded_bytes"] = uploaded.read()
@@ -767,35 +780,64 @@ def section_1():
         show = show[show["問題細項"].isin(filter_detail)]
 
     st.markdown("#### 可編輯標記表（支援下拉 + 手動編輯）")
-    st.caption("💡 直接在表格中修改問題類型 / 問題細項後，點擊右側「💾 儲存修改」即可保存，不會讓表格跳回頂部。")
-    
-    col_editor, col_save = st.columns([10, 1])
-    with col_editor:
-        edited = st.data_editor(
-            show,
-            use_container_width=True,
-            num_rows="dynamic",
-            hide_index=True,
-            column_config={
-                "選取": st.column_config.CheckboxColumn(help="勾選要批次處理的列"),
-                "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
-                "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
-                "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
-            },
-            key="editor_table",
-        )
-    with col_save:
-        st.markdown("<div style='padding-top:2.2rem'></div>", unsafe_allow_html=True)
-        if st.button("💾\n儲存\n修改", use_container_width=True, help="將表格目前的編輯內容儲存"):
-            # Merge edited rows back to the full analysis_df
-            full_df = st.session_state["analysis_df"].copy()
-            if "選取" in edited.columns:
-                # Merge by position (show may be filtered subset)
-                full_df.update(edited.drop(columns=["選取"], errors="ignore"))
-            else:
-                full_df.update(edited)
-            st.session_state["analysis_df"] = full_df
-            st.success("已儲存修改！")
+    st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊下方「💾 儲存修改」。")
+
+    edited = st.data_editor(
+        show,
+        use_container_width=True,
+        num_rows="dynamic",
+        hide_index=True,
+        column_config={
+            "選取": st.column_config.CheckboxColumn(help="勾選要批次處理的列"),
+            "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
+            "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
+            "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
+        },
+        key="editor_table",
+    )
+
+    # 儲存按鈕在表格下方
+    sv_col1, sv_col2, sv_col3 = st.columns([2, 2, 6])
+    if sv_col1.button("💾 儲存修改", use_container_width=True):
+        full_df = st.session_state["analysis_df"].copy()
+        full_df.update(edited.drop(columns=["選取"], errors="ignore"))
+        st.session_state["analysis_df"] = full_df
+        # Also push to drafts list
+        src_name = st.session_state.get("source_name", "未命名")
+        if "_draft_list" not in st.session_state:
+            st.session_state["_draft_list"] = []
+        # Avoid duplicate same name drafts – update existing
+        draft_ids = [d["name"] for d in st.session_state["_draft_list"]]
+        if src_name not in draft_ids:
+            st.session_state["_draft_list"].insert(0, {"name": src_name, "df": full_df.copy()})
+        else:
+            for d in st.session_state["_draft_list"]:
+                if d["name"] == src_name:
+                    d["df"] = full_df.copy()
+        st.success(f"已儲存「{src_name}」")
+
+    # 已儲存草稿列表
+    if st.session_state.get("_draft_list"):
+        st.markdown("---")
+        st.markdown("##### 📂 已儲存的草稿")
+        for idx, draft in enumerate(st.session_state["_draft_list"]):
+            d_col1, d_col2, d_col3, d_col4 = st.columns([5, 1, 1, 1])
+            d_col1.markdown(
+                f"<div style='padding-top:0.45rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;'>"
+                f"📄 {draft['name']}</div>",
+                unsafe_allow_html=True
+            )
+            if d_col2.button("🔍 載入", key=f"draft_load_{idx}", use_container_width=True):
+                st.session_state["analysis_df"] = draft["df"].copy()
+                st.session_state["source_name"] = draft["name"]
+                st.success(f"已載入「{draft['name']}」，可繼續編輯。")
+            if d_col3.button("✏️ 修改", key=f"draft_edit_{idx}", use_container_width=True):
+                st.session_state["analysis_df"] = draft["df"].copy()
+                st.session_state["source_name"] = draft["name"]
+                st.rerun()
+            if d_col4.button("🗑️ 刪除", key=f"draft_del_{idx}", use_container_width=True):
+                st.session_state["_draft_list"].pop(idx)
+                st.rerun()
 
 
     b1, b2, b3, b4 = st.columns(4)
