@@ -340,15 +340,24 @@ def parse_pdf_to_df(file_obj) -> pd.DataFrame:
     return pd.DataFrame(rows if rows else [{"content": ""}])
 
 
-def load_input_file(uploaded_file) -> pd.DataFrame:
-    suffix = Path(uploaded_file.name).suffix.lower()
+def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
+    """Load file from a Streamlit UploadedFile or BytesIO. Pass filename when using BytesIO."""
+    name = filename or getattr(uploaded_file, "name", "")
+    suffix = Path(name).suffix.lower()
     if suffix in [".xlsx", ".xls"]:
         return pd.read_excel(uploaded_file)
     if suffix == ".csv":
-        return pd.read_csv(uploaded_file)
+        for enc in ["utf-8-sig", "utf-8", "cp950", "big5"]:
+            try:
+                uploaded_file.seek(0)
+                return pd.read_csv(uploaded_file, encoding=enc)
+            except (UnicodeDecodeError, AttributeError):
+                continue
+        uploaded_file.seek(0)
+        return pd.read_csv(uploaded_file, encoding="utf-8", errors="replace")
     if suffix == ".pdf":
         return parse_pdf_to_df(uploaded_file)
-    raise ValueError("僅支援 excel / csv / pdf")
+    raise ValueError(f"僅支援 excel / csv / pdf，收到：{suffix or name}")
 
 
 def make_unique_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -704,19 +713,19 @@ def section_1():
 
     # Restore from session if user switched tabs and came back
     if uploaded is None and st.session_state.get("_uploaded_bytes") is not None:
-        from io import BytesIO
-        fake_file = BytesIO(st.session_state["_uploaded_bytes"])
-        fake_file.name = st.session_state.get("_uploaded_name", "file")
-        df_raw_bytes = load_input_file(fake_file)
-        st.caption(f"已載入 `{fake_file.name}`（從小檔案區復原），資料筆數：{len(df_raw_bytes)}")
+        saved_name = st.session_state.get("_uploaded_name", "file")
+        buf = io.BytesIO(st.session_state["_uploaded_bytes"])
+        df_raw_bytes = load_input_file(buf, filename=saved_name)
+        st.caption(f"已載入 {saved_name}（從記憶復原），資料筆數：{len(df_raw_bytes)}")
         df_raw = make_unique_columns(df_raw_bytes)
-        uploaded_name = fake_file.name
+        uploaded_name = saved_name
     elif uploaded is not None:
+        fname = st.session_state.get("_uploaded_name", uploaded.name)
         df_raw = make_unique_columns(load_input_file(
-            io.BytesIO(st.session_state["_uploaded_bytes"])
+            io.BytesIO(st.session_state["_uploaded_bytes"]), filename=fname
         ))
         uploaded_name = uploaded.name
-        st.caption(f"已載入 `{uploaded.name}`，資料筆數：{len(df_raw)}")
+        st.caption(f"已載入 {uploaded.name}，資料筆數：{len(df_raw)}")
     else:
         if "analysis_df" not in st.session_state:
             st.info("請上傳檔案開始分析。")
@@ -1064,11 +1073,11 @@ def section_3():
         out_path = Path(item["output_path"])
         if not out_path.exists():
             continue
-        # Fixed expander label: clean text, no garbled chars
+        # Plain text label only - emoji in expander titles causes garbled rendering
         label = (
-            f"📅 {item['created_at'][:10]}  "
+            f"{item['created_at'][:10]}  "
             f"{item.get('source_name','')}  "
-            f"｜ {item['rows']} 筆"
+            f"| {item['rows']} 筆"
         )
         with st.expander(label):
             df_hist = pd.read_excel(out_path)
