@@ -740,20 +740,36 @@ def section_1():
         show = show[show["問題細項"].isin(filter_detail)]
 
     st.markdown("#### 可編輯標記表（支援下拉 + 手動編輯）")
-    edited = st.data_editor(
-        show,
-        use_container_width=True,
-        num_rows="dynamic",
-        hide_index=True,
-        column_config={
-            "選取": st.column_config.CheckboxColumn(help="勾選要批次處理的列"),
-            "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
-            "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
-            "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
-        },
-        key="editor_table",
-    )
-    st.session_state["analysis_df"] = edited.copy()
+    st.caption("💡 直接在表格中修改問題類型 / 問題細項後，點擊右側「💾 儲存修改」即可保存，不會讓表格跳回頂部。")
+    
+    col_editor, col_save = st.columns([10, 1])
+    with col_editor:
+        edited = st.data_editor(
+            show,
+            use_container_width=True,
+            num_rows="dynamic",
+            hide_index=True,
+            column_config={
+                "選取": st.column_config.CheckboxColumn(help="勾選要批次處理的列"),
+                "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
+                "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
+                "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
+            },
+            key="editor_table",
+        )
+    with col_save:
+        st.markdown("<div style='padding-top:2.2rem'></div>", unsafe_allow_html=True)
+        if st.button("💾\n儲存\n修改", use_container_width=True, help="將表格目前的編輯內容儲存"):
+            # Merge edited rows back to the full analysis_df
+            full_df = st.session_state["analysis_df"].copy()
+            if "選取" in edited.columns:
+                # Merge by position (show may be filtered subset)
+                full_df.update(edited.drop(columns=["選取"], errors="ignore"))
+            else:
+                full_df.update(edited)
+            st.session_state["analysis_df"] = full_df
+            st.success("已儲存修改！")
+
 
     b1, b2, b3, b4 = st.columns(4)
     batch_type = b1.selectbox("批次設定問題類型", options=["(不變更)"] + TYPE_OPTIONS)
