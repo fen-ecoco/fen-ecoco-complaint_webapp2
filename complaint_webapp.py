@@ -135,9 +135,16 @@ def apply_brand_theme() -> None:
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap');
           
-          /* Noto Sans TC Medium (500) */
-          html, body, [class*="css"], [data-testid="stAppViewContainer"] div, span, p, label {
+          /* Noto Sans TC Medium (500) - scoped to app content only, not Streamlit portals */
+          [data-testid="stAppViewContainer"] *,
+          [data-testid="stHeader"] *,
+          [data-testid="stMain"] * {
             font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
+          }
+          [data-testid="stAppViewContainer"] p,
+          [data-testid="stAppViewContainer"] span,
+          [data-testid="stAppViewContainer"] label,
+          [data-testid="stAppViewContainer"] div {
             font-weight: 500;
           }
           
@@ -874,12 +881,11 @@ def section_1():
 
     st.markdown("#### 可編輯標記表（支援下拉 + 手動編輯）")
 
-    # ---- 單一表格：AI標記欄位 + 可編輯 ---
+    # ---- AI填入標示 ---
     ai_col = "_ai_filled"
-    MARKER_COL = "AI標記"
+    MARKER_COL = "AI標記"  # kept for save compatibility only
     has_ai_col = ai_col in show.columns
     n_ai = 0
-
     if has_ai_col:
         n_ai = int(show[ai_col].fillna(False).astype(bool).sum())
 
@@ -888,46 +894,31 @@ def section_1():
             f"""
             <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
                         padding:8px 14px; margin-bottom:8px; font-size:0.85rem;'>
-              <b style='color:#cc0000;'>● AI 自動標記</b>：共 <b>{n_ai}</b> 筆原始欄位空白或無效，
-              已由 AI 根據客訴內容自動分析填入（表格「AI標記」欄以<b style='color:#cc0000;'>★ AI填入</b>標示）。
-              請核對後直接在同一表格修改，再點「💾 儲存修改」確認。
+              <b style='color:#cc0000;'>● AI 自動標記</b>：共 <b style='color:#cc0000;'>{n_ai} 筆</b> 原始欄位空白或無效，
+              已由 AI 根據客訴內容自動分析填入。
+              請針對這幾筆核對，如需修改請直接在表格中下拉選擇，再點「💾 儲存修改」確認。
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    st.caption("💡 直接在下方表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
+    st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
 
-    # 建立顯示用 DataFrame：移除 _ai_filled，加入可見的 AI標記 欄
-    display_cols = [c for c in show.columns if c != ai_col]
-    show_display = show[display_cols].copy() if has_ai_col else show.copy()
-
-    if has_ai_col and n_ai > 0:
-        ai_mask_vals = show[ai_col].fillna(False).astype(bool).reset_index(drop=True)
-        show_display = show_display.reset_index(drop=True)
-        show_display.insert(0, MARKER_COL, ai_mask_vals.map({True: "★ AI填入", False: ""}))
-    else:
-        show_display = show_display.reset_index(drop=True)
-
-    col_config: dict = {
-        "選取": st.column_config.CheckboxColumn(help="勾選要批次處理的列"),
-        "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
-        "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
-        "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
-    }
-    if MARKER_COL in show_display.columns:
-        col_config[MARKER_COL] = st.column_config.TextColumn(
-            label="AI標記",
-            help="★ AI填入 = 原始資料空白或無效，由 AI 自動分析填入",
-            disabled=True,
-        )
+    # 移除 _ai_filled 與 AI標記欄，保持原有資料欄不變
+    display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
+    show_display = show[display_cols].reset_index(drop=True)
 
     edited = st.data_editor(
         show_display,
         use_container_width=True,
         num_rows="dynamic",
         hide_index=True,
-        column_config=col_config,
+        column_config={
+            "選取": st.column_config.CheckboxColumn(help="勾選要批次處理的列"),
+            "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
+            "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
+            "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
+        },
         key="editor_table",
     )
 
