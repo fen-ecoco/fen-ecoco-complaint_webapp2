@@ -874,25 +874,45 @@ def section_1():
 
     st.markdown("#### 可編輯標記表（支援下拉 + 手動編輯）")
 
-    # ---- AI-filled legend & highlight ---
+    # ---- AI填入标示與紅色頓色預覽 ---
     ai_col = "_ai_filled"
     has_ai_col = ai_col in show.columns
+    n_ai = 0
     if has_ai_col:
-        n_ai = int(show[ai_col].sum()) if show[ai_col].dtype == bool else 0
+        n_ai = int(show[ai_col].fillna(False).astype(bool).sum())
         if n_ai > 0:
             st.markdown(
                 f"""
                 <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
                             padding:8px 14px; margin-bottom:8px; font-size:0.85rem;'>
-                  <b style='color:#c00;'>● AI 場處</b>：共 <b>{n_ai}</b> 筆無效/空白欄位已由 AI 自動填入（屈載標示栃送欄後可手動修改）。
-                  驗證後請點「💾 儲存修改」以確認。
+                  <b style='color:#cc0000;'>● AI 自動標記</b>：共 <b>{n_ai}</b> 筆原始欄位空白或無效，
+                  已由 AI 根據客訴內容自動分析填入（下方預覽表格以<span style='color:#cc0000;font-weight:700;'>紅色字體</span>標示）。
+                  請核對後在下方編輯表修改，再點「💾 儲存修改」確認。
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-    st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊下方「💾 儲存修改」。")
-    # Hide _ai_filled from editor but keep it for tracking
+        # 紅色體預覽表（只讀）
+        if n_ai > 0:
+            highlight_cols = ["問題類型", "問題細項", "部門"]
+            preview_cols = [c for c in show.columns if c not in (ai_col, "選取")]
+            preview_df = show[preview_cols].reset_index(drop=True)
+            ai_mask = show[ai_col].fillna(False).astype(bool).reset_index(drop=True)
+
+            def _style_ai(row):
+                is_ai = bool(ai_mask.iloc[row.name]) if row.name < len(ai_mask) else False
+                return [
+                    "color: #cc0000; font-weight: 700;" if (is_ai and col in highlight_cols) else ""
+                    for col in preview_df.columns
+                ]
+
+            st.caption("▼ 以下為預覽（紅色 = AI 自動填入，請至下方編輯表更正）")
+            styled = preview_df.style.apply(_style_ai, axis=1)
+            st.dataframe(styled, use_container_width=True, hide_index=True)
+            st.markdown("---")
+
+    st.caption("💡 在下方表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
     display_cols = [c for c in show.columns if c != ai_col]
     show_display = show[display_cols] if has_ai_col else show
 
