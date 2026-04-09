@@ -38,12 +38,22 @@ TOPIC_DETAIL_MAP = {
         "APP商家頁面空白",
         "APP點數顯示異常",
         "APP多重異常狀況",
+        "app畫面顯示與機台狀態不符",
+        "app多重異常狀況",
+        "app點數顯示異常",
+        "app商家頁面空白",
     ],
     "APP帳號設定問題類型": [
         "忘記密碼/無法重設密碼",
         "帳號資訊修改/設定",
         "無法接收簡訊驗證碼",
         "APP無法登入",
+        "app無法登入",
+    ],
+    "APP帳密登入問題": [
+        "APP無法登入",
+        "app無法登入",
+        "忘記密碼/無法重設密碼",
     ],
     "優惠券問題類型": [
         "兌換失敗/顯示錯誤",
@@ -54,6 +64,7 @@ TOPIC_DETAIL_MAP = {
     "回收點數問題類型": [
         "點數重複入點",
         "點數未入帳號",
+        "投入後未獲點數/點數未記錄",
     ],
     "機台問題類型": [
         "機台運作中斷/重啟",
@@ -97,8 +108,10 @@ DEPT_OPTIONS = [
 
 DEPT_MAP = {
     "機台問題類型": "營運部",
+    "機台相關問題": "營運部",
     "APP帳號設定問題類型": "資訊部",
     "APP使用問題類型": "資訊部",
+    "APP帳密登入問題": "資訊部",
     "回收點數問題類型": "",
     "優惠券問題類型": "行銷部",
     "顧客關係類型": "營運部",
@@ -384,15 +397,36 @@ def make_unique_columns(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# ---- valid type set for fast lookup (all keys + known variant spellings from template) ----
+_VALID_TYPES = set(TOPIC_DETAIL_MAP.keys())
+
+# All valid details (flattened from TOPIC_DETAIL_MAP) for quick check
+_VALID_DETAILS_FLAT: set[str] = {d for lst in TOPIC_DETAIL_MAP.values() for d in lst}
+
+
+def _is_valid_pair(t: str, d: str) -> bool:
+    """Return True if both type and detail are non-empty and the detail belongs to the type."""
+    t, d = t.strip(), d.strip()
+    if not t or not d:
+        return False
+    # Accept if type is valid AND detail is in that type's list
+    if t in TOPIC_DETAIL_MAP and d in TOPIC_DETAIL_MAP[t]:
+        return True
+    # Also accept if type exists but detail is in the FULL detail pool (legacy data)
+    if t in _VALID_TYPES and d in _VALID_DETAILS_FLAT:
+        return True
+    return False
+
+
 def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
     out = make_unique_columns(df.copy())
 
-    # Preserve existing valid 問題類型 + 問題細項 from source file
+    # ------ Preserve existing valid 問題類型 + 問題細項 from source file ------
     existing_type   = out["問題類型"].copy()   if "問題類型" in out.columns else pd.Series([""] * len(out))
     existing_detail = out["問題細項"].copy()   if "問題細項" in out.columns else pd.Series([""] * len(out))
 
-    # Drop internal columns before re-adding (but we already saved the values)
-    for c in ["問題類型", "問題細項", "選取", "部門", "日期"]:
+    # Drop internal columns before re-adding
+    for c in ["問題類型", "問題細項", "選取", "部門", "日期", "_ai_filled"]:
         if c in out.columns:
             out = out.drop(columns=[c])
 
@@ -405,19 +439,21 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
     preds.columns = ["問題類型", "問題細項"]
     out = pd.concat([out, preds], axis=1)
 
-    # Re-apply preserved values row by row:
-    # if the original row had a VALID (type, detail) pair that matches TOPIC_DETAIL_MAP, keep it.
-    def _merge_row(idx: int, row: pd.Series) -> pd.Series:
+    # ------ Merge: prefer original valid pair; fall back to AI prediction ------
+    ai_filled_flags = []
+    for idx in range(len(out)):
         orig_type   = str(existing_type.iloc[idx]).strip()
         orig_detail = str(existing_detail.iloc[idx]).strip()
-        # Check validity: type must be a known key and detail must belong to it
-        if (orig_type in TOPIC_DETAIL_MAP
-                and orig_detail in TOPIC_DETAIL_MAP.get(orig_type, [])):
-            row["問題類型"] = orig_type
-            row["問題細項"] = orig_detail
-        return row
+        if _is_valid_pair(orig_type, orig_detail):
+            # Original is valid → keep it, NOT AI-filled
+            out.iloc[idx, out.columns.get_loc("問題類型")] = orig_type
+            out.iloc[idx, out.columns.get_loc("問題細項")] = orig_detail
+            ai_filled_flags.append(False)
+        else:
+            # Original missing/invalid → use AI prediction, mark as AI-filled
+            ai_filled_flags.append(True)
 
-    out = pd.DataFrame([_merge_row(i, row) for i, (_, row) in enumerate(out.iterrows())])
+    out["_ai_filled"] = ai_filled_flags
 
     # Final guard: ensure detail always belongs to its topic
     out["問題細項"] = out.apply(
@@ -837,10 +873,31 @@ def section_1():
         show = show[show["問題細項"].isin(filter_detail)]
 
     st.markdown("#### 可編輯標記表（支援下拉 + 手動編輯）")
+
+    # ---- AI-filled legend & highlight ---
+    ai_col = "_ai_filled"
+    has_ai_col = ai_col in show.columns
+    if has_ai_col:
+        n_ai = int(show[ai_col].sum()) if show[ai_col].dtype == bool else 0
+        if n_ai > 0:
+            st.markdown(
+                f"""
+                <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
+                            padding:8px 14px; margin-bottom:8px; font-size:0.85rem;'>
+                  <b style='color:#c00;'>● AI 場處</b>：共 <b>{n_ai}</b> 筆無效/空白欄位已由 AI 自動填入（屈載標示栃送欄後可手動修改）。
+                  驗證後請點「💾 儲存修改」以確認。
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
     st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊下方「💾 儲存修改」。")
+    # Hide _ai_filled from editor but keep it for tracking
+    display_cols = [c for c in show.columns if c != ai_col]
+    show_display = show[display_cols] if has_ai_col else show
 
     edited = st.data_editor(
-        show,
+        show_display,
         use_container_width=True,
         num_rows="dynamic",
         hide_index=True,
