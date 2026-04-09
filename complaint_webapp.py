@@ -874,59 +874,60 @@ def section_1():
 
     st.markdown("#### 可編輯標記表（支援下拉 + 手動編輯）")
 
-    # ---- AI填入标示與紅色頓色預覽 ---
+    # ---- 單一表格：AI標記欄位 + 可編輯 ---
     ai_col = "_ai_filled"
+    MARKER_COL = "AI標記"
     has_ai_col = ai_col in show.columns
     n_ai = 0
+
     if has_ai_col:
         n_ai = int(show[ai_col].fillna(False).astype(bool).sum())
-        if n_ai > 0:
-            st.markdown(
-                f"""
-                <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
-                            padding:8px 14px; margin-bottom:8px; font-size:0.85rem;'>
-                  <b style='color:#cc0000;'>● AI 自動標記</b>：共 <b>{n_ai}</b> 筆原始欄位空白或無效，
-                  已由 AI 根據客訴內容自動分析填入（下方預覽表格以<span style='color:#cc0000;font-weight:700;'>紅色字體</span>標示）。
-                  請核對後在下方編輯表修改，再點「💾 儲存修改」確認。
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
 
-        # 紅色體預覽表（只讀）
-        if n_ai > 0:
-            highlight_cols = ["問題類型", "問題細項", "部門"]
-            preview_cols = [c for c in show.columns if c not in (ai_col, "選取")]
-            preview_df = show[preview_cols].reset_index(drop=True)
-            ai_mask = show[ai_col].fillna(False).astype(bool).reset_index(drop=True)
+    if n_ai > 0:
+        st.markdown(
+            f"""
+            <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
+                        padding:8px 14px; margin-bottom:8px; font-size:0.85rem;'>
+              <b style='color:#cc0000;'>● AI 自動標記</b>：共 <b>{n_ai}</b> 筆原始欄位空白或無效，
+              已由 AI 根據客訴內容自動分析填入（表格「AI標記」欄以<b style='color:#cc0000;'>★ AI填入</b>標示）。
+              請核對後直接在同一表格修改，再點「💾 儲存修改」確認。
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-            def _style_ai(row):
-                is_ai = bool(ai_mask.iloc[row.name]) if row.name < len(ai_mask) else False
-                return [
-                    "color: #cc0000; font-weight: 700;" if (is_ai and col in highlight_cols) else ""
-                    for col in preview_df.columns
-                ]
+    st.caption("💡 直接在下方表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
 
-            st.caption("▼ 以下為預覽（紅色 = AI 自動填入，請至下方編輯表更正）")
-            styled = preview_df.style.apply(_style_ai, axis=1)
-            st.dataframe(styled, use_container_width=True, hide_index=True)
-            st.markdown("---")
-
-    st.caption("💡 在下方表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
+    # 建立顯示用 DataFrame：移除 _ai_filled，加入可見的 AI標記 欄
     display_cols = [c for c in show.columns if c != ai_col]
-    show_display = show[display_cols] if has_ai_col else show
+    show_display = show[display_cols].copy() if has_ai_col else show.copy()
+
+    if has_ai_col and n_ai > 0:
+        ai_mask_vals = show[ai_col].fillna(False).astype(bool).reset_index(drop=True)
+        show_display = show_display.reset_index(drop=True)
+        show_display.insert(0, MARKER_COL, ai_mask_vals.map({True: "★ AI填入", False: ""}))
+    else:
+        show_display = show_display.reset_index(drop=True)
+
+    col_config: dict = {
+        "選取": st.column_config.CheckboxColumn(help="勾選要批次處理的列"),
+        "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
+        "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
+        "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
+    }
+    if MARKER_COL in show_display.columns:
+        col_config[MARKER_COL] = st.column_config.TextColumn(
+            label="AI標記",
+            help="★ AI填入 = 原始資料空白或無效，由 AI 自動分析填入",
+            disabled=True,
+        )
 
     edited = st.data_editor(
         show_display,
         use_container_width=True,
         num_rows="dynamic",
         hide_index=True,
-        column_config={
-            "選取": st.column_config.CheckboxColumn(help="勾選要批次處理的列"),
-            "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
-            "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
-            "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
-        },
+        column_config=col_config,
         key="editor_table",
     )
 
@@ -934,7 +935,12 @@ def section_1():
     sv_col1, sv_col2, sv_col3 = st.columns([2, 2, 6])
     if sv_col1.button("💾 儲存修改", use_container_width=True):
         full_df = st.session_state["analysis_df"].copy()
-        full_df.update(edited.drop(columns=["選取"], errors="ignore"))
+        # Drop the AI marker column and 選取 before saving back
+        save_edited = edited.drop(columns=["選取", MARKER_COL], errors="ignore")
+        full_df.update(save_edited)
+        # Clear _ai_filled flags for all saved rows (user has confirmed)
+        if "_ai_filled" in full_df.columns:
+            full_df["_ai_filled"] = False
         st.session_state["analysis_df"] = full_df
         # Also push to drafts list
         src_name = st.session_state.get("source_name", "未命名")
