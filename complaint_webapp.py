@@ -884,15 +884,15 @@ def section_1():
                 f"📄 {draft['name']}</div>",
                 unsafe_allow_html=True
             )
-            if d_col2.button("🔍 載入", key=f"draft_load_{idx}", use_container_width=True):
+            if d_col2.button("[載入]", key=f"draft_load_{idx}", use_container_width=True):
                 st.session_state["analysis_df"] = draft["df"].copy()
                 st.session_state["source_name"] = draft["name"]
                 st.success(f"已載入「{draft['name']}」，可繼續編輯。")
-            if d_col3.button("✏️ 修改", key=f"draft_edit_{idx}", use_container_width=True):
+            if d_col3.button("[修改]", key=f"draft_edit_{idx}", use_container_width=True):
                 st.session_state["analysis_df"] = draft["df"].copy()
                 st.session_state["source_name"] = draft["name"]
                 st.rerun()
-            if d_col4.button("🗑️ 刪除", key=f"draft_del_{idx}", use_container_width=True):
+            if d_col4.button("[X]", key=f"draft_del_{idx}", use_container_width=True):
                 st.session_state["_draft_list"].pop(idx)
                 st.rerun()
 
@@ -1178,7 +1178,7 @@ def section_3():
         label = f"{item['created_at'][:16]}  {sname}  ({item['rows']} 筆)"
         with st.expander(label):
             df_hist = pd.read_excel(out_path)
-            tab_data, tab_chart, tab_ai = st.tabs(["📄 資料預覽", "📊 圖表分析", "🤖 AI 重點摘要"])
+            tab_data, tab_chart, tab_ai = st.tabs(["資料預覽", "圖表分析", "AI 重點摘要"])
             
             with tab_data:
                 st.dataframe(df_hist.head(30), use_container_width=True, hide_index=True)
@@ -1190,13 +1190,13 @@ def section_3():
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key=f"download_{item['id']}",
                 )
-                if col2.button("✏️ 編輯紀錄", key=f"edit_{item['id']}"):
+                if col2.button("[編輯]", key=f"edit_{item['id']}"):
                     st.session_state["analysis_df"] = df_hist.copy()
                     st.session_state["source_name"] = item["source_name"]
                     st.session_state["_editing_history_id"] = item["id"]
                     st.session_state["menu"] = "上傳檔案區（分析區）"
                     st.rerun()
-                if col3.button("🗑️ 刪除紀錄", key=f"del_{item['id']}"):
+                if col3.button("[刪除]", key=f"del_{item['id']}"):
                     delete_history(item["id"])
                     st.rerun()
             
@@ -1208,7 +1208,7 @@ def section_3():
                     
             with tab_ai:
                 st.info("點擊下方按鈕即時生成本檔案的 AI 重點摘要")
-                if st.button("🤖 產生 AI 摘要", key=f"ai_btn_{item['id']}"):
+                if st.button("[產生 AI 摘要]", key=f"ai_btn_{item['id']}"):
                     with st.spinner("AI 分析中..."):
                         ai_result = generate_ai_summary_llm(df_hist)
                         st.markdown(ai_result)
@@ -1217,14 +1217,6 @@ def section_3():
 def main():
     apply_brand_theme()
     st.markdown("<div class='ecoco-banner'>ECOCO 客訴智能分析平台</div>", unsafe_allow_html=True)
-    st.markdown(
-        """
-        <div class='small-muted'>
-          功能列表：1) 檔案上傳分析 2) 圖表化 + AI重點 3) 歷史紀錄（最新置頂）
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
     with st.sidebar:
         st.markdown("<div class='side-title'>ECOCO AI</div>", unsafe_allow_html=True)
         st.markdown("<div class='side-sub'>客訴分析處理室</div>", unsafe_allow_html=True)
