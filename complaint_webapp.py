@@ -908,8 +908,19 @@ def section_1():
     display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
     show_display = show[display_cols].reset_index(drop=True)
 
+    # 針對 AI 填寫的列套用粗體與變色
+    def highlight_ai_rows(row):
+        # 由於 show_display 的 index 對應到 show 的 index (因為 reset_index(drop=True) 在過濾後執行)
+        is_ai = bool(show.iloc[row.name].get("_ai_filled", False)) if hasattr(row, "name") and isinstance(row.name, int) and row.name < len(show) else False
+        if is_ai:
+            return ["font-weight: bold; color: #cc0000;"] * len(row)
+        else:
+            return [""] * len(row)
+
+    styled_display = show_display.style.apply(highlight_ai_rows, axis=1)
+
     edited = st.data_editor(
-        show_display,
+        styled_display,
         use_container_width=True,
         num_rows="dynamic",
         hide_index=True,
