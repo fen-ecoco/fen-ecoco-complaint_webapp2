@@ -904,28 +904,30 @@ def section_1():
 
     st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
 
-    # 移除 _ai_filled 與 AI標記欄，保持原有資料欄不變
+    # 重新處理要顯示的欄位，確保原本隱藏的 MARKER_COL 正確加入
     display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
     show_display = show[display_cols].reset_index(drop=True)
 
-    # 針對 AI 填寫的列套用粗體與變色
-    def highlight_ai_rows(row):
-        # 由於 show_display 的 index 對應到 show 的 index (因為 reset_index(drop=True) 在過濾後執行)
-        is_ai = bool(show.iloc[row.name].get("_ai_filled", False)) if hasattr(row, "name") and isinstance(row.name, int) and row.name < len(show) else False
-        if is_ai:
-            return ["font-weight: bold; color: #cc0000;"] * len(row)
-        else:
-            return [""] * len(row)
-
-    styled_display = show_display.style.apply(highlight_ai_rows, axis=1)
+    # 新增一欄字號標記給 AI 填入的資料
+    if has_ai_col:
+        flags = show[ai_col].reset_index(drop=True)
+        marker_vals = flags.map(lambda x: "⭐(AI填寫)" if x else "")
+    else:
+        marker_vals = [""] * len(show_display)
+        
+    insert_idx = 1
+    if "選取" in show_display.columns:
+        insert_idx = show_display.columns.get_loc("選取") + 1
+    show_display.insert(insert_idx, MARKER_COL, marker_vals)
 
     edited = st.data_editor(
-        styled_display,
+        show_display,
         use_container_width=True,
         num_rows="dynamic",
         hide_index=True,
         column_config={
             "選取": st.column_config.CheckboxColumn(help="勾選要批次處理的列"),
+            MARKER_COL: st.column_config.TextColumn("備註", disabled=True),
             "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
             "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
             "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
@@ -1106,8 +1108,25 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
 
 
 def render_charts(df: pd.DataFrame, key_prefix: str = ""):
+    date_cols = [c for c in df.columns if "日期" in c or "date" in c.lower()]
+    if date_cols:
+        dcol = date_cols[0]
+        try:
+            df[dcol] = pd.to_datetime(df[dcol], errors="coerce")
+            valid_dates = df[dcol].dropna()
+            if not valid_dates.empty:
+                min_d = valid_dates.min().date()
+                max_d = valid_dates.max().date()
+                st.markdown("##### 分析日期區間")
+                c_d1, c_d2 = st.columns(2)
+                start_d = c_d1.date_input("起始日期", value=min_d, min_value=min_d, max_value=max_d, key=f"{key_prefix}_sd")
+                end_d   = c_d2.date_input("結束日期", value=max_d, min_value=min_d, max_value=max_d, key=f"{key_prefix}_ed")
+                df = df[(df[dcol].dt.date >= start_d) & (df[dcol].dt.date <= end_d)]
+        except Exception:
+            pass
+
     stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
-    stats["百分比"] = (stats["件數"] / stats["件數"].sum() * 100).round(2)
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(2)
     stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("未分配")
 
     c1, c2, c3 = st.columns(3)
