@@ -2,7 +2,7 @@ services:
   - type: web
     name: ecoco-complaint-analyzer
     env: python
-    repo: https://github.com/feni2026/complaint_webapp
+    repo: https://github.com/fen-ecoco/fen-ecoco-complaint_webapp2
     plan: free
     buildCommand: "pip install -r requirements.txt"
     startCommand: "streamlit run complaint_webapp.py --server.port $PORT --server.address 0.0.0.0"
