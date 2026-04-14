@@ -136,9 +136,9 @@ def apply_brand_theme() -> None:
           @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap');
           
           /* Noto Sans TC Medium (500) - scoped to app content only, not Streamlit portals */
-          [data-testid="stAppViewContainer"] *,
-          [data-testid="stHeader"] *,
-          [data-testid="stMain"] * {
+          [data-testid="stAppViewContainer"] *:not(.stIconMaterial):not(.material-symbols-rounded):not([data-testid="stIconMaterial"]),
+          [data-testid="stHeader"] *:not(.stIconMaterial):not(.material-symbols-rounded):not([data-testid="stIconMaterial"]),
+          [data-testid="stMain"] *:not(.stIconMaterial):not(.material-symbols-rounded):not([data-testid="stIconMaterial"]) {
             font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
           }
           [data-testid="stAppViewContainer"] p,
@@ -744,7 +744,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                 run.font.size = Pt(13)
 
     for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), start=1):
-        vals = [str(r["問題類型"]), str(r["件數"]), f'{r["百分比"]}%', str(r.get("歸屬部門", ""))]
+        vals = [str(r["問題類型"]), str(r["件數"]), str(r["百分比"]), str(r.get("歸屬部門", ""))]
         for ci, v in enumerate(vals):
             cell = tbl.cell(ri, ci)
             cell.text = v
@@ -1080,7 +1080,7 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
         stats, x="問題類型", y="件數", color="歸屬部門", text="百分比", title="問題類型分布",
         color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
     )
-    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
+    fig1.update_traces(texttemplate="%{text}", textposition="outside")
     fig1.update_layout(height=400)
     c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
 
@@ -1126,7 +1126,7 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
             pass
 
     stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
-    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(2)
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int).astype(str) + "%"
     stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("未分配")
 
     c1, c2, c3 = st.columns(3)
@@ -1135,7 +1135,7 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         stats, x="問題類型", y="件數", color="歸屬部門", text="百分比", title="問題類型分布",
         color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
     )
-    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
+    fig1.update_traces(texttemplate="%{text}", textposition="outside")
     fig1.update_layout(height=400)
     c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
 
@@ -1193,7 +1193,7 @@ def section_2():
             pass
 
     stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
-    stats["百分比"] = (stats["件數"] / stats["件數"].sum() * 100).round(2)
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int).astype(str) + "%"
     stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("")
 
     # Build totals row
@@ -1203,7 +1203,7 @@ def section_2():
     totals_row = pd.DataFrame([{
         "問題類型": "[ 合計 ]",
         "件數": total_count,
-        "百分比": round(stats["百分比"].sum(), 2),
+        "百分比": "100%",
         "歸屬部門": dept_summary,
     }])
     stats_with_total = pd.concat([stats, totals_row], ignore_index=True)
