@@ -238,6 +238,11 @@ def apply_brand_theme() -> None:
             overflow:hidden; text-overflow:ellipsis; vertical-align:middle;
           }
           
+          /* 移除 arrow_down 及內建圖示，避免異常顯示純文字 */
+          [data-testid="stExpanderToggleIcon"], .material-symbols-rounded {
+              display: none !important;
+          }
+          
         </style>
         """,
         unsafe_allow_html=True,
@@ -678,14 +683,21 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
         prs = Presentation()
         slide_layout = prs.slide_layouts[5]  # fallback blank
 
-    def add_slide_with_bg(prs):
+    W = prs.slide_width
+    H = prs.slide_height
+
+    def add_slide_with_bg(prs, image_name="bg.png"):
         slide = prs.slides.add_slide(slide_layout)
+        img_path = Path(image_name)
+        if img_path.exists():
+            try:
+                slide.shapes.add_picture(str(img_path), 0, 0, width=W, height=H)
+            except Exception:
+                pass
         return slide
 
     # Slide 1: Summary
-    slide1 = add_slide_with_bg(prs)
-    W = prs.slide_width
-    H = prs.slide_height
+    slide1 = add_slide_with_bg(prs, "cover.png")
 
     def add_text_box(slide, text, left, top, width, height, size=18, bold=False, color=(0x1a,0x1a,0x1a)):
         txb = slide.shapes.add_textbox(left, top, width, height)
@@ -698,7 +710,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
         p.font.color.rgb = RGBColor(*color)
         return txb
 
-    add_text_box(slide1, "ECOCO 客訴分析簡報", Inches(0.5), Inches(0.3), W - Inches(1), Inches(0.7),
+    add_text_box(slide1, "【客服課】ECOCO 客訴分析簡報", Inches(0.5), Inches(0.3), W - Inches(1), Inches(0.7),
                  size=28, bold=True, color=(0x06,0x0E,0x9F))
     add_text_box(slide1, f"來源檔案：{source_name}　產出日期：{datetime.now().strftime('%Y-%m-%d')}",
                  Inches(0.5), Inches(1.0), W - Inches(1), Inches(0.5), size=14)
@@ -708,7 +720,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
     tf2 = txb2.text_frame
     tf2.word_wrap = True
     first = True
-    for ln in ai_text.splitlines():
+    for ln in ["【客服課產出分析重點】"] + ai_text.splitlines():
         if not ln.strip(): continue
         if first:
             p = tf2.paragraphs[0]; first = False
@@ -719,8 +731,8 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
         p.font.color.rgb = RGBColor(0x31, 0x33, 0x3F)
 
     # Slide 2: Table
-    slide2 = add_slide_with_bg(prs)
-    add_text_box(slide2, "問題類型件數與占比", Inches(0.5), Inches(0.2), W - Inches(1), Inches(0.6),
+    slide2 = add_slide_with_bg(prs, "bg.png")
+    add_text_box(slide2, "【客服課】問題類型件數與占比", Inches(0.5), Inches(0.2), W - Inches(1), Inches(0.6),
                  size=24, bold=True, color=(0x06,0x0E,0x9F))
 
     rows_n = min(len(stats) + 1, 15)
@@ -744,7 +756,12 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                 run.font.size = Pt(13)
 
     for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), start=1):
-        vals = [str(r["問題類型"]), str(r["件數"]), str(r["百分比"]), str(r.get("歸屬部門", ""))]
+        # 確保百分比讀取回整數字串且具有 %
+        try:
+            pct_val = f'{int(float(r["百分比"]))}%'
+        except:
+            pct_val = f'{r["百分比"]}%'
+        vals = [str(r["問題類型"]), str(r["件數"]), pct_val, str(r.get("歸屬部門", ""))]
         for ci, v in enumerate(vals):
             cell = tbl.cell(ri, ci)
             cell.text = v
@@ -1080,7 +1097,7 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
         stats, x="問題類型", y="件數", color="歸屬部門", text="百分比", title="問題類型分布",
         color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
     )
-    fig1.update_traces(texttemplate="%{text}", textposition="outside")
+    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
     fig1.update_layout(height=400)
     c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
 
@@ -1126,7 +1143,7 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
             pass
 
     stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
-    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int).astype(str) + "%"
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int)
     stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("未分配")
 
     c1, c2, c3 = st.columns(3)
@@ -1135,7 +1152,7 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         stats, x="問題類型", y="件數", color="歸屬部門", text="百分比", title="問題類型分布",
         color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
     )
-    fig1.update_traces(texttemplate="%{text}", textposition="outside")
+    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
     fig1.update_layout(height=400)
     c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
 
@@ -1193,7 +1210,7 @@ def section_2():
             pass
 
     stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
-    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int).astype(str) + "%"
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int)
     stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("")
 
     # Build totals row
@@ -1203,7 +1220,7 @@ def section_2():
     totals_row = pd.DataFrame([{
         "問題類型": "[ 合計 ]",
         "件數": total_count,
-        "百分比": "100%",
+        "百分比": 100,
         "歸屬部門": dept_summary,
     }])
     stats_with_total = pd.concat([stats, totals_row], ignore_index=True)
@@ -1214,7 +1231,8 @@ def section_2():
         use_container_width=True,
         hide_index=True,
         column_config={
-            "歸屬部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS + [dept_summary])
+            "歸屬部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS + [dept_summary]),
+            "百分比": st.column_config.NumberColumn(format="%d %%")
         },
         key="stats_editor",
         num_rows="fixed",
