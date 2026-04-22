@@ -136,6 +136,9 @@ def apply_brand_theme() -> None:
     st.markdown(
         """
         <style>
+          html, body, [data-testid="stAppViewContainer"] {
+            font-size: 18px !important;
+          }
           @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap');
           
           /* Noto Sans TC Medium (500) - scoped to app content only, not Streamlit portals */
@@ -149,6 +152,7 @@ def apply_brand_theme() -> None:
           [data-testid="stAppViewContainer"] label,
           [data-testid="stAppViewContainer"] div {
             font-weight: 500;
+            font-size: 18px !important;
           }
           
           /* Noto Sans TC Bold (700) */
