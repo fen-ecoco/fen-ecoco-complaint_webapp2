@@ -1,14 +1,17 @@
 import io
 import json
 import re
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from pptx.dml.color import RGBColor
 from pptx import Presentation
 from pptx.util import Inches, Pt
 
@@ -515,6 +518,10 @@ def load_history() -> list[dict]:
     return json.loads(META_FILE.read_text(encoding="utf-8"))
 
 
+def safe_filename(text: str) -> str:
+    return re.sub(r'[\\/:*?"<>|]+', "_", str(text))
+
+
 def delete_history(item_id: str):
     if not META_FILE.exists(): return
     history = json.loads(META_FILE.read_text(encoding="utf-8"))
@@ -669,35 +676,116 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
     return buf.getvalue()
 
 
+def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
+    """Build chart images (PNG) for download/PPT."""
+    data = df.copy()
+    stats = data["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(1)
+    detail_stats = data["問題細項"].value_counts().reset_index().head(10)
+    detail_stats.columns = ["問題細項", "件數"]
+
+    # set chinese-capable default if available
+    for fn in ["Microsoft JhengHei", "Noto Sans CJK TC", "SimHei"]:
+        try:
+            plt.rcParams["font.family"] = fn
+            break
+        except Exception:
+            pass
+    plt.rcParams["axes.unicode_minus"] = False
+
+    # 1) type distribution
+    fig1, ax1 = plt.subplots(figsize=(8, 4.5))
+    colors = ["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
+    ax1.bar(stats["問題類型"], stats["件數"], color=colors[: len(stats)])
+    ax1.set_title("問題類型分布")
+    ax1.set_ylabel("件數")
+    ax1.tick_params(axis="x", rotation=20)
+    for i, r in stats.iterrows():
+        ax1.text(i, r["件數"], f'{r["百分比"]:.1f}%', ha="center", va="bottom", fontsize=9)
+    fig1.tight_layout()
+    b1 = io.BytesIO()
+    fig1.savefig(b1, format="png", dpi=180)
+    plt.close(fig1)
+
+    # 2) machine ratio pie
+    fig2, ax2 = plt.subplots(figsize=(6.2, 4.5))
+    df_machine = data[data["問題類型"] == "機台問題類型"].copy()
+    if df_machine.empty:
+        ax2.text(0.5, 0.5, "無機台相關資料", ha="center", va="center")
+    else:
+        def get_machine_type(row):
+            txt = str(row.get("用戶內容", "")) + " " + str(row.get("主旨", ""))
+            if "方舟" in txt:
+                return "方舟站"
+            if "電池" in txt:
+                return "電池機"
+            return "收瓶機"
+        df_machine["機台機型"] = df_machine.apply(get_machine_type, axis=1)
+        pie_stats = df_machine["機台機型"].value_counts()
+        ax2.pie(pie_stats.values, labels=pie_stats.index, autopct="%1.1f%%", colors=["#0076A9", "#8EB9C9", "#FAE0B8"])
+        ax2.set_title("機台問題類型分布")
+    fig2.tight_layout()
+    b2 = io.BytesIO()
+    fig2.savefig(b2, format="png", dpi=180)
+    plt.close(fig2)
+
+    # 3) top detail horizontal bar
+    fig3, ax3 = plt.subplots(figsize=(8, 4.5))
+    d = detail_stats.sort_values("件數", ascending=True)
+    ax3.barh(d["問題細項"], d["件數"], color="#1f77b4")
+    ax3.set_title("十大問題細項分布")
+    ax3.set_xlabel("件數")
+    fig3.tight_layout()
+    b3 = io.BytesIO()
+    fig3.savefig(b3, format="png", dpi=180)
+    plt.close(fig3)
+
+    # dashboard merged image
+    fig4 = plt.figure(figsize=(14, 5))
+    gs = fig4.add_gridspec(1, 3)
+    a1 = fig4.add_subplot(gs[0, 0])
+    a2 = fig4.add_subplot(gs[0, 1])
+    a3 = fig4.add_subplot(gs[0, 2])
+    a1.bar(stats["問題類型"], stats["件數"], color=colors[: len(stats)])
+    a1.set_title("問題類型分布")
+    a1.tick_params(axis="x", rotation=18)
+    if df_machine.empty:
+        a2.text(0.5, 0.5, "無機台資料", ha="center", va="center")
+    else:
+        pie_stats = df_machine["機台機型"].value_counts()
+        a2.pie(pie_stats.values, labels=pie_stats.index, autopct="%1.1f%%")
+        a2.set_title("機台問題占比")
+    a3.barh(d["問題細項"], d["件數"], color="#1f77b4")
+    a3.set_title("十大細項")
+    fig4.tight_layout()
+    b4 = io.BytesIO()
+    fig4.savefig(b4, format="png", dpi=180)
+    plt.close(fig4)
+
+    return {
+        "chart_問題類型分布.png": b1.getvalue(),
+        "chart_機台問題占比.png": b2.getvalue(),
+        "chart_十大問題細項.png": b3.getvalue(),
+        "chart_dashboard.png": b4.getvalue(),
+    }
+
+
 def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
-                    template_path: str = r"C:\Users\fen\Desktop\簡報範本.pptx") -> bytes:
-    from pptx.dml.color import RGBColor
-    from pptx.util import Emu
-    
-    # Load template if exists, otherwise blank
-    try:
-        prs = Presentation(template_path)
-        # Use first slide as template layout
-        slide_layout = prs.slide_layouts[6]   # blank
-    except Exception:
-        prs = Presentation()
-        slide_layout = prs.slide_layouts[5]  # fallback blank
+                    template_path: str = r"C:\Users\fen\Desktop\20260422_分析簡報.pptx",
+                    chart_pack: Optional[dict[str, bytes]] = None) -> bytes:
+    # Load template if exists, otherwise blank.
+    # Keep template background/master unchanged.
+    prs = Presentation(template_path) if Path(template_path).exists() else Presentation()
+    slide_layout = prs.slide_layouts[6] if len(prs.slide_layouts) > 6 else prs.slide_layouts[-1]
 
     W = prs.slide_width
     H = prs.slide_height
 
-    def add_slide_with_bg(prs, image_name="bg.png"):
-        slide = prs.slides.add_slide(slide_layout)
-        img_path = Path(image_name)
-        if img_path.exists():
-            try:
-                slide.shapes.add_picture(str(img_path), 0, 0, width=W, height=H)
-            except Exception:
-                pass
-        return slide
+    def add_slide(prs):
+        return prs.slides.add_slide(slide_layout)
 
     # Slide 1: Summary
-    slide1 = add_slide_with_bg(prs, "cover.png")
+    slide1 = add_slide(prs)
 
     def add_text_box(slide, text, left, top, width, height, size=18, bold=False, color=(0x1a,0x1a,0x1a)):
         txb = slide.shapes.add_textbox(left, top, width, height)
@@ -710,13 +798,13 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
         p.font.color.rgb = RGBColor(*color)
         return txb
 
-    add_text_box(slide1, "【客服課】ECOCO 客訴分析簡報", Inches(0.5), Inches(0.3), W - Inches(1), Inches(0.7),
-                 size=28, bold=True, color=(0x06,0x0E,0x9F))
+    add_text_box(slide1, "【客服課】ECOCO 客訴分析簡報", Inches(0.5), Inches(0.28), W - Inches(1), Inches(0.65),
+                 size=24, bold=True, color=(0x06,0x0E,0x9F))
     add_text_box(slide1, f"來源檔案：{source_name}　產出日期：{datetime.now().strftime('%Y-%m-%d')}",
-                 Inches(0.5), Inches(1.0), W - Inches(1), Inches(0.5), size=14)
+                 Inches(0.5), Inches(0.9), W - Inches(1), Inches(0.45), size=12)
     
     # AI summary text box
-    txb2 = slide1.shapes.add_textbox(Inches(0.5), Inches(1.6), W - Inches(1), H - Inches(2.0))
+    txb2 = slide1.shapes.add_textbox(Inches(0.6), Inches(1.45), W - Inches(1.2), H - Inches(1.85))
     tf2 = txb2.text_frame
     tf2.word_wrap = True
     first = True
@@ -727,33 +815,38 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
         else:
             p = tf2.add_paragraph()
         p.text = ln.strip()
-        p.font.size = Pt(13)
+        p.font.size = Pt(11)
         p.font.color.rgb = RGBColor(0x31, 0x33, 0x3F)
 
     # Slide 2: Table
-    slide2 = add_slide_with_bg(prs, "bg.png")
+    slide2 = add_slide(prs)
     add_text_box(slide2, "【客服課】問題類型件數與占比", Inches(0.5), Inches(0.2), W - Inches(1), Inches(0.6),
-                 size=24, bold=True, color=(0x06,0x0E,0x9F))
+                 size=20, bold=True, color=(0x06,0x0E,0x9F))
 
     rows_n = min(len(stats) + 1, 15)
     cols_n = 4
-    table_left = Inches(0.5)
+    table_left = Inches(0.45)
     table_top = Inches(0.9)
-    table_width = W - Inches(1)
+    table_width = W - Inches(0.9)
     table_height = H - Inches(1.3)
     tbl = slide2.shapes.add_table(rows_n, cols_n, table_left, table_top, table_width, table_height).table
+    tbl.columns[0].width = Inches(4.0)
+    tbl.columns[1].width = Inches(1.3)
+    tbl.columns[2].width = Inches(1.4)
+    tbl.columns[3].width = Inches(6.0)
     
     headers = ["問題類型", "件數", "百分比", "歸屬部門"]
     for ci, h in enumerate(headers):
         cell = tbl.cell(0, ci)
         cell.text = h
         cell.fill.solid()
-        cell.fill.fore_color.rgb = RGBColor(0x3E, 0x75, 0xA0)
+        # brand blue header
+        cell.fill.fore_color.rgb = RGBColor(0x06, 0x0E, 0x9F)
         for para in cell.text_frame.paragraphs:
             for run in para.runs:
                 run.font.bold = True
                 run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-                run.font.size = Pt(13)
+                run.font.size = Pt(12)
 
     for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), start=1):
         # 確保百分比讀取回整數字串且具有 %
@@ -765,12 +858,24 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
         for ci, v in enumerate(vals):
             cell = tbl.cell(ri, ci)
             cell.text = v
+            cell.fill.solid()
+            # brand alternating row color
             if ri % 2 == 0:
-                cell.fill.solid()
-                cell.fill.fore_color.rgb = RGBColor(0xD6, 0xE4, 0xF0)
+                cell.fill.fore_color.rgb = RGBColor(0xE8, 0xF1, 0xF5)  # light blue
+            else:
+                cell.fill.fore_color.rgb = RGBColor(0xFA, 0xE0, 0xB8)  # beige
             for para in cell.text_frame.paragraphs:
                 for run in para.runs:
-                    run.font.size = Pt(12)
+                    run.font.size = Pt(11)
+                    run.font.color.rgb = RGBColor(0x22, 0x22, 0x22)
+
+    # Slide 3: chart dashboard preview (optional)
+    if chart_pack and "chart_dashboard.png" in chart_pack:
+        slide3 = add_slide(prs)
+        add_text_box(slide3, "【客服課】圖表分析總覽", Inches(0.5), Inches(0.2), W - Inches(1), Inches(0.6),
+                     size=20, bold=True, color=(0x06, 0x0E, 0x9F))
+        img_stream = io.BytesIO(chart_pack["chart_dashboard.png"])
+        slide3.shapes.add_picture(img_stream, Inches(0.45), Inches(0.95), width=W - Inches(0.9), height=H - Inches(1.3))
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -1251,18 +1356,31 @@ def section_2():
 
     ai_text = generate_ai_summary_llm(df, model_name=model_name)
     st.text_area("分析摘要預覽", ai_text, height=140)
+    chart_pack = build_chart_pack(df)
     st.download_button(
         "下載 AI 分析文字檔",
         data=ai_text.encode("utf-8"),
         file_name=f"{datetime.now().strftime('%Y%m%d')}_AI重點分析.txt",
         mime="text/plain",
     )
+    # one-click chart image package
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fn, b in chart_pack.items():
+            zf.writestr(fn, b)
+    st.download_button(
+        "下載圖表圖檔（ZIP）",
+        data=zip_buf.getvalue(),
+        file_name=f"{datetime.now().strftime('%Y%m%d')}_圖表圖檔.zip",
+        mime="application/zip",
+    )
     ppt_bytes = build_ppt_bytes(
         stats_with_total, ai_text,
-        st.session_state.get("source_name", "unknown")
+        st.session_state.get("source_name", "unknown"),
+        chart_pack=chart_pack,
     )
     st.download_button(
-        "下載分析簡報 PPT",
+        "一鍵下載分析簡報 PPT",
         data=ppt_bytes,
         file_name=f"{datetime.now().strftime('%Y%m%d')}_分析簡報.pptx",
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -1325,6 +1443,37 @@ def section_3():
             with tab_chart:
                 if not df_hist.empty:
                     render_charts(df_hist, key_prefix=f"hist_{item['id']}")
+                    cdl1, cdl2 = st.columns(2)
+                    hist_stats = df_hist["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
+                    hist_stats["百分比"] = (hist_stats["件數"] / max(hist_stats["件數"].sum(), 1) * 100).round(0).astype(int)
+                    hist_stats["歸屬部門"] = hist_stats["問題類型"].map(DEPT_MAP).fillna("")
+                    hist_ai = generate_ai_summary(df_hist)
+                    hist_chart_pack = build_chart_pack(df_hist)
+
+                    hist_ppt = build_ppt_bytes(
+                        hist_stats,
+                        hist_ai,
+                        item.get("source_name", "history"),
+                        chart_pack=hist_chart_pack,
+                    )
+                    cdl1.download_button(
+                        "一鍵下載PPT",
+                        data=hist_ppt,
+                        file_name=f"{datetime.now().strftime('%Y%m%d')}_{safe_filename(item.get('source_name','history'))}_圖表分析.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                        key=f"hist_ppt_{item['id']}",
+                    )
+                    hist_zip = io.BytesIO()
+                    with zipfile.ZipFile(hist_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+                        for fn, b in hist_chart_pack.items():
+                            zf.writestr(fn, b)
+                    cdl2.download_button(
+                        "下載圖檔（ZIP）",
+                        data=hist_zip.getvalue(),
+                        file_name=f"{datetime.now().strftime('%Y%m%d')}_{safe_filename(item.get('source_name','history'))}_圖表.zip",
+                        mime="application/zip",
+                        key=f"hist_img_{item['id']}",
+                    )
                 else:
                     st.info("無資料可繪圖")
                     
