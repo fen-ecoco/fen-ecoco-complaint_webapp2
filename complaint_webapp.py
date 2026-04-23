@@ -180,11 +180,16 @@ def apply_brand_theme() -> None:
             padding: 14px 18px; border-radius: 12px;
             background: linear-gradient(90deg, var(--ecoco-orange), var(--ecoco-blue));
             color:white; font-weight:700; margin-bottom: 12px;
+            font-size: 20px !important;
           }
           .ecoco-card{
             border:1px solid #e7e7e7; border-left:6px solid var(--ecoco-orange);
             border-radius:12px; padding:10px 14px; background:white; margin-bottom:10px;
             color: #555555 !important;
+          }
+          [data-testid="stAppViewContainer"] .ecoco-card,
+          [data-testid="stAppViewContainer"] .ecoco-card * {
+            font-size: 16px !important;
           }
           .ecoco-card b {
             color: #333333 !important;
@@ -1506,16 +1511,6 @@ def main():
         if st.button("🗂️ 歷史紀錄", use_container_width=True, type="primary" if st.session_state["menu"] == "歷史紀錄" else "secondary"):
             st.session_state["menu"] = "歷史紀錄"
         menu = st.session_state["menu"]
-        
-        st.markdown(
-            """
-            <div style='height: 40vh;'></div>
-            <div style='text-align: center; font-size: 0.75rem; color: rgba(255,255,255,0.7);'>
-            202603© ECOCO宜可可循環經濟 客服課<br>※ 請尊重智慧財產權 ※
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
 
     if menu == "功能列表區":
         st.markdown(
@@ -1538,6 +1533,15 @@ def main():
         section_2()
     else:
         section_3()
+        
+    st.markdown(
+        """
+        <div style='text-align: center; font-size: 0.85rem; color: #888888; margin-top: 50px; margin-bottom: 20px;'>
+        202603© ECOCO宜可可循環經濟 客服課<br>※ 請尊重智慧財產權 ※
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 if __name__ == "__main__":
