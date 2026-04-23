@@ -1528,10 +1528,30 @@ def main():
     else:
         section_3()
         
+    # Use a fixed-position div to stay at the absolute bottom of the viewport
     st.markdown(
         """
-        <div style='text-align: center; font-size: 14px; color: #888888; margin-top: 100px; margin-bottom: 30px;'>
-        202603© ECOCO宜可可循環經濟 客服課 ※ 請尊重智慧財產權 ※
+        <style>
+            .fixed-footer {
+                position: fixed;
+                bottom: 15px;
+                left: 0;
+                width: 100%;
+                text-align: center;
+                color: #888888;
+                font-size: 14px;
+                z-index: 99;
+                pointer-events: none; /* Don't block clicks to elements behind it */
+            }
+            /* Adjust for sidebar visibility if needed */
+            @media (min-width: 768px) {
+                .fixed-footer {
+                    padding-left: 5rem; /* Offset slightly to be visually centered in the main area */
+                }
+            }
+        </style>
+        <div class="fixed-footer">
+            202603© ECOCO宜可可循環經濟 客服課 ※ 請尊重智慧財產權 ※
         </div>
         """,
         unsafe_allow_html=True
