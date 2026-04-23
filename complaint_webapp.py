@@ -1041,9 +1041,22 @@ def section_1():
         marker_vals = [""] * len(show_display)
         
     insert_idx = 1
-    if "選取" in show_display.columns:
-        insert_idx = show_display.columns.get_loc("選取") + 1
     show_display.insert(insert_idx, MARKER_COL, marker_vals)
+
+    # --- Select All Toggle ---
+    # We use a toggle above the table to mass-confirm or mass-select
+    col_t1, col_t2 = st.columns([8, 2])
+    with col_t2:
+        # Check if all rows are already selected to set default value
+        all_sel = bool(df["選取"].all()) if "選取" in df.columns and not df.empty else False
+        if st.checkbox("全選 / 取消全選", value=all_sel, key="toggle_all"):
+            if not all_sel:
+                st.session_state["analysis_df"]["選取"] = True
+                st.rerun()
+        else:
+            if all_sel:
+                st.session_state["analysis_df"]["選取"] = False
+                st.rerun()
 
     edited = st.data_editor(
         show_display,
