@@ -687,13 +687,21 @@ def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
     detail_stats = data["問題細項"].value_counts().reset_index().head(10)
     detail_stats.columns = ["問題細項", "件數"]
 
-    # set chinese-capable default if available
-    for fn in ["Microsoft JhengHei", "Noto Sans CJK TC", "SimHei"]:
-        try:
-            plt.rcParams["font.family"] = fn
-            break
-        except Exception:
-            pass
+    # enhanced font detection for CJK
+    import matplotlib.font_manager as fm
+    try:
+        # Check for system CJK fonts first
+        sys_fonts = [f.name for f in fm.fontManager.ttflist if any(x in f.name for x in ["CJK", "TC", "TW", "JhengHei", "SimHei", "Fallback", "Song", "Sans-Serif"])]
+        found_cjk = False
+        for target in ["Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC", "SimHei", "Droid Sans Fallback", "PingFang"]:
+            if any(target in f.name for f in fm.fontManager.ttflist):
+                plt.rcParams["font.family"] = target
+                found_cjk = True
+                break
+        if not found_cjk and sys_fonts:
+            plt.rcParams["font.family"] = sys_fonts[0]
+    except Exception:
+        pass
     plt.rcParams["axes.unicode_minus"] = False
 
     # 1) type distribution
@@ -828,11 +836,12 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
 
     rows_n = min(len(stats) + 1, 15)
     cols_n = 4
-    table_left = Inches(0.45)
-    table_top = Inches(0.9)
-    table_width = W - Inches(0.9)
-    table_height = H - Inches(1.3)
-    tbl = slide2.shapes.add_table(rows_n, cols_n, table_left, table_top, table_width, table_height).table
+    table_left = Inches(0.4)
+    table_top = Inches(1.1)
+    table_width = W - Inches(0.8)
+    table_height = Inches(0.45) * rows_n # Auto-calc height based on rows
+    tbl_shape = slide2.shapes.add_table(rows_n, cols_n, table_left, table_top, table_width, table_height)
+    tbl = tbl_shape.table
     tbl.columns[0].width = Inches(4.0)
     tbl.columns[1].width = Inches(1.3)
     tbl.columns[2].width = Inches(1.4)
@@ -846,10 +855,14 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
         # brand blue header
         cell.fill.fore_color.rgb = RGBColor(0x06, 0x0E, 0x9F)
         for para in cell.text_frame.paragraphs:
+            para.alignment = 1 # Center
             for run in para.runs:
                 run.font.bold = True
                 run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-                run.font.size = Pt(12)
+                run.font.size = Pt(14)
+                # Try to force font family for Chinese
+                try: run.font.name = 'Microsoft JhengHei'
+                except: pass
 
     for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), start=1):
         # 確保百分比讀取回整數字串且具有 %
@@ -868,9 +881,12 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
             else:
                 cell.fill.fore_color.rgb = RGBColor(0xFA, 0xE0, 0xB8)  # beige
             for para in cell.text_frame.paragraphs:
+                para.alignment = 1 # Center
                 for run in para.runs:
-                    run.font.size = Pt(11)
+                    run.font.size = Pt(13)
                     run.font.color.rgb = RGBColor(0x22, 0x22, 0x22)
+                    try: run.font.name = 'Microsoft JhengHei'
+                    except: pass
 
     # Slide 3: chart dashboard preview (optional)
     if chart_pack and "chart_dashboard.png" in chart_pack:
@@ -1044,12 +1060,15 @@ def section_1():
     show_display.insert(insert_idx, MARKER_COL, marker_vals)
 
     # --- Select All Toggle ---
-    # We use a toggle above the table to mass-confirm or mass-select
-    col_t1, col_t2 = st.columns([8, 2])
-    with col_t2:
-        # Check if all rows are already selected to set default value
+    # Enhanced UI: Place a checkbox that aligns better with the '選取' column header
+    # Data editor default: Select col is usually at the end or start.
+    # We use a column layout to put it right above the header area.
+    sc1, sc2 = st.columns([13, 2])
+    with sc2:
+        # Check if all rows are already selected
         all_sel = bool(df["選取"].all()) if "選取" in df.columns and not df.empty else False
-        if st.checkbox("全選 / 取消全選", value=all_sel, key="toggle_all"):
+        # Use a button or checkbox with clearer label
+        if st.checkbox("全選 / 取消", value=all_sel, key="toggle_all", help="點擊此處可選擇/取消選擇所有資料列"):
             if not all_sel:
                 st.session_state["analysis_df"]["選取"] = True
                 st.rerun()
