@@ -155,16 +155,10 @@ def apply_brand_theme() -> None:
             font-size: 18px !important;
           }
           
-          /* Noto Sans TC Bold (700) */
-          h2, h3, h4, h5, h6, .side-title, section[data-testid="stSidebar"] .stButton > button {
+          /* Use Noto Sans TC Medium (500) for everything — no bold allowed */
+          h1, h2, h3, h4, h5, h6, .ecoco-banner, strong, b, .side-title, section[data-testid="stSidebar"] .stButton > button {
             font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
-            font-weight: 700 !important;
-          }
-          
-          /* Noto Sans TC Black (900) */
-          h1, .ecoco-banner, strong, b {
-            font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
-            font-weight: 900 !important;
+            font-weight: 500 !important;
           }
 
           :root{
@@ -179,7 +173,7 @@ def apply_brand_theme() -> None:
           .ecoco-banner {
             padding: 14px 18px; border-radius: 12px;
             background: linear-gradient(90deg, var(--ecoco-orange), var(--ecoco-blue));
-            color:white; font-weight:700; margin-bottom: 12px;
+            color:white; font-weight:500; margin-bottom: 12px;
             font-size: 20px !important;
           }
           .ecoco-card{
@@ -204,7 +198,7 @@ def apply_brand_theme() -> None:
           /* Sidebar Text Overrides */
           .side-title {
             color: #ffffff !important;
-            font-weight: 800; font-size: 1.05rem; margin-bottom: 8px;
+            font-weight: 500; font-size: 1.05rem; margin-bottom: 8px;
           }
           .side-sub {
             color: #ffffff !important;
@@ -218,7 +212,7 @@ def apply_brand_theme() -> None:
             color: #333333 !important;
             border-radius: 12px;
             min-height: 46px;
-            font-weight: 700;
+            font-weight: 500;
             text-align: left;
             transition: background-color 0.12s ease, border-color 0.12s ease !important;
           }
@@ -1537,7 +1531,7 @@ def main():
     st.markdown(
         """
         <div style='text-align: center; font-size: 0.85rem; color: #888888; margin-top: 50px; margin-bottom: 20px;'>
-        202603© ECOCO宜可可循環經濟 客服課<br>※ 請尊重智慧財產權 ※
+        202603© ECOCO宜可可循環經濟 客服課 ※ 請尊重智慧財產權 ※
         </div>
         """,
         unsafe_allow_html=True
