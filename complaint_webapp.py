@@ -1530,7 +1530,7 @@ def main():
         
     st.markdown(
         """
-        <div style='text-align: center; font-size: 0.85rem; color: #888888; margin-top: 50px; margin-bottom: 20px;'>
+        <div style='text-align: center; font-size: 14px; color: #888888; margin-top: 100px; margin-bottom: 30px;'>
         202603© ECOCO宜可可循環經濟 客服課 ※ 請尊重智慧財產權 ※
         </div>
         """,
