@@ -689,19 +689,32 @@ def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
 
     # enhanced font detection for CJK
     import matplotlib.font_manager as fm
-    try:
-        # Check for system CJK fonts first
-        sys_fonts = [f.name for f in fm.fontManager.ttflist if any(x in f.name for x in ["CJK", "TC", "TW", "JhengHei", "SimHei", "Fallback", "Song", "Sans-Serif"])]
-        found_cjk = False
-        for target in ["Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC", "SimHei", "Droid Sans Fallback", "PingFang"]:
-            if any(target in f.name for f in fm.fontManager.ttflist):
-                plt.rcParams["font.family"] = target
-                found_cjk = True
-                break
-        if not found_cjk and sys_fonts:
+    import os
+    import requests
+    
+    FONT_PATH = "NotoSansTC-Regular.otf"
+    if not os.path.exists(FONT_PATH):
+        try:
+            # Download a CJK font subset if not exists
+            resp = requests.get("https://raw.githubusercontent.com/googlefonts/noto-cjk/main/Sans/SubsetOTF/TC/NotoSansCJKtc-Regular.otf", timeout=10)
+            if resp.status_code == 200:
+                with open(FONT_PATH, "wb") as f:
+                    f.write(resp.content)
+        except Exception:
+            pass
+            
+    if os.path.exists(FONT_PATH):
+        try:
+            fm.fontManager.addfont(FONT_PATH)
+            plt.rcParams["font.family"] = fm.FontProperties(fname=FONT_PATH).get_name()
+        except:
+            pass
+    else:
+        # fallback to system CJK fonts
+        sys_fonts = [f.name for f in fm.fontManager.ttflist if any(x in f.name for x in ["CJK", "TC", "TW", "JhengHei", "SimHei", "Fallback"])]
+        if sys_fonts:
             plt.rcParams["font.family"] = sys_fonts[0]
-    except Exception:
-        pass
+            
     plt.rcParams["axes.unicode_minus"] = False
 
     # 1) type distribution
@@ -782,11 +795,12 @@ def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
 
 
 def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
-                    template_path: str = r"C:\Users\fen\Desktop\20260422_分析簡報.pptx",
+                    template_path: str = r"C:\Users\fen\Desktop\簡報範本.pptx",
                     chart_pack: Optional[dict[str, bytes]] = None) -> bytes:
     # Load template if exists, otherwise blank.
     # Keep template background/master unchanged.
     prs = Presentation(template_path) if Path(template_path).exists() else Presentation()
+    # Try to find a master layout that looks like a title + content or blank
     slide_layout = prs.slide_layouts[6] if len(prs.slide_layouts) > 6 else prs.slide_layouts[-1]
 
     W = prs.slide_width
@@ -1059,23 +1073,15 @@ def section_1():
     insert_idx = 1
     show_display.insert(insert_idx, MARKER_COL, marker_vals)
 
-    # --- Select All Toggle ---
-    # Enhanced UI: Place a checkbox that aligns better with the '選取' column header
-    # Data editor default: Select col is usually at the end or start.
-    # We use a column layout to put it right above the header area.
-    sc1, sc2 = st.columns([13, 2])
-    with sc2:
-        # Check if all rows are already selected
+    # --- Select All Trigger ---
+    # Streamlit header clicks are not native. 
+    # We include a "Select" label above the header that acts as a toggle.
+    # We use a button to mimic a header-style toggle.
+    cols_h = st.columns([13, 2])
+    if cols_h[1].button("⬓ 選取 / 取消", key="toggle_all_btn", help="點擊此處可全選或取消全選"):
         all_sel = bool(df["選取"].all()) if "選取" in df.columns and not df.empty else False
-        # Use a button or checkbox with clearer label
-        if st.checkbox("全選 / 取消", value=all_sel, key="toggle_all", help="點擊此處可選擇/取消選擇所有資料列"):
-            if not all_sel:
-                st.session_state["analysis_df"]["選取"] = True
-                st.rerun()
-        else:
-            if all_sel:
-                st.session_state["analysis_df"]["選取"] = False
-                st.rerun()
+        st.session_state["analysis_df"]["選取"] = not all_sel
+        st.rerun()
 
     edited = st.data_editor(
         show_display,
