@@ -707,12 +707,12 @@ def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
         try:
             fm.fontManager.addfont(FONT_PATH)
             plt.rcParams["font.family"] = fm.FontProperties(fname=FONT_PATH).get_name()
-        except:
-            pass
-    else:
-        # fallback to system CJK fonts
-        sys_fonts = [f.name for f in fm.fontManager.ttflist if any(x in f.name for x in ["CJK", "TC", "TW", "JhengHei", "SimHei", "Fallback"])]
-        if sys_fonts:
+        for target in ["MingLiU", "PMingLiU", "Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC", "SimHei", "Droid Sans Fallback", "PingFang"]:
+            if any(target.lower() in f.name.lower() or target in f.name for f in fm.fontManager.ttflist):
+                plt.rcParams["font.family"] = target
+                found_cjk = True
+                break
+        if not found_cjk and sys_fonts:
             plt.rcParams["font.family"] = sys_fonts[0]
             
     plt.rcParams["axes.unicode_minus"] = False
@@ -797,118 +797,137 @@ def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
 def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                     template_path: str = r"C:\Users\fen\Desktop\簡報範本.pptx",
                     chart_pack: Optional[dict[str, bytes]] = None) -> bytes:
-    # Load template if exists, otherwise blank.
-    # Keep template background/master unchanged.
     prs = Presentation(template_path) if Path(template_path).exists() else Presentation()
-    # Try to find a master layout that looks like a title + content or blank
-    slide_layout = prs.slide_layouts[6] if len(prs.slide_layouts) > 6 else prs.slide_layouts[-1]
-
-    W = prs.slide_width
-    H = prs.slide_height
-
-    def add_slide(prs):
-        return prs.slides.add_slide(slide_layout)
-
-    # Slide 1: Summary
-    slide1 = add_slide(prs)
-
-    def add_text_box(slide, text, left, top, width, height, size=18, bold=False, color=(0x1a,0x1a,0x1a)):
-        txb = slide.shapes.add_textbox(left, top, width, height)
-        tf = txb.text_frame
-        tf.word_wrap = True
-        p = tf.paragraphs[0]
-        p.text = text
-        p.font.size = Pt(size)
-        p.font.bold = bold
-        p.font.color.rgb = RGBColor(*color)
-        return txb
-
-    add_text_box(slide1, "【客服課】ECOCO 客訴分析簡報", Inches(0.5), Inches(0.28), W - Inches(1), Inches(0.65),
-                 size=24, bold=True, color=(0x06,0x0E,0x9F))
-    add_text_box(slide1, f"來源檔案：{source_name}　產出日期：{datetime.now().strftime('%Y-%m-%d')}",
-                 Inches(0.5), Inches(0.9), W - Inches(1), Inches(0.45), size=12)
     
-    # AI summary text box
-    txb2 = slide1.shapes.add_textbox(Inches(0.6), Inches(1.45), W - Inches(1.2), H - Inches(1.85))
-    tf2 = txb2.text_frame
-    tf2.word_wrap = True
-    first = True
-    for ln in ["【客服課產出分析重點】"] + ai_text.splitlines():
-        if not ln.strip(): continue
-        if first:
-            p = tf2.paragraphs[0]; first = False
-        else:
-            p = tf2.add_paragraph()
-        p.text = ln.strip()
-        p.font.size = Pt(11)
-        p.font.color.rgb = RGBColor(0x31, 0x33, 0x3F)
+    # helper: delete a shape
+    def delete_shape(shape):
+        shape.element.getparent().remove(shape.element)
 
-    # Slide 2: Table
-    slide2 = add_slide(prs)
-    add_text_box(slide2, "【客服課】問題類型件數與占比", Inches(0.5), Inches(0.2), W - Inches(1), Inches(0.6),
-                 size=20, bold=True, color=(0x06,0x0E,0x9F))
-
-    rows_n = min(len(stats) + 1, 15)
-    cols_n = 4
-    table_left = Inches(0.4)
-    table_top = Inches(1.1)
-    table_width = W - Inches(0.8)
-    table_height = Inches(0.45) * rows_n # Auto-calc height based on rows
-    tbl_shape = slide2.shapes.add_table(rows_n, cols_n, table_left, table_top, table_width, table_height)
-    tbl = tbl_shape.table
-    tbl.columns[0].width = Inches(4.0)
-    tbl.columns[1].width = Inches(1.3)
-    tbl.columns[2].width = Inches(1.4)
-    tbl.columns[3].width = Inches(6.0)
-    
-    headers = ["問題類型", "件數", "百分比", "歸屬部門"]
-    for ci, h in enumerate(headers):
-        cell = tbl.cell(0, ci)
-        cell.text = h
-        cell.fill.solid()
-        # brand blue header
-        cell.fill.fore_color.rgb = RGBColor(0x06, 0x0E, 0x9F)
-        for para in cell.text_frame.paragraphs:
-            para.alignment = 1 # Center
-            for run in para.runs:
-                run.font.bold = True
-                run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-                run.font.size = Pt(14)
-                # Try to force font family for Chinese
-                try: run.font.name = 'Microsoft JhengHei'
-                except: pass
-
-    for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), start=1):
-        # 確保百分比讀取回整數字串且具有 %
-        try:
-            pct_val = f'{int(float(r["百分比"]))}%'
-        except:
-            pct_val = f'{r["百分比"]}%'
-        vals = [str(r["問題類型"]), str(r["件數"]), pct_val, str(r.get("歸屬部門", ""))]
-        for ci, v in enumerate(vals):
-            cell = tbl.cell(ri, ci)
-            cell.text = v
+    def style_table(tbl, font_name='MingLiU'):
+        # Headers
+        headers = ["問題類型", "件數", "百分比", "歸屬部門"]
+        for ci, h in enumerate(headers):
+            cell = tbl.cell(0, ci)
+            cell.text = h
             cell.fill.solid()
-            # brand alternating row color
-            if ri % 2 == 0:
-                cell.fill.fore_color.rgb = RGBColor(0xE8, 0xF1, 0xF5)  # light blue
-            else:
-                cell.fill.fore_color.rgb = RGBColor(0xFA, 0xE0, 0xB8)  # beige
+            cell.fill.fore_color.rgb = RGBColor(0x06, 0x0E, 0x9F)
             for para in cell.text_frame.paragraphs:
-                para.alignment = 1 # Center
+                para.alignment = 1
                 for run in para.runs:
-                    run.font.size = Pt(13)
-                    run.font.color.rgb = RGBColor(0x22, 0x22, 0x22)
-                    try: run.font.name = 'Microsoft JhengHei'
-                    except: pass
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                    run.font.size = Pt(14)
+                    run.font.name = font_name
+                    
+        # Rows
+        rows_n = min(len(stats) + 1, 15)
+        for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), start=1):
+            try: pct_val = f'{int(float(r["百分比"]))}%'
+            except: pct_val = f'{r["百分比"]}%'
+            
+            vals = [str(r["問題類型"]), str(r["件數"]), pct_val, str(r.get("歸屬部門", ""))]
+            for ci, v in enumerate(vals):
+                cell = tbl.cell(ri, ci)
+                cell.text = v
+                cell.fill.solid()
+                if ri % 2 == 0:
+                    cell.fill.fore_color.rgb = RGBColor(0xE8, 0xF1, 0xF5)
+                else:
+                    cell.fill.fore_color.rgb = RGBColor(0xFA, 0xE0, 0xB8)
+                for para in cell.text_frame.paragraphs:
+                    para.alignment = 1
+                    for run in para.runs:
+                        run.font.size = Pt(13)
+                        run.font.color.rgb = RGBColor(0x22, 0x22, 0x22)
+                        run.font.name = font_name
 
-    # Slide 3: chart dashboard preview (optional)
-    if chart_pack and "chart_dashboard.png" in chart_pack:
-        slide3 = add_slide(prs)
-        add_text_box(slide3, "【客服課】圖表分析總覽", Inches(0.5), Inches(0.2), W - Inches(1), Inches(0.6),
-                     size=20, bold=True, color=(0x06, 0x0E, 0x9F))
-        img_stream = io.BytesIO(chart_pack["chart_dashboard.png"])
-        slide3.shapes.add_picture(img_stream, Inches(0.45), Inches(0.95), width=W - Inches(0.9), height=H - Inches(1.3))
+    slides = list(prs.slides)
+    if len(slides) >= 3:
+        # --- Slide 0: Cover ---
+        for sp in slides[0].shapes:
+            if sp.has_text_frame and "報告日期" in sp.text:
+                tf = sp.text_frame
+                tf.clear()
+                p = tf.paragraphs[0]
+                p.text = f"報告日期:{datetime.now().strftime('%Y/%m/%d')}\n報告資料:{source_name}"
+                p.font.name = 'MingLiU'
+            elif sp.has_text_frame and "營運周報" in sp.text:
+                tf = sp.text_frame
+                tf.clear()
+                p = tf.paragraphs[0]
+                p.text = "客訴分析簡報"
+                p.font.name = 'MingLiU'
+
+        # --- Slide 1: Overall Analysis ---
+        s1 = slides[1]
+        for sp in s1.shapes:
+            if sp.has_text_frame and "客訴問題分析" in sp.text:
+                tf = sp.text_frame
+                tf.clear()
+                p = tf.paragraphs[0]
+                p.text = f"{source_name} 客訴問題分析"
+                p.font.name = 'MingLiU'
+        
+        # Replace S1 Table & Chart
+        s1_tbl_rect = None
+        s1_pic_rect = None
+        for sp in list(s1.shapes):
+            if sp.shape_type == 19: # Table
+                s1_tbl_rect = (sp.left, sp.top, sp.width, sp.height)
+                delete_shape(sp)
+            elif sp.shape_type == 13: # Picture
+                s1_pic_rect = (sp.left, sp.top, sp.width, sp.height)
+                delete_shape(sp)
+        
+        if s1_pic_rect and chart_pack and "chart_問題類型分布.png" in chart_pack:
+            img_s = io.BytesIO(chart_pack["chart_問題類型分布.png"])
+            s1.shapes.add_picture(img_s, *s1_pic_rect)
+        if s1_tbl_rect:
+            rows_n = min(len(stats) + 1, 15)
+            # Recreate table at exact location
+            tb = s1.shapes.add_table(rows_n, 4, *s1_tbl_rect).table
+            tb.columns[0].width = Inches(4.0)
+            tb.columns[1].width = Inches(1.3)
+            tb.columns[2].width = Inches(1.4)
+            tb.columns[3].width = Inches(2.0)
+            style_table(tb)
+
+        # --- Slide 2: Machine specific ---
+        s2 = slides[2]
+        for sp in s2.shapes:
+            if sp.has_text_frame and "機台問題佔比" in sp.text:
+                tf = sp.text_frame
+                tf.clear()
+                p = tf.paragraphs[0]
+                p.text = f"{source_name} 機台與細項分析"
+                p.font.name = 'MingLiU'
+        
+        s2_tbl_rect = None
+        s2_pic_rects = []
+        for sp in list(s2.shapes):
+            if sp.shape_type == 19:
+                s2_tbl_rect = (sp.left, sp.top, sp.width, sp.height)
+                delete_shape(sp)
+            elif sp.shape_type == 13:
+                s2_pic_rects.append((sp.left, sp.top, sp.width, sp.height))
+                delete_shape(sp)
+                
+        # Sort pic rects by left coordinate
+        s2_pic_rects.sort(key=lambda x: x[0])
+        if len(s2_pic_rects) >= 2 and chart_pack:
+            if "chart_十大問題細項.png" in chart_pack:
+                s2.shapes.add_picture(io.BytesIO(chart_pack["chart_十大問題細項.png"]), *s2_pic_rects[0])
+            if "chart_機台問題占比.png" in chart_pack:
+                s2.shapes.add_picture(io.BytesIO(chart_pack["chart_機台問題占比.png"]), *s2_pic_rects[1])
+                
+        if s2_tbl_rect:
+            rows_n = min(len(stats) + 1, 15)
+            tb = s2.shapes.add_table(rows_n, 4, *s2_tbl_rect).table
+            tb.columns[0].width = Inches(3.0)
+            tb.columns[1].width = Inches(1.0)
+            tb.columns[2].width = Inches(1.0)
+            tb.columns[3].width = Inches(2.0)
+            style_table(tb)
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -1060,7 +1079,7 @@ def section_1():
     st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
 
     # 重新處理要顯示的欄位，確保原本隱藏的 MARKER_COL 正確加入
-    display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
+    display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL, "選取")]
     show_display = show[display_cols].reset_index(drop=True)
 
     # 新增一欄字號標記給 AI 填入的資料
@@ -1070,26 +1089,17 @@ def section_1():
     else:
         marker_vals = [""] * len(show_display)
         
-    insert_idx = 1
+    insert_idx = 0
     show_display.insert(insert_idx, MARKER_COL, marker_vals)
-
-    # --- Select All Trigger ---
-    # Streamlit header clicks are not native. 
-    # We include a "Select" label above the header that acts as a toggle.
-    # We use a button to mimic a header-style toggle.
-    cols_h = st.columns([13, 2])
-    if cols_h[1].button("⬓ 選取 / 取消", key="toggle_all_btn", help="點擊此處可全選或取消全選"):
-        all_sel = bool(df["選取"].all()) if "選取" in df.columns and not df.empty else False
-        st.session_state["analysis_df"]["選取"] = not all_sel
-        st.rerun()
 
     edited = st.data_editor(
         show_display,
         use_container_width=True,
         num_rows="dynamic",
         hide_index=True,
+        selection_mode="multiRow",
+        on_select="rerun",
         column_config={
-            "選取": st.column_config.CheckboxColumn(help="勾選要批次處理的列"),
             MARKER_COL: st.column_config.TextColumn("備註", disabled=True),
             "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
             "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
@@ -1146,30 +1156,47 @@ def section_1():
                 st.session_state["_draft_list"].pop(idx)
                 st.rerun()
 
+    st.markdown("##### 批次處理與儲存")
+    # Retrieve native selection
+    sel_rows = st.session_state.get("editor_table", {}).get("selection", {}).get("rows", [])
+    
+    b1, b2, b3, b4 = st.columns([2, 2, 2, 2])
+    batch_type = b1.selectbox("批次問題類型", ["(不變更)"] + TYPE_OPTIONS, key="batch_type_sel")
+    valid_batch_det = ["(不變更)"]
+    if batch_type != "(不變更)":
+        valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
+    batch_detail = b2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel")
 
-    b1, b2, b3, b4 = st.columns(4)
-    batch_type = b1.selectbox("批次設定問題類型", options=["(不變更)"] + TYPE_OPTIONS)
-    detail_candidates = ["(不變更)"] + (TOPIC_DETAIL_MAP.get(batch_type, DETAIL_OPTIONS) if batch_type != "(不變更)" else DETAIL_OPTIONS)
-    batch_detail = b2.selectbox("批次設定問題細項", options=detail_candidates)
-    if b3.button("套用到勾選列"):
-        mask = edited["選取"] == True
-        if batch_type != "(不變更)":
-            edited.loc[mask, "問題類型"] = batch_type
-            edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("")
-        if batch_detail != "(不變更)":
-            edited.loc[mask, "問題細項"] = batch_detail
-        # Auto-fix rows whose detail mismatches topic
-        edited["問題細項"] = edited.apply(
-            lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], []) else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
-            axis=1,
-        )
-        st.session_state["analysis_df"] = edited.copy()
-        st.session_state["_batch_applied"] = True
+    # If user selected rows natively
+    if b3.button("將上方設定套用到所有勾選列", type="primary"):
+        if not sel_rows:
+            st.warning("請先在表格左側勾選要處理的資料列！")
+        else:
+            if batch_type != "(不變更)":
+                edited.loc[sel_rows, "問題類型"] = batch_type
+                edited.loc[sel_rows, "部門"] = edited.loc[sel_rows, "問題類型"].map(DEPT_MAP).fillna("")
+            if batch_detail != "(不變更)":
+                edited.loc[sel_rows, "問題細項"] = batch_detail
+            # Auto-fix rows whose detail mismatches topic
+            edited["問題細項"] = edited.apply(
+                lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], []) else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
+                axis=1,
+            )
+            st.session_state["analysis_df"].update(edited)
+            st.session_state["_batch_applied"] = True
+            st.rerun()
+            
     if st.session_state.pop("_batch_applied", False):
         st.success("已套用批次編輯。")
+        
     if b4.button("刪除勾選列"):
-        st.session_state["analysis_df"] = edited[edited["選取"] != True].copy()
-        st.success("已刪除勾選列。")
+        if not sel_rows:
+            st.warning("請先在表格左側勾選要刪除的資料列！")
+        else:
+            kept_df = st.session_state["analysis_df"].drop(sel_rows).reset_index(drop=True)
+            st.session_state["analysis_df"] = kept_df
+            st.success("已刪除勾選列。")
+            st.rerun()
 
     final_df = st.session_state["analysis_df"]
     
