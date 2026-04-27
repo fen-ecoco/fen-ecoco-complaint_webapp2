@@ -707,13 +707,15 @@ def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
         try:
             fm.fontManager.addfont(FONT_PATH)
             plt.rcParams["font.family"] = fm.FontProperties(fname=FONT_PATH).get_name()
-        for target in ["MingLiU", "PMingLiU", "Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC", "SimHei", "Droid Sans Fallback", "PingFang"]:
-            if any(target.lower() in f.name.lower() or target in f.name for f in fm.fontManager.ttflist):
-                plt.rcParams["font.family"] = target
-                found_cjk = True
-                break
-        if not found_cjk and sys_fonts:
-            plt.rcParams["font.family"] = sys_fonts[0]
+        except:
+            pass
+
+    found_cjk = False
+    for target in ["MingLiU", "PMingLiU", "Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC", "SimHei", "Droid Sans Fallback", "PingFang"]:
+        if any(target.lower() in f.name.lower() or target in f.name for f in fm.fontManager.ttflist):
+            plt.rcParams["font.family"] = target
+            found_cjk = True
+            break
             
     plt.rcParams["axes.unicode_minus"] = False
 
