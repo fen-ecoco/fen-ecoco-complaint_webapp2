@@ -1081,7 +1081,7 @@ def section_1():
     st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
 
     # 重新處理要顯示的欄位，確保原本隱藏的 MARKER_COL 正確加入
-    display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL, "選取")]
+    display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
     show_display = show[display_cols].reset_index(drop=True)
 
     # 新增一欄字號標記給 AI 填入的資料
@@ -1091,17 +1091,25 @@ def section_1():
     else:
         marker_vals = [""] * len(show_display)
         
-    insert_idx = 0
+    insert_idx = 1
+    if "選取" in show_display.columns:
+        insert_idx = show_display.columns.get_loc("選取") + 1
     show_display.insert(insert_idx, MARKER_COL, marker_vals)
+
+    # --- Select All Trigger ---
+    cols_h = st.columns([13, 2])
+    if cols_h[1].button("⬓ 選取 / 取消", key="toggle_all_btn", help="全選或取消全選"):
+        all_sel = bool(df["選取"].all()) if "選取" in df.columns and not df.empty else False
+        st.session_state["analysis_df"]["選取"] = not all_sel
+        st.rerun()
 
     edited = st.data_editor(
         show_display,
         use_container_width=True,
         num_rows="dynamic",
         hide_index=True,
-        selection_mode="multiRow",
-        on_select="rerun",
         column_config={
+            "選取": st.column_config.CheckboxColumn("選取", help="勾選要批次處理的列"),
             MARKER_COL: st.column_config.TextColumn("備註", disabled=True),
             "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
             "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
@@ -1159,8 +1167,6 @@ def section_1():
                 st.rerun()
 
     st.markdown("##### 批次處理與儲存")
-    # Retrieve native selection
-    sel_rows = st.session_state.get("editor_table", {}).get("selection", {}).get("rows", [])
     
     b1, b2, b3, b4 = st.columns([2, 2, 2, 2])
     batch_type = b1.selectbox("批次問題類型", ["(不變更)"] + TYPE_OPTIONS, key="batch_type_sel")
@@ -1169,22 +1175,22 @@ def section_1():
         valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
     batch_detail = b2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel")
 
-    # If user selected rows natively
     if b3.button("將上方設定套用到所有勾選列", type="primary"):
-        if not sel_rows:
-            st.warning("請先在表格左側勾選要處理的資料列！")
+        if "選取" not in edited.columns or not edited["選取"].any():
+            st.warning("請先在表格內勾選要處理的資料列！")
         else:
+            mask = edited["選取"] == True
             if batch_type != "(不變更)":
-                edited.loc[sel_rows, "問題類型"] = batch_type
-                edited.loc[sel_rows, "部門"] = edited.loc[sel_rows, "問題類型"].map(DEPT_MAP).fillna("")
+                edited.loc[mask, "問題類型"] = batch_type
+                edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("")
             if batch_detail != "(不變更)":
-                edited.loc[sel_rows, "問題細項"] = batch_detail
+                edited.loc[mask, "問題細項"] = batch_detail
             # Auto-fix rows whose detail mismatches topic
             edited["問題細項"] = edited.apply(
                 lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], []) else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
                 axis=1,
             )
-            st.session_state["analysis_df"].update(edited)
+            st.session_state["analysis_df"] = edited.copy()
             st.session_state["_batch_applied"] = True
             st.rerun()
             
@@ -1192,11 +1198,10 @@ def section_1():
         st.success("已套用批次編輯。")
         
     if b4.button("刪除勾選列"):
-        if not sel_rows:
-            st.warning("請先在表格左側勾選要刪除的資料列！")
+        if "選取" not in edited.columns or not edited["選取"].any():
+            st.warning("請先在表格內勾選要刪除的資料列！")
         else:
-            kept_df = st.session_state["analysis_df"].drop(sel_rows).reset_index(drop=True)
-            st.session_state["analysis_df"] = kept_df
+            st.session_state["analysis_df"] = edited[edited["選取"] != True].copy()
             st.success("已刪除勾選列。")
             st.rerun()
 
