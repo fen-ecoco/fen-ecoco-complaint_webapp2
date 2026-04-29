@@ -124,6 +124,9 @@ HISTORY_DIR = Path("history_reports")
 HISTORY_DIR.mkdir(exist_ok=True)
 META_FILE = HISTORY_DIR / "history.json"
 
+# 範本路徑：優先使用與程式同目錄的 簡報範本.pptx（已隨程式一起部署）
+TEMPLATE_PATH = Path(__file__).parent / "簡報範本.pptx"
+
 
 @dataclass
 class AnalysisConfig:
@@ -496,7 +499,13 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
         for old in HISTORY_DIR.glob(f"{existing_id}_*.xlsx"):
             try: old.unlink()
             except: pass
-    df.to_excel(output_path, index=False)
+    
+    excel_bytes = to_excel_bytes(df)
+    try:
+        output_path.write_bytes(excel_bytes)
+    except Exception:
+        pass  # 若磁碟不可寫入仍繼續，使用 session_state 備份
+
     meta = {
         "id": ts,
         "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -505,20 +514,50 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
         "output_path": str(output_path),
         "rows": int(len(df)),
     }
+
+    # ── session_state 備份（Render 重啟後仍可在當前 session 讀取）──
+    if "_history_cache" not in st.session_state:
+        st.session_state["_history_cache"] = {}
+    st.session_state["_history_cache"][ts] = {
+        "meta": meta,
+        "excel_bytes": excel_bytes,
+    }
+
     history = []
     if META_FILE.exists():
-        history = json.loads(META_FILE.read_text(encoding="utf-8"))
-    # Remove existing entry with same id if overwriting
+        try:
+            history = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            history = []
     history = [i for i in history if i["id"] != ts]
     history.insert(0, meta)
-    META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
     return output_path, output_name
 
 
 def load_history() -> list[dict]:
-    if not META_FILE.exists():
-        return []
-    return json.loads(META_FILE.read_text(encoding="utf-8"))
+    """載入歷史紀錄：合併 session_state 快取與磁碟 JSON，以 session_state 為主。"""
+    disk_history: list[dict] = []
+    if META_FILE.exists():
+        try:
+            disk_history = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            disk_history = []
+
+    # 合併 session_state 快取中的 meta（可能比磁碟更新）
+    cache = st.session_state.get("_history_cache", {})
+    cache_metas = {v["meta"]["id"]: v["meta"] for v in cache.values()}
+    
+    merged: dict[str, dict] = {}
+    for item in disk_history:
+        merged[item["id"]] = item
+    for id_, meta in cache_metas.items():
+        merged[id_] = meta  # session_state 覆蓋磁碟（較新）
+
+    return sorted(merged.values(), key=lambda x: x["created_at"], reverse=True)
 
 
 def safe_filename(text: str) -> str:
@@ -526,16 +565,24 @@ def safe_filename(text: str) -> str:
 
 
 def delete_history(item_id: str):
-    if not META_FILE.exists(): return
-    history = json.loads(META_FILE.read_text(encoding="utf-8"))
-    for item in history:
-        if item["id"] == item_id:
-            try:
-                Path(item["output_path"]).unlink(missing_ok=True)
-            except Exception:
-                pass
-    history = [i for i in history if i["id"] != item_id]
-    META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 從磁碟移除
+    if META_FILE.exists():
+        try:
+            history = json.loads(META_FILE.read_text(encoding="utf-8"))
+            for item in history:
+                if item["id"] == item_id:
+                    try:
+                        Path(item["output_path"]).unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            history = [i for i in history if i["id"] != item_id]
+            META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+    # 從 session_state 快取移除
+    cache = st.session_state.get("_history_cache", {})
+    cache.pop(item_id, None)
+    st.session_state["_history_cache"] = cache
 
 
 def generate_ai_summary(df: pd.DataFrame) -> str:
@@ -679,45 +726,76 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
     return buf.getvalue()
 
 
+def _setup_cjk_font() -> None:
+    """設定 matplotlib 中文字型，優先使用系統已安裝的 Noto CJK 字型。"""
+    import matplotlib.font_manager as fm
+    import os
+    import urllib.request
+    from pathlib import Path
+
+    # ── 0. 嘗試動態下載或載入自帶字型 ──
+    font_path = Path(__file__).parent / "NotoSansCJKtc-Regular.otf"
+    if not font_path.exists():
+        try:
+            # 這是 noto-cjk 的開源字型下載點，避免 Render 上無中文字型導致亂碼
+            url = "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=15) as response, open(font_path, 'wb') as out_file:
+                out_file.write(response.read())
+        except Exception:
+            pass
+
+    if font_path.exists():
+        try:
+            fm.fontManager.addfont(str(font_path))
+            plt.rcParams["font.family"] = fm.FontProperties(fname=str(font_path)).get_name()
+            plt.rcParams["axes.unicode_minus"] = False
+            return
+        except Exception as e:
+            print(f"Font load error: {e}")
+
+    # ── 1. 優先嘗試已知路徑（Ubuntu / Render 伺服器）──
+    KNOWN_PATHS = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJKtc-Regular.otf",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+    ]
+    for fp in KNOWN_PATHS:
+        if os.path.exists(fp):
+            try:
+                fm.fontManager.addfont(fp)
+                plt.rcParams["font.family"] = fm.FontProperties(fname=fp).get_name()
+                plt.rcParams["axes.unicode_minus"] = False
+                return
+            except Exception:
+                continue
+
+    # ── 2. 從字型管理器搜尋 CJK 字型 ──
+    cjk_keywords = [
+        "Noto Sans CJK", "Noto Serif CJK", "MingLiU", "PMingLiU",
+        "Microsoft JhengHei", "SimHei", "WenQuanYi", "Droid Sans Fallback",
+        "PingFang", "Heiti",
+    ]
+    for kw in cjk_keywords:
+        for f in fm.fontManager.ttflist:
+            if kw.lower() in f.name.lower():
+                plt.rcParams["font.family"] = f.name
+                plt.rcParams["axes.unicode_minus"] = False
+                return
+
+    plt.rcParams["axes.unicode_minus"] = False
+
+
 def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
     """Build chart images (PNG) for download/PPT."""
+    _setup_cjk_font()
+
     data = df.copy()
     stats = data["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
     stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(1)
     detail_stats = data["問題細項"].value_counts().reset_index().head(10)
     detail_stats.columns = ["問題細項", "件數"]
-
-    # enhanced font detection for CJK
-    import matplotlib.font_manager as fm
-    import os
-    import requests
-    
-    FONT_PATH = "NotoSansTC-Regular.otf"
-    if not os.path.exists(FONT_PATH):
-        try:
-            # Download a CJK font subset if not exists
-            resp = requests.get("https://raw.githubusercontent.com/googlefonts/noto-cjk/main/Sans/SubsetOTF/TC/NotoSansCJKtc-Regular.otf", timeout=10)
-            if resp.status_code == 200:
-                with open(FONT_PATH, "wb") as f:
-                    f.write(resp.content)
-        except Exception:
-            pass
-            
-    if os.path.exists(FONT_PATH):
-        try:
-            fm.fontManager.addfont(FONT_PATH)
-            plt.rcParams["font.family"] = fm.FontProperties(fname=FONT_PATH).get_name()
-        except:
-            pass
-
-    found_cjk = False
-    for target in ["MingLiU", "PMingLiU", "Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC", "SimHei", "Droid Sans Fallback", "PingFang"]:
-        if any(target.lower() in f.name.lower() or target in f.name for f in fm.fontManager.ttflist):
-            plt.rcParams["font.family"] = target
-            found_cjk = True
-            break
-            
-    plt.rcParams["axes.unicode_minus"] = False
 
     # 1) type distribution
     fig1, ax1 = plt.subplots(figsize=(8, 4.5))
@@ -797,143 +875,301 @@ def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
 
 
 def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
-                    template_path: str = r"C:\Users\fen\Desktop\簡報範本.pptx",
+                    template_path: str = "",
                     chart_pack: Optional[dict[str, bytes]] = None) -> bytes:
-    prs = Presentation(template_path) if Path(template_path).exists() else Presentation()
-    
-    # helper: delete a shape
-    def delete_shape(shape):
-        shape.element.getparent().remove(shape.element)
+    """
+    Build a PPT presentation.
+    優先使用同目錄的範本；若找不到則從零構建符合 ECOCO 品牌風格的投影片。
+    """
+    from pptx.util import Emu, Inches, Pt
+    from pptx.enum.text import PP_ALIGN
 
-    def style_table(tbl, font_name='MingLiU'):
-        # Headers
-        headers = ["問題類型", "件數", "百分比", "歸屬部門"]
-        for ci, h in enumerate(headers):
-            cell = tbl.cell(0, ci)
-            cell.text = h
-            cell.fill.solid()
-            cell.fill.fore_color.rgb = RGBColor(0x06, 0x0E, 0x9F)
-            for para in cell.text_frame.paragraphs:
-                para.alignment = 1
+    BLUE   = RGBColor(0x06, 0x0E, 0x9F)
+    ORANGE = RGBColor(0xFF, 0x50, 0x00)
+    WHITE  = RGBColor(0xFF, 0xFF, 0xFF)
+    BEIGE  = RGBColor(0xFA, 0xE0, 0xB8)
+    DARK   = RGBColor(0x22, 0x22, 0x22)
+    LGRAY  = RGBColor(0xE8, 0xF1, 0xF5)
+    FONT   = "MingLiU"   # 細明體
+
+    # ── 嘗試載入範本 ──
+    _tpath = Path(template_path) if template_path else TEMPLATE_PATH
+    use_template = _tpath.exists()
+    prs = Presentation(str(_tpath)) if use_template else Presentation()
+    if not use_template:
+        # 設定投影片大小為寬螢幕 16:9
+        prs.slide_width  = Inches(13.33)
+        prs.slide_height = Inches(7.5)
+
+    SW = prs.slide_width
+    SH = prs.slide_height
+
+    # ── 小工具 ──
+    def blank_layout():
+        for lay in prs.slide_layouts:
+            if lay.name.lower() in ("blank", "空白"):
+                return lay
+        return prs.slide_layouts[-1]
+
+    def add_rect(slide, l, t, w, h, fill_rgb, line=False):
+        shp = slide.shapes.add_shape(1, Inches(l), Inches(t), Inches(w), Inches(h))
+        shp.fill.solid()
+        shp.fill.fore_color.rgb = fill_rgb
+        if not line:
+            shp.line.fill.background()
+        return shp
+
+    def add_text(slide, text, l, t, w, h, font_size, bold=False,
+                 color=None, align=PP_ALIGN.LEFT, wrap=True):
+        txb = slide.shapes.add_textbox(Inches(l), Inches(t), Inches(w), Inches(h))
+        tf  = txb.text_frame
+        tf.word_wrap = wrap
+        p = tf.paragraphs[0]
+        p.alignment = align
+        run = p.add_run()
+        run.text = text
+        run.font.name  = FONT
+        run.font.size  = Pt(font_size)
+        run.font.bold  = bold
+        run.font.color.rgb = color or DARK
+        return txb
+
+    def add_img(slide, img_bytes, l, t, w, h):
+        if img_bytes:
+            try:
+                slide.shapes.add_picture(io.BytesIO(img_bytes),
+                    Inches(l), Inches(t), Inches(w), Inches(h))
+            except Exception:
+                pass
+
+    def add_header(slide, title_text, subtitle_text=""):
+        """加上 ECOCO 品牌頁首（藍色長條 + 標題）"""
+        add_rect(slide, 0, 0, SW/914400, 1.05, BLUE)
+        add_text(slide, title_text, 0.3, 0.08, 9.0, 0.55,
+                 20, bold=True, color=WHITE)
+        if subtitle_text:
+            add_text(slide, subtitle_text, 0.3, 0.62, 10.0, 0.38,
+                     11, color=BEIGE)
+
+    def delete_shape(sp):
+        sp.element.getparent().remove(sp.element)
+
+    # ════════════════════════════════════════════════════════
+    #  使用範本：覆寫文字、表格、圖片
+    # ════════════════════════════════════════════════════════
+    if use_template:
+        slides = list(prs.slides)
+
+        # --- 封面 ---
+        s0 = slides[0]
+        for sp in s0.shapes:
+            if sp.has_text_frame:
+                txt = sp.text_frame.text
+                if "報告日期" in txt or "報告資料" in txt:
+                    tf = sp.text_frame; tf.clear()
+                    for line, val in [
+                        ("報告日期", datetime.now().strftime("%Y/%m/%d")),
+                        ("報告資料", source_name),
+                    ]:
+                        p = tf.add_paragraph() if tf.paragraphs else tf.paragraphs[0]
+                        p.text = f"{line}:{val}"
+                        for run in p.runs:
+                            run.font.name = FONT
+                elif "周報" in txt or "簡報" in txt:
+                    tf = sp.text_frame; tf.clear()
+                    p = tf.paragraphs[0]
+                    p.text = "客訴分析簡報"
+                    for run in p.runs:
+                        run.font.name = FONT
+
+        def _fill_slide(slide, title_txt, chart_key_list, add_table=True):
+            # 更新標題
+            for sp in slide.shapes:
+                if sp.has_text_frame and ("客訴問題分析" in sp.text or
+                                          "機台問題佔比" in sp.text or
+                                          "機台與細項" in sp.text):
+                    tf = sp.text_frame; tf.clear()
+                    p = tf.paragraphs[0]; p.text = title_txt
+                    for run in p.runs: run.font.name = FONT
+
+            # 收集現有 Table / Picture 的位置，然後刪除
+            tbl_rect = None; pic_rects = []
+            for sp in list(slide.shapes):
+                if sp.shape_type == 19:   # Table
+                    tbl_rect = (sp.left, sp.top, sp.width, sp.height)
+                    delete_shape(sp)
+                elif sp.shape_type == 13: # Picture
+                    pic_rects.append((sp.left, sp.top, sp.width, sp.height))
+                    delete_shape(sp)
+            pic_rects.sort(key=lambda x: x[0])
+
+            # 插入新圖表
+            if chart_pack:
+                for idx, key in enumerate(chart_key_list):
+                    if key in chart_pack and idx < len(pic_rects):
+                        add_img(slide, chart_pack[key], *[v/914400 for v in pic_rects[idx]])
+
+            # 重建表格
+            if add_table and tbl_rect:
+                rows_n = min(len(stats) + 1, 12)
+                tb = slide.shapes.add_table(rows_n, 4, *tbl_rect).table
+                col_ws = [Inches(3.8), Inches(1.1), Inches(1.2), Inches(2.0)]
+                for ci, cw in enumerate(col_ws):
+                    tb.columns[ci].width = cw
+                # 表頭
+                for ci, hdr in enumerate(["問題類型", "件數", "百分比", "歸屬部門"]):
+                    cell = tb.cell(0, ci)
+                    cell.text = hdr
+                    cell.fill.solid(); cell.fill.fore_color.rgb = BLUE
+                    for para in cell.text_frame.paragraphs:
+                        para.alignment = PP_ALIGN.CENTER
+                        for run in para.runs:
+                            run.font.bold  = True
+                            run.font.color.rgb = WHITE
+                            run.font.size  = Pt(13)
+                            run.font.name  = FONT
+                # 資料列
+                for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), 1):
+                    try:   pct = f'{int(float(r["百分比"]))}%'
+                    except: pct = f'{r["百分比"]}%'
+                    vals = [str(r["問題類型"]), str(r["件數"]), pct,
+                            str(r.get("歸屬部門", ""))]
+                    bg = LGRAY if ri % 2 == 0 else BEIGE
+                    for ci, v in enumerate(vals):
+                        cell = tb.cell(ri, ci)
+                        cell.text = v
+                        cell.fill.solid(); cell.fill.fore_color.rgb = bg
+                        for para in cell.text_frame.paragraphs:
+                            para.alignment = PP_ALIGN.CENTER
+                            for run in para.runs:
+                                run.font.size  = Pt(12)
+                                run.font.color.rgb = DARK
+                                run.font.name  = FONT
+
+        if len(slides) >= 2:
+            _fill_slide(slides[1],
+                        f"{source_name} 客訴問題分析",
+                        ["chart_問題類型分布.png"],
+                        add_table=True)
+        if len(slides) >= 3:
+            _fill_slide(slides[2],
+                        f"{source_name} 機台與細項分析",
+                        ["chart_十大問題細項.png", "chart_機台問題占比.png"],
+                        add_table=False)
+
+    # ════════════════════════════════════════════════════════
+    #  從零構建（範本不存在時）
+    # ════════════════════════════════════════════════════════
+    else:
+        SWi = SW / 914400   # EMU → inches
+        SHi = SH / 914400
+
+        # ── Slide 1: 封面 ──
+        s0 = prs.slides.add_slide(blank_layout())
+        add_rect(s0, 0, 0, SWi, SHi, BLUE)      # 全藍背景
+        add_text(s0, "ECOCO 客訴分析簡報",
+                 1.0, SHi*0.25, SWi-2, 1.2, 36, bold=True,
+                 color=WHITE, align=PP_ALIGN.CENTER)
+        add_text(s0, f"報告日期：{datetime.now().strftime('%Y/%m/%d')}",
+                 1.0, SHi*0.52, SWi-2, 0.5, 16,
+                 color=BEIGE, align=PP_ALIGN.CENTER)
+        add_text(s0, f"資料來源：{source_name}",
+                 1.0, SHi*0.64, SWi-2, 0.5, 14,
+                 color=BEIGE, align=PP_ALIGN.CENTER)
+        add_text(s0, "凡立橙股份有限公司",
+                 1.0, SHi*0.82, SWi-2, 0.4, 13,
+                 color=WHITE, align=PP_ALIGN.CENTER)
+
+        # ── Slide 2: 問題類型分析 ──
+        s1 = prs.slides.add_slide(blank_layout())
+        add_header(s1, f"客訴問題分析 — {source_name}",
+                   f"報告日期：{datetime.now().strftime('%Y/%m/%d')}　資料來源：{source_name}")
+        # 表格（左半）
+        rows_n = min(len(stats) + 1, 10)
+        tbl_left = Inches(0.3); tbl_top = Inches(1.15)
+        tbl_w    = Inches(5.8); tbl_h   = Inches(SHi - 1.4)
+        tb = s1.shapes.add_table(rows_n, 4, tbl_left, tbl_top, tbl_w, tbl_h).table
+        tb.columns[0].width = Inches(2.2)
+        tb.columns[1].width = Inches(0.9)
+        tb.columns[2].width = Inches(1.0)
+        tb.columns[3].width = Inches(1.5)
+        for ci, hdr in enumerate(["問題類型", "件數", "百分比", "歸屬部門"]):
+            c = tb.cell(0, ci); c.text = hdr
+            c.fill.solid(); c.fill.fore_color.rgb = BLUE
+            for para in c.text_frame.paragraphs:
+                para.alignment = PP_ALIGN.CENTER
                 for run in para.runs:
-                    run.font.bold = True
-                    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-                    run.font.size = Pt(14)
-                    run.font.name = font_name
-                    
-        # Rows
-        rows_n = min(len(stats) + 1, 15)
-        for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), start=1):
-            try: pct_val = f'{int(float(r["百分比"]))}%'
-            except: pct_val = f'{r["百分比"]}%'
-            
-            vals = [str(r["問題類型"]), str(r["件數"]), pct_val, str(r.get("歸屬部門", ""))]
+                    run.font.bold = True; run.font.color.rgb = WHITE
+                    run.font.size = Pt(12); run.font.name = FONT
+        for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), 1):
+            try:   pct = f'{int(float(r["百分比"]))}%'
+            except: pct = f'{r["百分比"]}%'
+            vals = [str(r["問題類型"]), str(r["件數"]), pct,
+                    str(r.get("歸屬部門", ""))]
+            bg = LGRAY if ri % 2 == 0 else BEIGE
             for ci, v in enumerate(vals):
-                cell = tbl.cell(ri, ci)
-                cell.text = v
-                cell.fill.solid()
-                if ri % 2 == 0:
-                    cell.fill.fore_color.rgb = RGBColor(0xE8, 0xF1, 0xF5)
-                else:
-                    cell.fill.fore_color.rgb = RGBColor(0xFA, 0xE0, 0xB8)
-                for para in cell.text_frame.paragraphs:
-                    para.alignment = 1
+                c = tb.cell(ri, ci); c.text = v
+                c.fill.solid(); c.fill.fore_color.rgb = bg
+                for para in c.text_frame.paragraphs:
+                    para.alignment = PP_ALIGN.CENTER
                     for run in para.runs:
-                        run.font.size = Pt(13)
-                        run.font.color.rgb = RGBColor(0x22, 0x22, 0x22)
-                        run.font.name = font_name
+                        run.font.size = Pt(11); run.font.color.rgb = DARK
+                        run.font.name = FONT
+        # 圖表（右半）
+        if chart_pack and "chart_問題類型分布.png" in chart_pack:
+            add_img(s1, chart_pack["chart_問題類型分布.png"],
+                    6.25, 1.15, SWi - 6.55, SHi - 1.4)
 
-    slides = list(prs.slides)
-    if len(slides) >= 3:
-        # --- Slide 0: Cover ---
-        for sp in slides[0].shapes:
-            if sp.has_text_frame and "報告日期" in sp.text:
-                tf = sp.text_frame
-                tf.clear()
-                p = tf.paragraphs[0]
-                p.text = f"報告日期:{datetime.now().strftime('%Y/%m/%d')}\n報告資料:{source_name}"
-                p.font.name = 'MingLiU'
-            elif sp.has_text_frame and "營運周報" in sp.text:
-                tf = sp.text_frame
-                tf.clear()
-                p = tf.paragraphs[0]
-                p.text = "客訴分析簡報"
-                p.font.name = 'MingLiU'
+        # ── Slide 3: 機台與細項分析 ──
+        s2 = prs.slides.add_slide(blank_layout())
+        add_header(s2, f"機台與細項分析 — {source_name}",
+                   f"報告日期：{datetime.now().strftime('%Y/%m/%d')}")
+        half_w = (SWi - 0.6) / 2
+        ch_t = 1.15; ch_h = SHi - 1.4
+        if chart_pack and "chart_機台問題占比.png" in chart_pack:
+            add_img(s2, chart_pack["chart_機台問題占比.png"],
+                    0.3, ch_t, half_w, ch_h)
+        if chart_pack and "chart_十大問題細項.png" in chart_pack:
+            add_img(s2, chart_pack["chart_十大問題細項.png"],
+                    0.3 + half_w + 0.15, ch_t, half_w, ch_h)
 
-        # --- Slide 1: Overall Analysis ---
-        s1 = slides[1]
-        for sp in s1.shapes:
-            if sp.has_text_frame and "客訴問題分析" in sp.text:
-                tf = sp.text_frame
-                tf.clear()
-                p = tf.paragraphs[0]
-                p.text = f"{source_name} 客訴問題分析"
-                p.font.name = 'MingLiU'
-        
-        # Replace S1 Table & Chart
-        s1_tbl_rect = None
-        s1_pic_rect = None
-        for sp in list(s1.shapes):
-            if sp.shape_type == 19: # Table
-                s1_tbl_rect = (sp.left, sp.top, sp.width, sp.height)
-                delete_shape(sp)
-            elif sp.shape_type == 13: # Picture
-                s1_pic_rect = (sp.left, sp.top, sp.width, sp.height)
-                delete_shape(sp)
-        
-        if s1_pic_rect and chart_pack and "chart_問題類型分布.png" in chart_pack:
-            img_s = io.BytesIO(chart_pack["chart_問題類型分布.png"])
-            s1.shapes.add_picture(img_s, *s1_pic_rect)
-        if s1_tbl_rect:
-            rows_n = min(len(stats) + 1, 15)
-            # Recreate table at exact location
-            tb = s1.shapes.add_table(rows_n, 4, *s1_tbl_rect).table
-            tb.columns[0].width = Inches(4.0)
-            tb.columns[1].width = Inches(1.3)
-            tb.columns[2].width = Inches(1.4)
-            tb.columns[3].width = Inches(2.0)
-            style_table(tb)
-
-        # --- Slide 2: Machine specific ---
-        s2 = slides[2]
-        for sp in s2.shapes:
-            if sp.has_text_frame and "機台問題佔比" in sp.text:
-                tf = sp.text_frame
-                tf.clear()
-                p = tf.paragraphs[0]
-                p.text = f"{source_name} 機台與細項分析"
-                p.font.name = 'MingLiU'
-        
-        s2_tbl_rect = None
-        s2_pic_rects = []
-        for sp in list(s2.shapes):
-            if sp.shape_type == 19:
-                s2_tbl_rect = (sp.left, sp.top, sp.width, sp.height)
-                delete_shape(sp)
-            elif sp.shape_type == 13:
-                s2_pic_rects.append((sp.left, sp.top, sp.width, sp.height))
-                delete_shape(sp)
-                
-        # Sort pic rects by left coordinate
-        s2_pic_rects.sort(key=lambda x: x[0])
-        if len(s2_pic_rects) >= 2 and chart_pack:
-            if "chart_十大問題細項.png" in chart_pack:
-                s2.shapes.add_picture(io.BytesIO(chart_pack["chart_十大問題細項.png"]), *s2_pic_rects[0])
-            if "chart_機台問題占比.png" in chart_pack:
-                s2.shapes.add_picture(io.BytesIO(chart_pack["chart_機台問題占比.png"]), *s2_pic_rects[1])
-                
-        if s2_tbl_rect:
-            rows_n = min(len(stats) + 1, 15)
-            tb = s2.shapes.add_table(rows_n, 4, *s2_tbl_rect).table
-            tb.columns[0].width = Inches(3.0)
-            tb.columns[1].width = Inches(1.0)
-            tb.columns[2].width = Inches(1.0)
-            tb.columns[3].width = Inches(2.0)
-            style_table(tb)
+    # ── 最終：AI 重點分析投影片（所有路徑都加）──
+    s_ai = prs.slides.add_slide(blank_layout())
+    SWi2 = prs.slide_width  / 914400
+    SHi2 = prs.slide_height / 914400
+    # 藍色頁首
+    add_rect(s_ai, 0, 0, SWi2, 1.05, BLUE)
+    add_text(s_ai, "AI 重點問題分析",
+             0.3, 0.08, 9.0, 0.55, 20, bold=True, color=WHITE)
+    add_text(s_ai,
+             f"資料來源：{source_name}　產出日期：{datetime.now().strftime('%Y/%m/%d')}",
+             0.3, 0.65, 10.5, 0.35, 11, color=BEIGE)
+    # 橘色左邊框裝飾
+    add_rect(s_ai, 0.25, 1.15, 0.08, SHi2 - 1.35, ORANGE)
+    # AI 文字框
+    txb = s_ai.shapes.add_textbox(Inches(0.45), Inches(1.2),
+                                   Inches(SWi2 - 0.65), Inches(SHi2 - 1.35))
+    tf = txb.text_frame; tf.word_wrap = True
+    first = True
+    for line in ai_text.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        p = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        p.space_before = Pt(4)
+        is_head = line[:2] in ('1)', '2)', '3)', '4)', '5)', '一、', '二、', '三、')
+        run = p.add_run()
+        run.text = line
+        run.font.name  = FONT
+        run.font.size  = Pt(14 if is_head else 13)
+        run.font.bold  = is_head
+        run.font.color.rgb = BLUE if is_head else DARK
 
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()
+
 
 
 def upload_to_google_sheet(df: pd.DataFrame, credentials_json: dict, spreadsheet_id: str, worksheet_name: str) -> None:
@@ -1442,7 +1678,10 @@ def section_2():
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for fn, b in chart_pack.items():
-            zf.writestr(fn, b)
+            zi = zipfile.ZipInfo(fn)
+            zi.flag_bits |= 0x800  # UTF-8 filename flag，避免中文亂碼
+            zi.compress_type = zipfile.ZIP_DEFLATED
+            zf.writestr(zi, b)
     st.download_button(
         "下載圖表圖檔（ZIP）",
         data=zip_buf.getvalue(),
@@ -1484,15 +1723,29 @@ def section_3():
 
     for item in history:
         out_path = Path(item["output_path"])
-        if not out_path.exists():
-            continue
-        # Pure ASCII/CJK label — no emoji that Streamlit converts to text
+        cache = st.session_state.get("_history_cache", {})
+        
+        # 優先從磁碟讀取；若磁碟檔案不存在則從 session_state 快取讀取
+        if not out_path.exists() and item["id"] not in cache:
+            continue  # 磁碟與快取都找不到，略過
+        
         sname = item.get('source_name', '')
         if len(sname) > 28:
             sname = sname[:14] + "..." + sname[-10:]
         label = f"{item['created_at'][:16]}  {sname}  ({item['rows']} 筆)"
         with st.expander(label):
-            df_hist = pd.read_excel(out_path)
+            # 載入 df_hist：先嘗試磁碟，再用 session_state 快取
+            try:
+                if out_path.exists():
+                    df_hist = pd.read_excel(out_path)
+                    dl_bytes = out_path.read_bytes()
+                else:
+                    dl_bytes = cache[item["id"]]["excel_bytes"]
+                    df_hist = pd.read_excel(io.BytesIO(dl_bytes))
+            except Exception as e:
+                st.error(f"無法載入歷史資料：{e}")
+                continue
+
             tab_data, tab_chart, tab_ai = st.tabs(["資料預覽", "圖表分析", "AI 重點摘要"])
             
             with tab_data:
@@ -1500,7 +1753,7 @@ def section_3():
                 col1, col2, col3 = st.columns([1, 1, 1])
                 col1.download_button(
                     "下載該分析檔",
-                    data=out_path.read_bytes(),
+                    data=dl_bytes,
                     file_name=item["output_name"],
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key=f"download_{item['id']}",
@@ -1541,7 +1794,10 @@ def section_3():
                     hist_zip = io.BytesIO()
                     with zipfile.ZipFile(hist_zip, "w", zipfile.ZIP_DEFLATED) as zf:
                         for fn, b in hist_chart_pack.items():
-                            zf.writestr(fn, b)
+                            zi = zipfile.ZipInfo(fn)
+                            zi.flag_bits |= 0x800  # UTF-8 filename flag，避免中文亂碼
+                            zi.compress_type = zipfile.ZIP_DEFLATED
+                            zf.writestr(zi, b)
                     cdl2.download_button(
                         "下載圖檔（ZIP）",
                         data=hist_zip.getvalue(),

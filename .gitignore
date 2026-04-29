@@ -15,3 +15,5 @@ history_reports/
 *.csv
 *.pdf
 *.pptx
+!簡報範本.pptx
+
