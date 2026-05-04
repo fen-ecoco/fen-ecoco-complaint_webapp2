@@ -1,10 +1,12 @@
 streamlit>=1.35.0
 pandas
-openpyxl
 plotly
+openpyxl
+python-pptx
 pdfplumber
+openai
 gspread
 google-auth
-openai
-python-pptx
+matplotlib
 reportlab
+fpdf2

@@ -120,6 +120,37 @@ DEPT_MAP = {
     "顧客關係類型": "營運部",
 }
 
+# ── ECOCO 品牌色（Pantone 對應）──────────────────────────────
+BRAND_ORANGE  = "#FF5000"   # Pantone Orange 021 C  → 營運部
+BRAND_BLUE    = "#060E9F"   # Pantone Blue 072 C    → 資訊部 / 主圖色
+BRAND_YELLOW  = "#FFCE00"   # Pantone 116 C         → 行銷部
+BRAND_LBLUE   = "#8EB9C9"   # Pantone 550 C
+BRAND_BEIGE   = "#FAE0B8"   # Pantone P17-2 C
+BRAND_TEAL    = "#0076A9"   # Pantone 7690 C
+BRAND_WHITE   = "#FFFFFF"   # Pantone White C
+
+# 部門固定色（Plotly color_discrete_map 用）
+DEPT_COLOR_MAP: dict[str, str] = {
+    "營運部": BRAND_ORANGE,
+    "行銷部": BRAND_YELLOW,
+    "資訊部": BRAND_BLUE,
+    "研發部": BRAND_TEAL,
+    "廠務部": BRAND_LBLUE,
+    "人資部": BRAND_BEIGE,
+    "企劃部": "#A0C878",
+    "財務部": "#C8A0E0",
+    "開發部": "#E0C8A0",
+    "總經理室": "#A0E0C8",
+    "未分配":  "#CCCCCC",
+    "":        "#CCCCCC",
+}
+
+# 圓餅圖 / 橫條圖單色排序
+BRAND_PALETTE = [
+    BRAND_BLUE, BRAND_ORANGE, BRAND_YELLOW,
+    BRAND_LBLUE, BRAND_BEIGE, BRAND_TEAL,
+]
+
 HISTORY_DIR = Path("history_reports")
 HISTORY_DIR.mkdir(exist_ok=True)
 META_FILE = HISTORY_DIR / "history.json"
@@ -489,49 +520,114 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
     return out
 
 
+# ── Google Sheets 歷史紀錄持久化 ────────────────────────────────────────────
+# Render 的磁碟每次重啟會清空；使用 Google Sheets 作為永久儲存後端。
+# 需在 Streamlit Secrets 設定：
+#   HISTORY_SHEET_ID = "<your_spreadsheet_id>"
+#   [google_credentials]   ← service account JSON 欄位
+
+def _get_gsheet_client():
+    """從環境變數或 st.secrets 取得 gspread client。"""
+    try:
+        import gspread as _gs
+        from google.oauth2.service_account import Credentials as _Creds
+    except ImportError:
+        return None
+    try:
+        import os, json as _json
+        # ── 1. 優先讀 Render 環境變數 ──
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
+        if creds_json:
+            creds_dict = _json.loads(creds_json)
+        else:
+            # ── 2. 備用：本機 st.secrets（捕捉所有例外）──
+            try:
+                raw = st.secrets.get("google_credentials", {})
+                creds_dict = dict(raw) if raw else {}
+            except Exception:
+                creds_dict = {}
+        if not creds_dict:
+            return None
+        creds = _Creds.from_service_account_info(
+            creds_dict,
+            scopes=["https://spreadsheets.google.com/feeds",
+                    "https://www.googleapis.com/auth/drive"],
+        )
+        return _gs.authorize(creds)
+    except Exception:
+        return None
+
+
+def _history_sheet():
+    """回傳歷史紀錄工作表；失敗回傳 None。"""
+    import os
+    client = _get_gsheet_client()
+    if client is None:
+        return None
+    try:
+        # ── 1. 優先讀 Render 環境變數 ──
+        sid = os.environ.get("HISTORY_SHEET_ID", "").strip()
+        if not sid:
+            # ── 2. 備用：st.secrets ──
+            try:
+                sid = str(st.secrets.get("HISTORY_SHEET_ID", "")).strip()
+            except Exception:
+                sid = ""
+        if not sid:
+            return None
+        ss = client.open_by_key(sid)
+        try:
+            return ss.worksheet("歷史紀錄")
+        except Exception:
+            ws = ss.add_worksheet("歷史紀錄", rows=500, cols=6)
+            ws.append_row(["id", "created_at", "source_name", "rows", "excel_b64"])
+            return ws
+    except Exception:
+        return None
+
+
 def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> tuple[Path, str]:
+    import base64
     today = datetime.now().strftime("%Y%m%d")
     ts = existing_id if existing_id else datetime.now().strftime("%Y%m%d_%H%M%S")
     output_name = f"{today}_分析.xlsx"
-    output_path = HISTORY_DIR / f"{ts}_{output_name}"
-    # Remove stale file if overwriting
-    if existing_id:
-        for old in HISTORY_DIR.glob(f"{existing_id}_*.xlsx"):
-            try: old.unlink()
-            except: pass
-    
     excel_bytes = to_excel_bytes(df)
-    try:
-        output_path.write_bytes(excel_bytes)
-    except Exception:
-        pass  # 若磁碟不可寫入仍繼續，使用 session_state 備份
+    excel_b64 = base64.b64encode(excel_bytes).decode()
 
     meta = {
-        "id": ts,
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-        "source_name": source_name,
-        "output_name": output_name,
-        "output_path": str(output_path),
-        "rows": int(len(df)),
+        "id": ts, "created_at": datetime.now().isoformat(timespec="seconds"),
+        "source_name": source_name, "output_name": output_name,
+        "output_path": "", "rows": int(len(df)),
     }
 
-    # ── session_state 備份（Render 重啟後仍可在當前 session 讀取）──
+    # 1. session_state 快取
     if "_history_cache" not in st.session_state:
         st.session_state["_history_cache"] = {}
-    st.session_state["_history_cache"][ts] = {
-        "meta": meta,
-        "excel_bytes": excel_bytes,
-    }
+    st.session_state["_history_cache"][ts] = {"meta": meta, "excel_bytes": excel_bytes}
 
-    history = []
-    if META_FILE.exists():
+    # 2. Google Sheets（永久）
+    ws = _history_sheet()
+    if ws:
         try:
-            history = json.loads(META_FILE.read_text(encoding="utf-8"))
+            if existing_id:
+                rows = ws.get_all_values()
+                for i, row in enumerate(rows[1:], start=2):
+                    if row and row[0] == existing_id:
+                        ws.delete_rows(i); break
+            ws.append_row([ts, meta["created_at"], source_name, str(len(df)), excel_b64])
         except Exception:
-            history = []
-    history = [i for i in history if i["id"] != ts]
-    history.insert(0, meta)
+            pass
+
+    # 3. 本機磁碟（輔助）
+    output_path = HISTORY_DIR / f"{ts}_{output_name}"
     try:
+        output_path.write_bytes(excel_bytes)
+        history = []
+        if META_FILE.exists():
+            try: history = json.loads(META_FILE.read_text(encoding="utf-8"))
+            except: pass
+        history = [i for i in history if i["id"] != ts]
+        history.insert(0, meta)
         META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         pass
@@ -539,25 +635,55 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
 
 
 def load_history() -> list[dict]:
-    """載入歷史紀錄：合併 session_state 快取與磁碟 JSON，以 session_state 為主。"""
-    disk_history: list[dict] = []
+    import base64
+    merged: dict[str, dict] = {}
+
+    # 本機 JSON
     if META_FILE.exists():
         try:
-            disk_history = json.loads(META_FILE.read_text(encoding="utf-8"))
+            for item in json.loads(META_FILE.read_text(encoding="utf-8")):
+                merged[item["id"]] = item
         except Exception:
-            disk_history = []
+            pass
 
-    # 合併 session_state 快取中的 meta（可能比磁碟更新）
-    cache = st.session_state.get("_history_cache", {})
-    cache_metas = {v["meta"]["id"]: v["meta"] for v in cache.values()}
-    
-    merged: dict[str, dict] = {}
-    for item in disk_history:
-        merged[item["id"]] = item
-    for id_, meta in cache_metas.items():
-        merged[id_] = meta  # session_state 覆蓋磁碟（較新）
+    # Google Sheets（覆蓋本機，最可靠）
+    ws = _history_sheet()
+    if ws:
+        try:
+            for row in ws.get_all_values()[1:]:
+                if not row or not row[0]:
+                    continue
+                rid = row[0]
+                created_at = row[1] if len(row) > 1 else ""
+                sname = row[2] if len(row) > 2 else ""
+                rows_str = row[3] if len(row) > 3 else "0"
+                excel_b64 = row[4] if len(row) > 4 else ""
+                meta = {
+                    "id": rid, "created_at": created_at,
+                    "source_name": sname,
+                    "rows": int(rows_str) if rows_str.isdigit() else 0,
+                    "output_name": f"{rid}_分析.xlsx", "output_path": "",
+                }
+                merged[rid] = meta
+                if "_history_cache" not in st.session_state:
+                    st.session_state["_history_cache"] = {}
+                if rid not in st.session_state["_history_cache"] and excel_b64:
+                    try:
+                        st.session_state["_history_cache"][rid] = {
+                            "meta": meta,
+                            "excel_bytes": base64.b64decode(excel_b64),
+                        }
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
-    return sorted(merged.values(), key=lambda x: x["created_at"], reverse=True)
+    # session_state 補充當次新增
+    for rid, v in st.session_state.get("_history_cache", {}).items():
+        if rid not in merged:
+            merged[rid] = v["meta"]
+
+    return sorted(merged.values(), key=lambda x: x.get("created_at", ""), reverse=True)
 
 
 def safe_filename(text: str) -> str:
@@ -565,24 +691,25 @@ def safe_filename(text: str) -> str:
 
 
 def delete_history(item_id: str):
-    # 從磁碟移除
+    ws = _history_sheet()
+    if ws:
+        try:
+            for i, row in enumerate(ws.get_all_values()[1:], start=2):
+                if row and row[0] == item_id:
+                    ws.delete_rows(i); break
+        except Exception:
+            pass
     if META_FILE.exists():
         try:
             history = json.loads(META_FILE.read_text(encoding="utf-8"))
-            for item in history:
-                if item["id"] == item_id:
-                    try:
-                        Path(item["output_path"]).unlink(missing_ok=True)
-                    except Exception:
-                        pass
             history = [i for i in history if i["id"] != item_id]
             META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception:
             pass
-    # 從 session_state 快取移除
     cache = st.session_state.get("_history_cache", {})
     cache.pop(item_id, None)
     st.session_state["_history_cache"] = cache
+
 
 
 def generate_ai_summary(df: pd.DataFrame) -> str:
@@ -647,112 +774,108 @@ def to_csv_bytes(df: pd.DataFrame) -> bytes:
 
 
 def to_pdf_bytes(df: pd.DataFrame) -> bytes:
-    """Generate PDF using reportlab for proper CJK text wrapping in cells."""
-    try:
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib import colors
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib.units import mm
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-        pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
-        BASE_FONT = 'HeiseiMin-W3'
-    except Exception:
-        BASE_FONT = 'Helvetica'
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib import colors
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib.units import mm
+    """Generate PDF using fpdf2 + Noto CJK TTF for proper Traditional Chinese support."""
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+    import os
 
-    buf = io.BytesIO()
-    page_w, page_h = landscape(A4)
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
-                            leftMargin=10*mm, rightMargin=10*mm,
-                            topMargin=10*mm, bottomMargin=10*mm)
+    # ── 找字型（優先順序：系統 NotoSansCJK → 備選路徑）
+    CJK_FONT_CANDIDATES = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJKtc-Regular.otf",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+    ]
+    font_path = next((p for p in CJK_FONT_CANDIDATES if os.path.exists(p)), None)
 
-    styles = getSampleStyleSheet()
-    cell_style = styles['Normal'].clone('cell')
-    cell_style.fontSize = 7
-    cell_style.fontName = BASE_FONT
-    cell_style.wordWrap = 'CJK'
-    cell_style.leading = 10
+    table_df = df.copy()
+    drop_cols = [c for c in ["選取"] if c in table_df.columns]
+    table_df = table_df.drop(columns=drop_cols).fillna("")
 
-    header_style = styles['Normal'].clone('hdr')
-    header_style.fontSize = 7
-    header_style.fontName = BASE_FONT
-    header_style.textColor = colors.white
-    header_style.wordWrap = 'CJK'
+    # ── 欄寬設定（A4 橫向 = 297mm 可用約 277mm）
+    # 依欄位名稱給較寬空間
+    PAGE_W_MM = 277.0
+    WIDE_COLS  = {"用戶內容", "主旨", "問題主旨"}
+    MEDIUM_COLS = {"問題細項", "問題類型"}
 
-    table_df = df.head(50).copy()
-    # Drop internal helper columns
-    drop_cols = [c for c in ['選取'] if c in table_df.columns]
-    table_df = table_df.drop(columns=drop_cols).fillna('')
-
-    WRAP_COLS = {'用戶內容', '主旨', '問題主旨'}
-    COL_W_MAP = {}  # col_name -> width in mm
     num_cols = len(table_df.columns)
-    base_w = (page_w - 20*mm) / num_cols
+    # 分配欄寬
+    wide_count   = sum(1 for c in table_df.columns if c in WIDE_COLS)
+    medium_count = sum(1 for c in table_df.columns if c in MEDIUM_COLS)
+    narrow_count = num_cols - wide_count - medium_count
+    if wide_count + medium_count + narrow_count == 0:
+        col_widths = {c: PAGE_W_MM / num_cols for c in table_df.columns}
+    else:
+        unit = PAGE_W_MM / max(wide_count*4 + medium_count*2 + narrow_count, 1)
+        col_widths = {}
+        for c in table_df.columns:
+            if c in WIDE_COLS:
+                col_widths[c] = unit * 4
+            elif c in MEDIUM_COLS:
+                col_widths[c] = unit * 2
+            else:
+                col_widths[c] = unit
 
-    def make_cell(val, is_header=False):
-        s = str(val)
-        st = header_style if is_header else cell_style
-        return Paragraph(s, st)
+    pdf = FPDF(orientation="L", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=10)
+    pdf.add_page()
 
-    data = [[make_cell(c, True) for c in table_df.columns]]
-    for _, row in table_df.iterrows():
-        data.append([make_cell(str(v)) for v in row.values])
+    if font_path:
+        pdf.add_font("CJK", style="", fname=font_path)
+        FONT = "CJK"
+    else:
+        FONT = "Helvetica"
 
-    col_widths = [base_w] * num_cols
+    ROW_H   = 7.0
+    HDR_H   = 8.0
+    FS_HDR  = 8
+    FS_CELL = 7
 
-    t = Table(data, colWidths=col_widths, repeatRows=1)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#3E75A0')),
-        ('TEXTCOLOR',  (0,0), (-1,0), colors.white),
-        ('FONTNAME',   (0,0), (-1,-1), BASE_FONT),
-        ('FONTSIZE',   (0,0), (-1,-1), 7),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#EBF4FA')]),
-        ('GRID',       (0,0), (-1,-1), 0.4, colors.HexColor('#CCCCCC')),
-        ('VALIGN',     (0,0), (-1,-1), 'TOP'),
-        ('LEFTPADDING',(0,0), (-1,-1), 3),
-        ('RIGHTPADDING',(0,0),(-1,-1), 3),
-        ('TOPPADDING', (0,0), (-1,-1), 2),
-        ('BOTTOMPADDING',(0,0),(-1,-1), 2),
-    ]))
+    # ── 表頭
+    pdf.set_fill_color(0x06, 0x0E, 0x9F)   # ECOCO 藍
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font(FONT, size=FS_HDR)
+    for col in table_df.columns:
+        w = col_widths[col]
+        pdf.cell(w, HDR_H, col, border=1, fill=True,
+                 new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
+    pdf.ln(HDR_H)
 
-    elements = [t]
-    doc.build(elements)
-    return buf.getvalue()
+    # ── 資料列
+    pdf.set_font(FONT, size=FS_CELL)
+    for i, (_, row) in enumerate(table_df.iterrows()):
+        if i % 2 == 0:
+            pdf.set_fill_color(0xEB, 0xF4, 0xFA)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+        pdf.set_text_color(0x22, 0x22, 0x22)
+        for col in table_df.columns:
+            val = str(row[col])
+            w = col_widths[col]
+            # 長文字截短避免溢出
+            if col in WIDE_COLS and len(val) > 28:
+                val = val[:26] + "…"
+            elif len(val) > 14:
+                val = val[:13] + "…"
+            pdf.cell(w, ROW_H, val, border=1, fill=True,
+                     new_x=XPos.RIGHT, new_y=YPos.TOP, align="L")
+        pdf.ln(ROW_H)
+
+    # ── 頁尾
+    pdf.set_y(-12)
+    pdf.set_font(FONT, size=6)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(0, 6,
+             f"ECOCO 客訴分析報告  共 {len(table_df)} 筆  產出日期：{datetime.now().strftime('%Y/%m/%d')}",
+             align="C")
+
+    return bytes(pdf.output())
 
 
 def _setup_cjk_font() -> None:
     """設定 matplotlib 中文字型，優先使用系統已安裝的 Noto CJK 字型。"""
     import matplotlib.font_manager as fm
     import os
-    import urllib.request
-    from pathlib import Path
-
-    # ── 0. 嘗試動態下載或載入自帶字型 ──
-    font_path = Path(__file__).parent / "NotoSansCJKtc-Regular.otf"
-    if not font_path.exists():
-        try:
-            # 這是 noto-cjk 的開源字型下載點，避免 Render 上無中文字型導致亂碼
-            url = "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf"
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=15) as response, open(font_path, 'wb') as out_file:
-                out_file.write(response.read())
-        except Exception:
-            pass
-
-    if font_path.exists():
-        try:
-            fm.fontManager.addfont(str(font_path))
-            plt.rcParams["font.family"] = fm.FontProperties(fname=str(font_path)).get_name()
-            plt.rcParams["axes.unicode_minus"] = False
-            return
-        except Exception as e:
-            print(f"Font load error: {e}")
 
     # ── 1. 優先嘗試已知路徑（Ubuntu / Render 伺服器）──
     KNOWN_PATHS = [
@@ -787,8 +910,15 @@ def _setup_cjk_font() -> None:
     plt.rcParams["axes.unicode_minus"] = False
 
 
-def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
-    """Build chart images (PNG) for download/PPT."""
+def build_chart_pack(df: pd.DataFrame,
+                     color_bar: str | None = None,
+                     color_pie: list[str] | None = None,
+                     color_hbar: str | None = None) -> dict[str, bytes]:
+    """Build chart PNG images for download/PPT.
+    color_bar  : 問題類型直條圖 — None = 依部門品牌色; 或傳入單一 hex 強制套用
+    color_pie  : 機台圓餅圖各扇形顏色 list，None = BRAND_PALETTE
+    color_hbar : 十大細項橫條圖顏色，None = BRAND_BLUE
+    """
     _setup_cjk_font()
 
     data = df.copy()
@@ -796,81 +926,97 @@ def build_chart_pack(df: pd.DataFrame) -> dict[str, bytes]:
     stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(1)
     detail_stats = data["問題細項"].value_counts().reset_index().head(10)
     detail_stats.columns = ["問題細項", "件數"]
+    d = detail_stats.sort_values("件數", ascending=True)
 
-    # 1) type distribution
+    # ── resolve colors ──
+    _pie_palette  = color_pie  if color_pie  else BRAND_PALETTE
+    _hbar_color   = color_hbar if color_hbar else BRAND_BLUE
+
+    def _bar_colors_for(series):
+        if color_bar:
+            return [color_bar] * len(series)
+        return [DEPT_COLOR_MAP.get(DEPT_MAP.get(t, ""), BRAND_ORANGE) for t in series]
+
+    # 1) 問題類型直條圖
     fig1, ax1 = plt.subplots(figsize=(8, 4.5))
-    colors = ["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
-    ax1.bar(stats["問題類型"], stats["件數"], color=colors[: len(stats)])
+    bc = _bar_colors_for(stats["問題類型"])
+    ax1.bar(stats["問題類型"], stats["件數"], color=bc)
     ax1.set_title("問題類型分布")
     ax1.set_ylabel("件數")
+    ax1.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
     ax1.tick_params(axis="x", rotation=20)
     for i, r in stats.iterrows():
-        ax1.text(i, r["件數"], f'{r["百分比"]:.1f}%', ha="center", va="bottom", fontsize=9)
+        ax1.text(i, r["件數"], f'{int(r["百分比"])}%', ha="center", va="bottom", fontsize=9)
     fig1.tight_layout()
-    b1 = io.BytesIO()
-    fig1.savefig(b1, format="png", dpi=180)
-    plt.close(fig1)
+    b1 = io.BytesIO(); fig1.savefig(b1, format="png", dpi=180); plt.close(fig1)
 
-    # 2) machine ratio pie
+    # 2) 機台圓餅圖
     fig2, ax2 = plt.subplots(figsize=(6.2, 4.5))
     df_machine = data[data["問題類型"] == "機台問題類型"].copy()
     if df_machine.empty:
-        ax2.text(0.5, 0.5, "無機台相關資料", ha="center", va="center")
+        ax2.text(0.5, 0.5, "無機台相關資料", ha="center", va="center", transform=ax2.transAxes)
+        pie_counts = None
     else:
-        def get_machine_type(row):
+        def _get_mtype(row):
             txt = str(row.get("用戶內容", "")) + " " + str(row.get("主旨", ""))
-            if "方舟" in txt:
-                return "方舟站"
-            if "電池" in txt:
-                return "電池機"
+            if "方舟" in txt: return "方舟站"
+            if "電池" in txt: return "電池機"
             return "收瓶機"
-        df_machine["機台機型"] = df_machine.apply(get_machine_type, axis=1)
-        pie_stats = df_machine["機台機型"].value_counts()
-        ax2.pie(pie_stats.values, labels=pie_stats.index, autopct="%1.1f%%", colors=["#0076A9", "#8EB9C9", "#FAE0B8"])
-        ax2.set_title("機台問題類型分布")
+        df_machine["機台機型"] = df_machine.apply(_get_mtype, axis=1)
+        pie_counts = df_machine["機台機型"].value_counts()
+        pc = _pie_palette[:len(pie_counts)]
+        wedges, texts, autotexts = ax2.pie(
+            pie_counts.values, labels=pie_counts.index, autopct="%1.1f%%",
+            colors=pc, wedgeprops=dict(linewidth=1.5, edgecolor="white"),
+        )
+        for at in autotexts: at.set_fontsize(10)
+    ax2.set_title("機台問題類型分布")
     fig2.tight_layout()
-    b2 = io.BytesIO()
-    fig2.savefig(b2, format="png", dpi=180)
-    plt.close(fig2)
+    b2 = io.BytesIO(); fig2.savefig(b2, format="png", dpi=180); plt.close(fig2)
 
-    # 3) top detail horizontal bar
+    # 3) 十大細項橫條圖  ── 強制品牌主藍 #060E9F，整數刻度
     fig3, ax3 = plt.subplots(figsize=(8, 4.5))
-    d = detail_stats.sort_values("件數", ascending=True)
-    ax3.barh(d["問題細項"], d["件數"], color="#1f77b4")
+    _hbar = _hbar_color if _hbar_color else "#060E9F"
+    ax3.barh(d["問題細項"], d["件數"], color=_hbar)
     ax3.set_title("十大問題細項分布")
     ax3.set_xlabel("件數")
+    # 強制整數刻度（件數必為整數）
+    from matplotlib.ticker import MultipleLocator
+    ax3.xaxis.set_major_locator(MultipleLocator(1))
+    ax3.xaxis.set_minor_locator(MultipleLocator(1))
+    ax3.set_xlim(left=0)
     fig3.tight_layout()
-    b3 = io.BytesIO()
-    fig3.savefig(b3, format="png", dpi=180)
-    plt.close(fig3)
+    b3 = io.BytesIO(); fig3.savefig(b3, format="png", dpi=180); plt.close(fig3)
 
-    # dashboard merged image
+    # 4) Dashboard 合圖
     fig4 = plt.figure(figsize=(14, 5))
     gs = fig4.add_gridspec(1, 3)
     a1 = fig4.add_subplot(gs[0, 0])
     a2 = fig4.add_subplot(gs[0, 1])
     a3 = fig4.add_subplot(gs[0, 2])
-    a1.bar(stats["問題類型"], stats["件數"], color=colors[: len(stats)])
+    a1.bar(stats["問題類型"], stats["件數"], color=bc)
     a1.set_title("問題類型分布")
+    a1.yaxis.set_major_locator(MultipleLocator(1))
     a1.tick_params(axis="x", rotation=18)
-    if df_machine.empty:
-        a2.text(0.5, 0.5, "無機台資料", ha="center", va="center")
+    if pie_counts is None:
+        a2.text(0.5, 0.5, "無機台資料", ha="center", va="center", transform=a2.transAxes)
     else:
-        pie_stats = df_machine["機台機型"].value_counts()
-        a2.pie(pie_stats.values, labels=pie_stats.index, autopct="%1.1f%%")
-        a2.set_title("機台問題占比")
-    a3.barh(d["問題細項"], d["件數"], color="#1f77b4")
+        a2.pie(pie_counts.values, labels=pie_counts.index, autopct="%1.1f%%",
+               colors=_pie_palette[:len(pie_counts)],
+               wedgeprops=dict(linewidth=1.5, edgecolor="white"))
+    a2.set_title("機台問題占比")
+    a3.barh(d["問題細項"], d["件數"], color=_hbar)
+    a3.xaxis.set_major_locator(MultipleLocator(1))
+    a3.set_xlim(left=0)
     a3.set_title("十大細項")
     fig4.tight_layout()
-    b4 = io.BytesIO()
-    fig4.savefig(b4, format="png", dpi=180)
-    plt.close(fig4)
+    b4 = io.BytesIO(); fig4.savefig(b4, format="png", dpi=180); plt.close(fig4)
 
     return {
         "chart_問題類型分布.png": b1.getvalue(),
         "chart_機台問題占比.png": b2.getvalue(),
         "chart_十大問題細項.png": b3.getvalue(),
-        "chart_dashboard.png": b4.getvalue(),
+        "chart_dashboard.png":    b4.getvalue(),
     }
 
 
@@ -960,63 +1106,123 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
     if use_template:
         slides = list(prs.slides)
 
-        # --- 封面 ---
+        # --- 封面 (slide 0) ---
+        # 範本版面：左側藍色面板（版面配置提供），右側三個文字框：
+        #   Shape;99  → 主標題「營運周報」 (l≈5.66, t≈2.18)
+        #   Shape;98  → 日期/資料列 (l≈6.14, t≈3.48)
+        #   Shape;96  → 公司名藍底白字 (l≈6.67, t≈5.04)
         s0 = slides[0]
         for sp in s0.shapes:
-            if sp.has_text_frame:
-                txt = sp.text_frame.text
-                if "報告日期" in txt or "報告資料" in txt:
-                    tf = sp.text_frame; tf.clear()
-                    for line, val in [
-                        ("報告日期", datetime.now().strftime("%Y/%m/%d")),
-                        ("報告資料", source_name),
-                    ]:
-                        p = tf.add_paragraph() if tf.paragraphs else tf.paragraphs[0]
-                        p.text = f"{line}:{val}"
-                        for run in p.runs:
-                            run.font.name = FONT
-                elif "周報" in txt or "簡報" in txt:
-                    tf = sp.text_frame; tf.clear()
-                    p = tf.paragraphs[0]
-                    p.text = "客訴分析簡報"
-                    for run in p.runs:
-                        run.font.name = FONT
+            if not sp.has_text_frame:
+                continue
+            l_in = sp.left / 914400
+            t_in = sp.top  / 914400
+            raw  = sp.text_frame.text.strip()
+
+            # ── 主標題（在 x>5" 且 y<3"）
+            if l_in > 5.0 and t_in < 3.0:
+                tf = sp.text_frame
+                tf.clear()
+                p = tf.paragraphs[0]
+                run = p.add_run()
+                run.text = "客訴分析簡報"
+                run.font.name  = FONT
+                run.font.bold  = True
+                run.font.size  = Pt(32)
+                run.font.color.rgb = RGBColor(0x16, 0x2B, 0x7E)
+
+            # ── 日期/資料欄（在 x>5" 且 y 在 3~5"）
+            elif l_in > 5.0 and 3.0 <= t_in < 5.0:
+                tf = sp.text_frame
+                tf.clear()
+                for label, val in [
+                    ("報告日期", datetime.now().strftime("%Y/%m/%d")),
+                    ("報告資料", source_name),
+                ]:
+                    p = tf.add_paragraph()
+                    run = p.add_run()
+                    run.text = f"{label}:{val}"
+                    run.font.name  = FONT
+                    run.font.bold  = True
+                    run.font.size  = Pt(18)
+                    run.font.color.rgb = RGBColor(0x1A, 0x2A, 0x7F)
+
+            # ── 公司名（在 x>6" 且 y>=5" 或有填色藍底）
+            elif l_in > 6.0 and t_in >= 4.8:
+                pass   # 保留原樣「凡立橙股份有限公司」
 
         def _fill_slide(slide, title_txt, chart_key_list, add_table=True):
-            # 更新標題
-            for sp in slide.shapes:
-                if sp.has_text_frame and ("客訴問題分析" in sp.text or
-                                          "機台問題佔比" in sp.text or
-                                          "機台與細項" in sp.text):
-                    tf = sp.text_frame; tf.clear()
-                    p = tf.paragraphs[0]; p.text = title_txt
-                    for run in p.runs: run.font.name = FONT
+            SWi = prs.slide_width  / 914400
+            SHi = prs.slide_height / 914400
 
-            # 收集現有 Table / Picture 的位置，然後刪除
-            tbl_rect = None; pic_rects = []
+            # 更新標題文字（比對關鍵字）
+            for sp in slide.shapes:
+                if sp.has_text_frame:
+                    txt = sp.text_frame.text
+                    if any(k in txt for k in ("客訴問題分析", "機台問題佔比", "機台與細項",
+                                               "客訴問題", "問題分析", "20260")):
+                        tf = sp.text_frame; tf.clear()
+                        p = tf.paragraphs[0]
+                        run = p.add_run()
+                        run.text = title_txt
+                        run.font.name = FONT
+                        run.font.bold = True
+                        run.font.size = Pt(16)
+                        run.font.color.rgb = BLUE
+
+            # 收集現有 Table / Picture 位置後刪除（清空舊內容）
+            tbl_rect = None
+            pic_rects = []
             for sp in list(slide.shapes):
                 if sp.shape_type == 19:   # Table
                     tbl_rect = (sp.left, sp.top, sp.width, sp.height)
                     delete_shape(sp)
-                elif sp.shape_type == 13: # Picture
+                elif sp.shape_type == 13:  # Picture
                     pic_rects.append((sp.left, sp.top, sp.width, sp.height))
                     delete_shape(sp)
             pic_rects.sort(key=lambda x: x[0])
 
-            # 插入新圖表
+            # ── 圖表插入：優先使用範本佔位位置，否則用固定座標 ──
             if chart_pack:
-                for idx, key in enumerate(chart_key_list):
-                    if key in chart_pack and idx < len(pic_rects):
-                        add_img(slide, chart_pack[key], *[v/914400 for v in pic_rects[idx]])
+                if add_table:
+                    # slide 2（問題分析）：表格左半 + 圖表右半
+                    # 固定座標：圖表放右側
+                    chart_fixed = [
+                        (6.2, 1.15, SWi - 6.5, SHi - 1.4),   # 問題類型分布
+                    ]
+                else:
+                    # slide 3（機台細項）：左右各放一張圖
+                    chart_fixed = [
+                        (0.3,              1.15, (SWi - 0.6) / 2,       SHi - 1.4),
+                        (0.3 + (SWi-0.6)/2 + 0.15, 1.15, (SWi-0.6)/2, SHi - 1.4),
+                    ]
 
-            # 重建表格
-            if add_table and tbl_rect:
+                for idx, key in enumerate(chart_key_list):
+                    if key not in chart_pack:
+                        continue
+                    if idx < len(pic_rects):
+                        # 範本有佔位圖片 → 用原始位置
+                        add_img(slide, chart_pack[key],
+                                *[v / 914400 for v in pic_rects[idx]])
+                    elif idx < len(chart_fixed):
+                        # 範本沒有佔位 → 用固定座標
+                        add_img(slide, chart_pack[key], *chart_fixed[idx])
+
+            # ── 重建資料表格 ──
+            if add_table:
+                # 如果範本有舊表格位置就沿用，否則預設左側
+                if tbl_rect:
+                    tb_l, tb_t, tb_w, tb_h = tbl_rect
+                else:
+                    tb_l = Inches(0.25)
+                    tb_t = Inches(1.15)
+                    tb_w = Inches(5.8)
+                    tb_h = Inches(SHi - 1.4)
                 rows_n = min(len(stats) + 1, 12)
-                tb = slide.shapes.add_table(rows_n, 4, *tbl_rect).table
-                col_ws = [Inches(3.8), Inches(1.1), Inches(1.2), Inches(2.0)]
+                tb = slide.shapes.add_table(rows_n, 4, tb_l, tb_t, tb_w, tb_h).table
+                col_ws = [Inches(2.4), Inches(0.8), Inches(1.0), Inches(1.5)]
                 for ci, cw in enumerate(col_ws):
                     tb.columns[ci].width = cw
-                # 表頭
                 for ci, hdr in enumerate(["問題類型", "件數", "百分比", "歸屬部門"]):
                     cell = tb.cell(0, ci)
                     cell.text = hdr
@@ -1028,17 +1234,31 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                             run.font.color.rgb = WHITE
                             run.font.size  = Pt(13)
                             run.font.name  = FONT
-                # 資料列
                 for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), 1):
                     try:   pct = f'{int(float(r["百分比"]))}%'
                     except: pct = f'{r["百分比"]}%'
-                    vals = [str(r["問題類型"]), str(r["件數"]), pct,
-                            str(r.get("歸屬部門", ""))]
-                    bg = LGRAY if ri % 2 == 0 else BEIGE
+                    dept = str(r.get("歸屬部門", ""))
+                    vals = [str(r["問題類型"]), str(int(r["件數"])), pct, dept]
+                    # 依部門套用品牌色為列底色
+                    dept_hex = DEPT_COLOR_MAP.get(dept, "")
+                    if dept_hex:
+                        r_bg = RGBColor(
+                            int(dept_hex[1:3], 16),
+                            int(dept_hex[3:5], 16),
+                            int(dept_hex[5:7], 16),
+                        )
+                        # 淡化：混入白色 80%
+                        r_bg = RGBColor(
+                            min(255, int(r_bg[0] * 0.25 + 255 * 0.75)),
+                            min(255, int(r_bg[1] * 0.25 + 255 * 0.75)),
+                            min(255, int(r_bg[2] * 0.25 + 255 * 0.75)),
+                        )
+                    else:
+                        r_bg = LGRAY if ri % 2 == 0 else BEIGE
                     for ci, v in enumerate(vals):
                         cell = tb.cell(ri, ci)
                         cell.text = v
-                        cell.fill.solid(); cell.fill.fore_color.rgb = bg
+                        cell.fill.solid(); cell.fill.fore_color.rgb = r_bg
                         for para in cell.text_frame.paragraphs:
                             para.alignment = PP_ALIGN.CENTER
                             for run in para.runs:
@@ -1506,38 +1726,87 @@ def section_1():
 
 
 def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: str = ""):
-    """Render charts. stats may be manually edited in section_2."""
-    c1, c2, c3 = st.columns(3)
-    
-    fig1 = px.bar(
-        stats, x="問題類型", y="件數", color="歸屬部門", text="百分比", title="問題類型分布",
-        color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
-    )
-    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
-    fig1.update_layout(height=400)
-    c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
+    """Render interactive Plotly charts with per-chart color pickers."""
 
+    # ── 顏色設定 expander ──────────────────────────────────────────
+    kp = key_prefix or "main"
+    with st.expander("🎨 調整圖表顏色（可個別修改）", expanded=False):
+        ca, cb, cc = st.columns(3)
+        # 問題類型直條圖：預設「依部門品牌色」，勾選後可指定單色
+        use_single_bar = ca.checkbox("直條圖使用單一顏色", key=f"{kp}_cb_bar")
+        c_bar_single   = ca.color_picker("直條圖顏色", value=BRAND_ORANGE, key=f"{kp}_cp_bar") if use_single_bar else None
+
+        # 圓餅圖：最多3個扇形獨立調色
+        pie_c1 = cb.color_picker("圓餅圖 第1色（主）", value=BRAND_BLUE,   key=f"{kp}_cp_pie1")
+        pie_c2 = cb.color_picker("圓餅圖 第2色（次）", value=BRAND_ORANGE, key=f"{kp}_cp_pie2")
+        pie_c3 = cb.color_picker("圓餅圖 第3色",       value=BRAND_LBLUE,  key=f"{kp}_cp_pie3")
+
+        c_hbar = cc.color_picker("細項橫條圖顏色", value=BRAND_BLUE, key=f"{kp}_cp_hbar")
+
+    custom_pie   = [pie_c1, pie_c2, pie_c3] + BRAND_PALETTE[3:]
+    custom_hbar  = c_hbar
+
+    # ── 圓餅圖資料（供 Plotly + matplotlib 共用）────────────────
     df_machine = df[df["問題類型"] == "機台問題類型"].copy()
+    m_stats = None
     if not df_machine.empty:
-        def get_machine_type(row):
+        def _gmt(row):
             txt = str(row.get("用戶內容", "")) + " " + str(row.get("主旨", ""))
             if "方舟" in txt: return "方舟站"
             if "電池" in txt: return "電池機"
             return "收瓶機"
-        df_machine["機台機型"] = df_machine.apply(get_machine_type, axis=1)
+        df_machine["機台機型"] = df_machine.apply(_gmt, axis=1)
         m_stats = df_machine["機台機型"].value_counts().reset_index()
         m_stats.columns = ["機型", "件數"]
-        fig2 = px.pie(m_stats, names="機型", values="件數", title="機台問題細分比較", hole=0.3)
-        fig2.update_layout(height=400, margin=dict(t=40, b=0, l=0, r=0))
-        c2.plotly_chart(fig2, use_container_width=True, key=f"{key_prefix}_fig2" if key_prefix else None)
-    else:
-        c2.info("無機台相關數據")
 
     detail_stats = df["問題細項"].value_counts().reset_index().head(10)
     detail_stats.columns = ["問題細項", "件數"]
-    fig3 = px.bar(detail_stats, x="件數", y="問題細項", orientation='h', title="十大問題細項分佈")
-    fig3.update_layout(height=400, yaxis={'categoryorder':'total ascending'}, margin=dict(t=40, b=0, l=0, r=0))
-    c3.plotly_chart(fig3, use_container_width=True, key=f"{key_prefix}_fig3" if key_prefix else None)
+
+    c1, c2, c3 = st.columns(3)
+
+    # ── 圖1：問題類型直條圖 ────────────────────────────────────
+    if use_single_bar:
+        fig1 = px.bar(stats, x="問題類型", y="件數", text="百分比",
+                      title="問題類型分布", color_discrete_sequence=[c_bar_single])
+        fig1.update_traces(marker_color=c_bar_single)
+    else:
+        fig1 = px.bar(stats, x="問題類型", y="件數",
+                      color="歸屬部門", text="百分比", title="問題類型分布",
+                      color_discrete_map=DEPT_COLOR_MAP)
+    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
+    fig1.update_layout(height=420, yaxis=dict(dtick=1, tickformat="d"),
+                       margin=dict(t=45, b=0))
+    c1.plotly_chart(fig1, use_container_width=True, key=f"{kp}_fig1")
+
+    # ── 圖2：機台圓餅圖 ────────────────────────────────────────
+    if m_stats is not None:
+        cmap = {row["機型"]: custom_pie[i % len(custom_pie)]
+                for i, row in m_stats.iterrows()}
+        fig2 = px.pie(m_stats, names="機型", values="件數",
+                      title="機台問題細分比較", hole=0.3,
+                      color="機型", color_discrete_map=cmap)
+        fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent+label")
+        fig2.update_layout(height=420, margin=dict(t=45, b=0, l=0, r=0))
+        c2.plotly_chart(fig2, use_container_width=True, key=f"{kp}_fig2")
+    else:
+        c2.info("無機台相關數據")
+
+    # ── 圖3：十大細項橫條圖 ────────────────────────────────────
+    fig3 = px.bar(detail_stats, x="件數", y="問題細項",
+                  orientation="h", title="十大問題細項分布",
+                  color_discrete_sequence=[custom_hbar])
+    fig3.update_traces(marker_color=custom_hbar)
+    fig3.update_layout(height=420, yaxis={"categoryorder": "total ascending"},
+                       xaxis=dict(dtick=1, tickformat="d"),
+                       margin=dict(t=45, b=0, l=0, r=0))
+    c3.plotly_chart(fig3, use_container_width=True, key=f"{kp}_fig3")
+
+    # ── 把用戶自選顏色存進 session_state 供 PPT/ZIP 使用 ────────
+    st.session_state[f"chart_colors_{kp}"] = {
+        "bar":  c_bar_single if use_single_bar else None,
+        "pie":  custom_pie,
+        "hbar": custom_hbar,
+    }
 
 
 def render_charts(df: pd.DataFrame, key_prefix: str = ""):
@@ -1582,7 +1851,14 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         df_machine["機台機型"] = df_machine.apply(get_machine_type, axis=1)
         m_stats = df_machine["機台機型"].value_counts().reset_index()
         m_stats.columns = ["機型", "件數"]
-        fig2 = px.pie(m_stats, names="機型", values="件數", title="機台問題細分比較", hole=0.3)
+        color_map = {row["機型"]: BRAND_PALETTE[i % len(BRAND_PALETTE)]
+                     for i, row in m_stats.iterrows()}
+        fig2 = px.pie(
+            m_stats, names="機型", values="件數",
+            title="機台問題細分比較", hole=0.3,
+            color="機型", color_discrete_map=color_map,
+        )
+        fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent+label")
         fig2.update_layout(height=400, margin=dict(t=40, b=0, l=0, r=0))
         c2.plotly_chart(fig2, use_container_width=True, key=f"{key_prefix}_fig2" if key_prefix else None)
     else:
@@ -1590,8 +1866,18 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
 
     detail_stats = df["問題細項"].value_counts().reset_index().head(10)
     detail_stats.columns = ["問題細項", "件數"]
-    fig3 = px.bar(detail_stats, x="件數", y="問題細項", orientation='h', title="十大問題細項分佈")
-    fig3.update_layout(height=400, yaxis={'categoryorder':'total ascending'}, margin=dict(t=40, b=0, l=0, r=0))
+    fig3 = px.bar(
+        detail_stats, x="件數", y="問題細項",
+        orientation="h", title="十大問題細項分布",
+        color_discrete_sequence=[BRAND_BLUE],
+    )
+    fig3.update_traces(marker_color=BRAND_BLUE)
+    fig3.update_layout(
+        height=400,
+        yaxis={"categoryorder": "total ascending"},
+        xaxis=dict(dtick=1, tickformat="d"),
+        margin=dict(t=40, b=0, l=0, r=0),
+    )
     c3.plotly_chart(fig3, use_container_width=True, key=f"{key_prefix}_fig3" if key_prefix else None)
 
 
@@ -1608,6 +1894,7 @@ def section_2():
     # --- Date range filter ---
     date_cols = [c for c in df_full.columns if "日期" in c or "date" in c.lower()]
     df = df_full.copy()
+    start_d = end_d = None
     if date_cols:
         dcol = date_cols[0]
         try:
@@ -1624,6 +1911,12 @@ def section_2():
                 st.caption(f"目前顯示 {len(df)} 筆 / 共 {len(df_full)} 筆")
         except Exception:
             pass
+
+    # 組合 source_name = 日期區間（用於 PPT 封面）
+    if start_d and end_d:
+        ppt_source = f"{start_d.strftime('%Y/%m/%d')}～{end_d.strftime('%Y/%m/%d')}"
+    else:
+        ppt_source = st.session_state.get("source_name", "unknown")
 
     stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
     stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int)
@@ -1667,7 +1960,13 @@ def section_2():
 
     ai_text = generate_ai_summary_llm(df, model_name=model_name)
     st.text_area("分析摘要預覽", ai_text, height=140)
-    chart_pack = build_chart_pack(df)
+    chart_colors = st.session_state.get("chart_colors_sec2", {})
+    chart_pack = build_chart_pack(
+        df,
+        color_bar=chart_colors.get("bar"),
+        color_pie=chart_colors.get("pie"),
+        color_hbar=chart_colors.get("hbar"),
+    )
     st.download_button(
         "下載 AI 分析文字檔",
         data=ai_text.encode("utf-8"),
@@ -1688,9 +1987,11 @@ def section_2():
         file_name=f"{datetime.now().strftime('%Y%m%d')}_圖表圖檔.zip",
         mime="application/zip",
     )
+    # PPT：使用畫面篩選後的 stats（不含合計列）+ 日期區間作為封面標題
     ppt_bytes = build_ppt_bytes(
-        stats_with_total, ai_text,
-        st.session_state.get("source_name", "unknown"),
+        chart_stats,          # 畫面上的純資料列（無合計列）
+        ai_text,
+        ppt_source,           # 封面顯示日期區間
         chart_pack=chart_pack,
     )
     st.download_button(
@@ -1703,6 +2004,19 @@ def section_2():
 
 def section_3():
     st.subheader("功能三：歷史分析紀錄")
+
+    # ── Google Sheets 連線狀態 ──
+    import os
+    has_creds = bool(os.environ.get("GOOGLE_CREDENTIALS_JSON", ""))
+    has_sid   = bool(os.environ.get("HISTORY_SHEET_ID", ""))
+    ws_test   = _history_sheet()
+    if ws_test is not None:
+        st.success("☁️ Google Sheets 已連線，歷史紀錄永久保存")
+    elif has_creds and has_sid:
+        st.warning("⚠️ 環境變數已設定但連線失敗，請確認試算表已授權給 Service Account：fen-52@stoked-coder-443500-f3.iam.gserviceaccount.com")
+    else:
+        st.info("ℹ️ 未連線 Google Sheets，歷史紀錄僅限本次瀏覽")
+
     history = load_history()
     if not history:
         st.info("尚無歷史紀錄。")
@@ -1716,36 +2030,37 @@ def section_3():
         if sn not in seen_names:
             seen_names[sn] = item
             deduped.append(item)
-        else:
-            # Keep the newer one (history is already newest-first)
-            pass
     history = deduped
 
     for item in history:
-        out_path = Path(item["output_path"])
+        out_path = Path(item.get("output_path", ""))
         cache = st.session_state.get("_history_cache", {})
-        
-        # 優先從磁碟讀取；若磁碟檔案不存在則從 session_state 快取讀取
-        if not out_path.exists() and item["id"] not in cache:
-            continue  # 磁碟與快取都找不到，略過
+        item_id = item["id"]
+
+        # 取得 excel bytes：磁碟 → session_state 快取（已由 load_history 從 Sheets 填入）
+        dl_bytes = None
+        df_hist  = None
+        if out_path.exists():
+            try:
+                dl_bytes = out_path.read_bytes()
+                df_hist  = pd.read_excel(io.BytesIO(dl_bytes))
+            except Exception:
+                dl_bytes = None
+        if dl_bytes is None and item_id in cache:
+            try:
+                dl_bytes = cache[item_id]["excel_bytes"]
+                df_hist  = pd.read_excel(io.BytesIO(dl_bytes))
+            except Exception:
+                dl_bytes = None
+
+        if dl_bytes is None:
+            continue   # 真的找不到，跳過
         
         sname = item.get('source_name', '')
         if len(sname) > 28:
             sname = sname[:14] + "..." + sname[-10:]
         label = f"{item['created_at'][:16]}  {sname}  ({item['rows']} 筆)"
         with st.expander(label):
-            # 載入 df_hist：先嘗試磁碟，再用 session_state 快取
-            try:
-                if out_path.exists():
-                    df_hist = pd.read_excel(out_path)
-                    dl_bytes = out_path.read_bytes()
-                else:
-                    dl_bytes = cache[item["id"]]["excel_bytes"]
-                    df_hist = pd.read_excel(io.BytesIO(dl_bytes))
-            except Exception as e:
-                st.error(f"無法載入歷史資料：{e}")
-                continue
-
             tab_data, tab_chart, tab_ai = st.tabs(["資料預覽", "圖表分析", "AI 重點摘要"])
             
             with tab_data:
