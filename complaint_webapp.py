@@ -774,103 +774,108 @@ def to_csv_bytes(df: pd.DataFrame) -> bytes:
 
 
 def to_pdf_bytes(df: pd.DataFrame) -> bytes:
-    """Generate PDF using fpdf2 + Noto CJK TTF for proper Traditional Chinese support."""
+    """Generate PDF using fpdf2 + Noto CJK for Traditional Chinese support."""
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
-    import os
+    import os, glob
 
-    # ── 找字型（優先順序：系統 NotoSansCJK → 備選路徑）
+    # ── 找字型：多重備援路徑 ──
     CJK_FONT_CANDIDATES = [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJKtc-Regular.otf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJKtc-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/arphic/uming.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
     ]
+    CJK_FONT_CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
+    CJK_FONT_CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.otf", recursive=True)
     font_path = next((p for p in CJK_FONT_CANDIDATES if os.path.exists(p)), None)
+
+    # ── 若系統無字型，嘗試即時下載 ──
+    if not font_path:
+        _dl_path = "/tmp/NotoSansCJK.ttc"
+        if not os.path.exists(_dl_path):
+            try:
+                import urllib.request
+                urllib.request.urlretrieve(
+                    "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc",
+                    _dl_path
+                )
+            except Exception:
+                pass
+        if os.path.exists(_dl_path):
+            font_path = _dl_path
 
     table_df = df.copy()
     drop_cols = [c for c in ["選取"] if c in table_df.columns]
     table_df = table_df.drop(columns=drop_cols).fillna("")
 
-    # ── 欄寬設定（A4 橫向 = 297mm 可用約 277mm）
-    # 依欄位名稱給較寬空間
     PAGE_W_MM = 277.0
-    WIDE_COLS  = {"用戶內容", "主旨", "問題主旨"}
+    WIDE_COLS   = {"用戶內容", "主旨", "問題主旨"}
     MEDIUM_COLS = {"問題細項", "問題類型"}
-
     num_cols = len(table_df.columns)
-    # 分配欄寬
     wide_count   = sum(1 for c in table_df.columns if c in WIDE_COLS)
     medium_count = sum(1 for c in table_df.columns if c in MEDIUM_COLS)
     narrow_count = num_cols - wide_count - medium_count
-    if wide_count + medium_count + narrow_count == 0:
-        col_widths = {c: PAGE_W_MM / num_cols for c in table_df.columns}
-    else:
-        unit = PAGE_W_MM / max(wide_count*4 + medium_count*2 + narrow_count, 1)
-        col_widths = {}
-        for c in table_df.columns:
-            if c in WIDE_COLS:
-                col_widths[c] = unit * 4
-            elif c in MEDIUM_COLS:
-                col_widths[c] = unit * 2
-            else:
-                col_widths[c] = unit
+    unit = PAGE_W_MM / max(wide_count*4 + medium_count*2 + narrow_count, 1)
+    col_widths = {}
+    for c in table_df.columns:
+        if c in WIDE_COLS:       col_widths[c] = unit * 4
+        elif c in MEDIUM_COLS:   col_widths[c] = unit * 2
+        else:                    col_widths[c] = unit
 
     pdf = FPDF(orientation="L", format="A4")
     pdf.set_auto_page_break(auto=True, margin=10)
     pdf.add_page()
 
     if font_path:
-        pdf.add_font("CJK", style="", fname=font_path)
-        FONT = "CJK"
+        try:
+            pdf.add_font("CJK", style="", fname=font_path)
+            FONT = "CJK"
+        except Exception:
+            FONT = "Helvetica"
     else:
         FONT = "Helvetica"
 
-    ROW_H   = 7.0
-    HDR_H   = 8.0
-    FS_HDR  = 8
-    FS_CELL = 7
+    ROW_H = 7.0; HDR_H = 8.0; FS_HDR = 8; FS_CELL = 7
 
-    # ── 表頭
-    pdf.set_fill_color(0x06, 0x0E, 0x9F)   # ECOCO 藍
+    def safe_text(s):
+        if FONT == "Helvetica":
+            return s.encode("ascii", "replace").decode()
+        return s
+
+    # 表頭
+    pdf.set_fill_color(0x06, 0x0E, 0x9F)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font(FONT, size=FS_HDR)
     for col in table_df.columns:
-        w = col_widths[col]
-        pdf.cell(w, HDR_H, col, border=1, fill=True,
+        pdf.cell(col_widths[col], HDR_H, safe_text(col), border=1, fill=True,
                  new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
     pdf.ln(HDR_H)
 
-    # ── 資料列
+    # 資料列
     pdf.set_font(FONT, size=FS_CELL)
     for i, (_, row) in enumerate(table_df.iterrows()):
-        if i % 2 == 0:
-            pdf.set_fill_color(0xEB, 0xF4, 0xFA)
-        else:
-            pdf.set_fill_color(255, 255, 255)
+        if i % 2 == 0: pdf.set_fill_color(0xEB, 0xF4, 0xFA)
+        else:           pdf.set_fill_color(255, 255, 255)
         pdf.set_text_color(0x22, 0x22, 0x22)
         for col in table_df.columns:
             val = str(row[col])
-            w = col_widths[col]
-            # 長文字截短避免溢出
-            if col in WIDE_COLS and len(val) > 28:
-                val = val[:26] + "…"
-            elif len(val) > 14:
-                val = val[:13] + "…"
-            pdf.cell(w, ROW_H, val, border=1, fill=True,
+            if col in WIDE_COLS and len(val) > 28:  val = val[:26] + "…"
+            elif len(val) > 14:                      val = val[:13] + "…"
+            pdf.cell(col_widths[col], ROW_H, safe_text(val), border=1, fill=True,
                      new_x=XPos.RIGHT, new_y=YPos.TOP, align="L")
         pdf.ln(ROW_H)
 
-    # ── 頁尾
+    # 頁尾
     pdf.set_y(-12)
     pdf.set_font(FONT, size=6)
     pdf.set_text_color(120, 120, 120)
-    pdf.cell(0, 6,
-             f"ECOCO 客訴分析報告  共 {len(table_df)} 筆  產出日期：{datetime.now().strftime('%Y/%m/%d')}",
-             align="C")
-
+    pdf.cell(0, 6, safe_text(f"ECOCO 客訴分析報告  共 {len(table_df)} 筆  產出日期：{datetime.now().strftime('%Y/%m/%d')}"), align="C")
     return bytes(pdf.output())
-
 
 def _setup_cjk_font() -> None:
     """設定 matplotlib 中文字型，多重備援路徑確保 Render 伺服器可用。"""
@@ -1405,12 +1410,24 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
 
 
 def upload_to_google_sheet(df: pd.DataFrame, credentials_json: dict, spreadsheet_id: str, worksheet_name: str) -> None:
-    if gspread is None or Credentials is None:
-        raise RuntimeError("尚未安裝 gspread 或 google-auth。")
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds = Credentials.from_service_account_info(credentials_json, scopes=scopes)
-    client = gspread.authorize(creds)
-    sh = client.open_by_key(spreadsheet_id)
+    import gspread as _gs
+    from google.oauth2.service_account import Credentials as _Creds
+    # 必須同時包含 spreadsheets 和 drive scope
+    scopes = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    creds = _Creds.from_service_account_info(credentials_json, scopes=scopes)
+    client = _gs.authorize(creds)
+    try:
+        sh = client.open_by_key(spreadsheet_id)
+    except Exception as e:
+        raise PermissionError(
+            f"無法存取試算表（ID: {spreadsheet_id}）。\n"
+            f"請確認已將試算表共用給：{credentials_json.get('client_email', '?')}\n"
+            f"原始錯誤：{e}"
+        )
     try:
         ws = sh.worksheet(worksheet_name)
         ws.clear()
@@ -1418,6 +1435,7 @@ def upload_to_google_sheet(df: pd.DataFrame, credentials_json: dict, spreadsheet
         ws = sh.add_worksheet(title=worksheet_name, rows=1000, cols=30)
     values = [df.columns.tolist()] + df.fillna("").astype(str).values.tolist()
     ws.update(values)
+    return ws.url if hasattr(ws, 'url') else ""
 
 
 def section_1():
@@ -1732,9 +1750,16 @@ def section_1():
             if not cred_file or not spreadsheet_id:
                 st.error("請先上傳 JSON 並填寫 Spreadsheet ID。")
             else:
-                credentials_json = json.loads(cred_file.getvalue().decode("utf-8"))
-                upload_to_google_sheet(final_df, credentials_json, spreadsheet_id, ws_name)
-                st.success(f"已上傳到 Google Sheet 工作表：{ws_name}")
+                try:
+                    credentials_json = json.loads(cred_file.getvalue().decode("utf-8"))
+                    upload_to_google_sheet(final_df, credentials_json, spreadsheet_id, ws_name)
+                    st.success(f"✅ 已上傳到 Google Sheet 工作表：{ws_name}")
+                    st.info(f"📋 Service Account：{credentials_json.get('client_email', '')}")
+                except PermissionError as e:
+                    st.error(str(e))
+                    st.warning("👉 請到 Google 試算表右上角「共用」，加入上方 Service Account email，並給予「編輯者」權限")
+                except Exception as e:
+                    st.error(f"上傳失敗：{e}")
 
 
 def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: str = ""):
@@ -1972,45 +1997,82 @@ def section_2():
 
     ai_text = generate_ai_summary_llm(df, model_name=model_name)
     st.text_area("分析摘要預覽", ai_text, height=140)
+
+    # ── 預先產生所有下載檔案（避免 Streamlit on_click 時檔案還未產生）──
     chart_colors = st.session_state.get("chart_colors_sec2", {})
-    chart_pack = build_chart_pack(
-        df,
-        color_bar=chart_colors.get("bar"),
-        color_pie=chart_colors.get("pie"),
-        color_hbar=chart_colors.get("hbar"),
-    )
-    st.download_button(
-        "下載 AI 分析文字檔",
+
+    # 用 session_state 快取，避免每次重繪都重新產生大檔
+    cache_key = f"chart_pack_{ppt_source}"
+    if cache_key not in st.session_state:
+        with st.spinner("正在產生圖表與簡報..."):
+            try:
+                st.session_state[cache_key] = build_chart_pack(
+                    df,
+                    color_bar=chart_colors.get("bar"),
+                    color_pie=chart_colors.get("pie"),
+                    color_hbar=chart_colors.get("hbar"),
+                )
+            except Exception as e:
+                st.error(f"圖表產生失敗：{e}")
+                st.session_state[cache_key] = {}
+
+    chart_pack = st.session_state[cache_key]
+
+    ppt_cache_key = f"ppt_bytes_{ppt_source}"
+    if ppt_cache_key not in st.session_state:
+        with st.spinner("正在產生 PPT 簡報..."):
+            try:
+                st.session_state[ppt_cache_key] = build_ppt_bytes(
+                    chart_stats, ai_text, ppt_source, chart_pack=chart_pack,
+                )
+            except Exception as e:
+                st.error(f"PPT 產生失敗：{e}")
+                st.session_state[ppt_cache_key] = b""
+
+    ppt_bytes = st.session_state[ppt_cache_key]
+
+    # ── 產生 ZIP ──
+    zip_cache_key = f"zip_bytes_{ppt_source}"
+    if zip_cache_key not in st.session_state:
+        try:
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for fn, b in chart_pack.items():
+                    zi = zipfile.ZipInfo(fn)
+                    zi.flag_bits |= 0x800
+                    zi.compress_type = zipfile.ZIP_DEFLATED
+                    zf.writestr(zi, b)
+            st.session_state[zip_cache_key] = zip_buf.getvalue()
+        except Exception as e:
+            st.error(f"ZIP 產生失敗：{e}")
+            st.session_state[zip_cache_key] = b""
+
+    zip_bytes = st.session_state[zip_cache_key]
+
+    # ── 下載按鈕（檔案已預先備好）──
+    dl_col1, dl_col2, dl_col3 = st.columns(3)
+    dl_col1.download_button(
+        "⬇️ 下載 AI 分析文字檔",
         data=ai_text.encode("utf-8"),
         file_name=f"{datetime.now().strftime('%Y%m%d')}_AI重點分析.txt",
         mime="text/plain",
+        use_container_width=True,
     )
-    # one-click chart image package
-    zip_buf = io.BytesIO()
-    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for fn, b in chart_pack.items():
-            zi = zipfile.ZipInfo(fn)
-            zi.flag_bits |= 0x800  # UTF-8 filename flag，避免中文亂碼
-            zi.compress_type = zipfile.ZIP_DEFLATED
-            zf.writestr(zi, b)
-    st.download_button(
-        "下載圖表圖檔（ZIP）",
-        data=zip_buf.getvalue(),
+    dl_col2.download_button(
+        "⬇️ 下載圖表圖檔（ZIP）",
+        data=zip_bytes,
         file_name=f"{datetime.now().strftime('%Y%m%d')}_圖表圖檔.zip",
         mime="application/zip",
+        use_container_width=True,
+        disabled=not zip_bytes,
     )
-    # PPT：使用畫面篩選後的 stats（不含合計列）+ 日期區間作為封面標題
-    ppt_bytes = build_ppt_bytes(
-        chart_stats,          # 畫面上的純資料列（無合計列）
-        ai_text,
-        ppt_source,           # 封面顯示日期區間
-        chart_pack=chart_pack,
-    )
-    st.download_button(
-        "一鍵下載分析簡報 PPT",
+    dl_col3.download_button(
+        "⬇️ 一鍵下載分析簡報 PPT",
         data=ppt_bytes,
         file_name=f"{datetime.now().strftime('%Y%m%d')}_分析簡報.pptx",
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        use_container_width=True,
+        disabled=not ppt_bytes,
     )
 
 
