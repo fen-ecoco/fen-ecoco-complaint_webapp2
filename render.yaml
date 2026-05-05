@@ -4,7 +4,7 @@ services:
     env: python
     repo: https://github.com/fen-ecoco/fen-ecoco-complaint_webapp2
     plan: free
-    buildCommand: "pip install -r requirements.txt"
+    buildCommand: "apt-get install -y fonts-noto-cjk 2>/dev/null || true && pip install -r requirements.txt && fc-cache -fv 2>/dev/null || true"
     startCommand: "streamlit run complaint_webapp.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false"
     autoDeploy: true
     envVars:

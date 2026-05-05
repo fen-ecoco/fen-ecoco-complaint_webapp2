@@ -873,40 +873,52 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
 
 
 def _setup_cjk_font() -> None:
-    """設定 matplotlib 中文字型，優先使用系統已安裝的 Noto CJK 字型。"""
+    """設定 matplotlib 中文字型，多重備援路徑確保 Render 伺服器可用。"""
     import matplotlib.font_manager as fm
     import os
 
-    # ── 1. 優先嘗試已知路徑（Ubuntu / Render 伺服器）──
+    # ── 已設定過就直接返回 ──
+    current = plt.rcParams.get("font.family", "")
+    if current and "sans-serif" not in str(current) and current != ["DejaVu Sans"]:
+        return
+
+    # ── 1. 已知路徑（Ubuntu / Render / Debian）──
     KNOWN_PATHS = [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJKtc-Regular.otf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJKtc-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/arphic/uming.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
     ]
     for fp in KNOWN_PATHS:
         if os.path.exists(fp):
             try:
                 fm.fontManager.addfont(fp)
-                plt.rcParams["font.family"] = fm.FontProperties(fname=fp).get_name()
+                fname = fm.FontProperties(fname=fp).get_name()
+                plt.rcParams["font.family"] = fname
                 plt.rcParams["axes.unicode_minus"] = False
                 return
             except Exception:
                 continue
 
-    # ── 2. 從字型管理器搜尋 CJK 字型 ──
-    cjk_keywords = [
-        "Noto Sans CJK", "Noto Serif CJK", "MingLiU", "PMingLiU",
-        "Microsoft JhengHei", "SimHei", "WenQuanYi", "Droid Sans Fallback",
-        "PingFang", "Heiti",
+    # ── 2. 掃描所有已安裝字型找 CJK ──
+    CJK_KEYWORDS = [
+        "Noto Sans CJK", "Noto Serif CJK", "Noto Sans TC",
+        "MingLiU", "PMingLiU", "Microsoft JhengHei",
+        "WenQuanYi", "Droid Sans Fallback", "AR PL UMing",
     ]
-    for kw in cjk_keywords:
+    fm._load_fontmanager(try_read_cache=False)   # 強制重新掃描
+    for kw in CJK_KEYWORDS:
         for f in fm.fontManager.ttflist:
             if kw.lower() in f.name.lower():
                 plt.rcParams["font.family"] = f.name
                 plt.rcParams["axes.unicode_minus"] = False
                 return
 
+    # ── 3. 最終 fallback：至少關掉負號亂碼 ──
     plt.rcParams["axes.unicode_minus"] = False
 
 
