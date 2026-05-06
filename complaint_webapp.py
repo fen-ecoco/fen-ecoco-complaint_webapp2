@@ -895,79 +895,87 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
                  new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
     pdf.ln(HDR_H)
 
-    # ── 資料列（先算每列最高行數，再統一高度繪製）──
+    # ── 資料列：所有欄位均自動換行，先算統一列高再繪製 ──
     pdf.set_font(FONT, size=FS_CELL)
-    CHAR_W_MM = 3.5      # 每個中文字寬度估算（mm），FS_CELL=7pt
 
-    def count_lines(text: str, col_w_mm: float) -> int:
-        """估算文字在欄寬內需要幾行。"""
+    col_list = list(table_df.columns)
+
+    def calc_lines(text: str, col_w: float) -> int:
+        """用 pdf.get_string_width 精確計算需要幾行。"""
         if not text:
             return 1
-        chars_per_line = max(1, int(col_w_mm / CHAR_W_MM))
         lines = 0
-        for para in text.split("\n"):
+        for para in text.replace("\r", "").split("\n"):
             if not para:
                 lines += 1
-            else:
-                lines += max(1, -(-len(para) // chars_per_line))  # ceiling div
+                continue
+            line_w = 0.0
+            char_count = 0
+            for ch in para:
+                cw_ch = pdf.get_string_width(ch)
+                if line_w + cw_ch > col_w - 1:   # 1mm padding
+                    lines += 1
+                    line_w = cw_ch
+                    char_count = 1
+                else:
+                    line_w += cw_ch
+                    char_count += 1
+            lines += 1   # 最後一行
         return max(1, lines)
 
     for i, (_, row) in enumerate(table_df.iterrows()):
-        # 先計算這列所需最大行數 → 決定列高
-        max_lines = 1
-        cell_texts = {}
-        for col in table_df.columns:
-            val = str(row[col])
-            if col not in WIDE_COLS and len(val) > 18:
-                val = val[:17] + "…"     # 非寬欄截斷
-            cell_texts[col] = safe_text(val)
-            if col in WIDE_COLS:
-                max_lines = max(max_lines, count_lines(val, col_widths[col]))
+        # 1. 準備所有欄文字（不截斷）
+        cell_texts: dict[str, str] = {}
+        for col in col_list:
+            cell_texts[col] = safe_text(str(row[col]))
 
+        # 2. 計算每欄需要的行數 → 取最大值作為本列高度
+        max_lines = max(
+            calc_lines(cell_texts[col], col_widths[col])
+            for col in col_list
+        )
         row_h = max_lines * ROW_H
 
-        # 頁面換頁檢查
+        # 3. 換頁檢查（換頁後重繪表頭）
         if pdf.get_y() + row_h > pdf.page_break_trigger:
             pdf.add_page()
-            # 重繪表頭
             pdf.set_fill_color(0x06, 0x0E, 0x9F)
             pdf.set_text_color(255, 255, 255)
             pdf.set_font(FONT, size=FS_HDR)
-            for col in table_df.columns:
+            for col in col_list:
                 pdf.cell(col_widths[col], HDR_H, safe_text(col), border=1, fill=True,
                          new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
             pdf.ln(HDR_H)
             pdf.set_font(FONT, size=FS_CELL)
 
-        if i % 2 == 0: pdf.set_fill_color(0xEB, 0xF4, 0xFA)
-        else:           pdf.set_fill_color(255, 255, 255)
+        # 4. 設定底色
+        fill_rgb = (0xEB, 0xF4, 0xFA) if i % 2 == 0 else (0xFF, 0xFF, 0xFF)
+        pdf.set_fill_color(*fill_rgb)
         pdf.set_text_color(0x22, 0x22, 0x22)
 
         x0 = pdf.get_x()
         y0 = pdf.get_y()
 
-        for col in table_df.columns:
+        # 5. 預先繪製整列底色矩形（確保底色填滿 row_h）
+        total_w = sum(col_widths[c] for c in col_list)
+        pdf.rect(x0, y0, total_w, row_h, style="F")
+
+        # 6. 逐欄用 multi_cell 繪製（每欄都從 x0+offset, y0 開始）
+        x_cursor = x0
+        for col in col_list:
             cw = col_widths[col]
             val = cell_texts[col]
-            x_col = x0 + sum(col_widths[c] for c in list(table_df.columns)[:list(table_df.columns).index(col)])
+            pdf.set_xy(x_cursor, y0)
+            pdf.set_fill_color(*fill_rgb)
+            pdf.multi_cell(
+                cw, ROW_H, val,
+                border=1, align="L", fill=True,
+                new_x=XPos.RIGHT, new_y=YPos.TOP,
+                max_line_height=ROW_H,
+            )
+            x_cursor += cw
 
-            if col in WIDE_COLS and max_lines > 1:
-                # 寬欄用 multi_cell 換行，限制在 row_h 內
-                pdf.set_xy(x_col, y0)
-                # 繪製底色矩形
-                pdf.set_fill_color(0xEB, 0xF4, 0xFA if i % 2 == 0 else 0xFF)
-                pdf.rect(x_col, y0, cw, row_h, style="F")
-                pdf.set_xy(x_col, y0)
-                pdf.set_fill_color(0xEB, 0xF4, 0xFA if i % 2 == 0 else 0xFF)
-                pdf.multi_cell(cw, ROW_H, val, border=1, align="L",
-                               new_x=XPos.RIGHT, new_y=YPos.TOP,
-                               max_line_height=ROW_H)
-            else:
-                # 一般欄位用 cell，固定高度
-                pdf.set_xy(x_col, y0)
-                pdf.cell(cw, row_h, val, border=1, fill=True,
-                         new_x=XPos.RIGHT, new_y=YPos.TOP, align="L")
-
+        # 7. 移到下一列
         pdf.set_xy(x0, y0 + row_h)
 
     # 頁尾
