@@ -151,6 +151,41 @@ BRAND_PALETTE = [
     BRAND_LBLUE, BRAND_BEIGE, BRAND_TEAL,
 ]
 
+
+# ── 啟動時確保 CJK 字型可用（下載備援）──────────────────────────
+@st.cache_resource(show_spinner=False)
+def _ensure_cjk_font() -> str:
+    """回傳可用的 CJK 字型路徑；若系統沒有則下載到 /tmp。"""
+    import os, glob
+    CANDIDATES = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/tmp/NotoSansCJK.ttc",
+    ]
+    CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
+    found = next((p for p in CANDIDATES if os.path.exists(p)), None)
+    if found:
+        return found
+    # 下載到 /tmp
+    _dl = "/tmp/NotoSansCJK.ttc"
+    URLS = [
+        "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc",
+        "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc",
+    ]
+    for url in URLS:
+        try:
+            import urllib.request
+            urllib.request.urlretrieve(url, _dl)
+            if os.path.exists(_dl) and os.path.getsize(_dl) > 100_000:
+                return _dl
+        except Exception:
+            continue
+    return ""
+
 HISTORY_DIR = Path("history_reports")
 HISTORY_DIR.mkdir(exist_ok=True)
 META_FILE = HISTORY_DIR / "history.json"
@@ -558,31 +593,47 @@ def _get_gsheet_client():
         return None
 
 
-def _history_sheet():
-    """回傳歷史紀錄工作表；失敗回傳 None。"""
+def _history_sheet(log_error: bool = False):
+    """回傳歷史紀錄工作表；失敗回傳 None。log_error=True 時把錯誤存入 session_state。"""
     import os
     client = _get_gsheet_client()
     if client is None:
+        if log_error:
+            st.session_state["_gsheet_error"] = "無法建立 Google API 連線（請確認 GOOGLE_CREDENTIALS_JSON 環境變數格式正確）"
         return None
     try:
-        # ── 1. 優先讀 Render 環境變數 ──
         sid = os.environ.get("HISTORY_SHEET_ID", "").strip()
         if not sid:
-            # ── 2. 備用：st.secrets ──
             try:
                 sid = str(st.secrets.get("HISTORY_SHEET_ID", "")).strip()
             except Exception:
                 sid = ""
         if not sid:
+            if log_error:
+                st.session_state["_gsheet_error"] = "未設定 HISTORY_SHEET_ID 環境變數"
             return None
         ss = client.open_by_key(sid)
         try:
-            return ss.worksheet("歷史紀錄")
+            ws = ss.worksheet("歷史紀錄")
+            st.session_state.pop("_gsheet_error", None)
+            return ws
         except Exception:
             ws = ss.add_worksheet("歷史紀錄", rows=500, cols=6)
             ws.append_row(["id", "created_at", "source_name", "rows", "excel_b64"])
+            st.session_state.pop("_gsheet_error", None)
             return ws
-    except Exception:
+    except Exception as e:
+        err_str = str(e)
+        if "PERMISSION_DENIED" in err_str or "403" in err_str:
+            msg = (f"Google Sheets API 權限錯誤。請至 Google Cloud Console 確認已啟用：\n"
+                   f"1. Google Sheets API\n2. Google Drive API\n"
+                   f"錯誤：{err_str[:200]}")
+        elif "NOT_FOUND" in err_str or "404" in err_str:
+            msg = f"試算表不存在（ID 可能錯誤）：{err_str[:200]}"
+        else:
+            msg = f"Google Sheets 連線錯誤：{err_str[:300]}"
+        if log_error:
+            st.session_state["_gsheet_error"] = msg
         return None
 
 
@@ -793,21 +844,9 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
     CJK_FONT_CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
     CJK_FONT_CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.otf", recursive=True)
     font_path = next((p for p in CJK_FONT_CANDIDATES if os.path.exists(p)), None)
-
-    # ── 若系統無字型，嘗試即時下載 ──
+    # 使用 _ensure_cjk_font 確保有可用字型
     if not font_path:
-        _dl_path = "/tmp/NotoSansCJK.ttc"
-        if not os.path.exists(_dl_path):
-            try:
-                import urllib.request
-                urllib.request.urlretrieve(
-                    "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc",
-                    _dl_path
-                )
-            except Exception:
-                pass
-        if os.path.exists(_dl_path):
-            font_path = _dl_path
+        font_path = _ensure_cjk_font()
 
     table_df = df.copy()
     drop_cols = [c for c in ["選取"] if c in table_df.columns]
@@ -862,13 +901,26 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
         if i % 2 == 0: pdf.set_fill_color(0xEB, 0xF4, 0xFA)
         else:           pdf.set_fill_color(255, 255, 255)
         pdf.set_text_color(0x22, 0x22, 0x22)
+        # 先計算這一列最高所需的行高
+        row_vals = []
         for col in table_df.columns:
             val = str(row[col])
-            if col in WIDE_COLS and len(val) > 28:  val = val[:26] + "…"
-            elif len(val) > 14:                      val = val[:13] + "…"
-            pdf.cell(col_widths[col], ROW_H, safe_text(val), border=1, fill=True,
-                     new_x=XPos.RIGHT, new_y=YPos.TOP, align="L")
-        pdf.ln(ROW_H)
+            row_vals.append(safe_text(val))
+        # 使用 multi_cell 自動換行
+        x_start = pdf.get_x()
+        y_start = pdf.get_y()
+        max_h = ROW_H
+        # 先畫底色（整列）
+        total_w = sum(col_widths[c] for c in table_df.columns)
+        pdf.rect(x_start, y_start, total_w, max_h, style="F")
+        pdf.set_xy(x_start, y_start)
+        for ci, col in enumerate(table_df.columns):
+            val = row_vals[ci]
+            cw = col_widths[col]
+            pdf.multi_cell(cw, ROW_H, val, border=1,
+                           new_x=XPos.RIGHT, new_y=YPos.TOP, align="L",
+                           max_line_height=ROW_H)
+        pdf.ln(0)
 
     # 頁尾
     pdf.set_y(-12)
@@ -878,7 +930,7 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
     return bytes(pdf.output())
 
 def _setup_cjk_font() -> None:
-    """設定 matplotlib 中文字型，多重備援路徑確保 Render 伺服器可用。"""
+    """設定 matplotlib 中文字型，使用 _ensure_cjk_font 取得字型路徑。"""
     import matplotlib.font_manager as fm
     import os
 
@@ -886,6 +938,17 @@ def _setup_cjk_font() -> None:
     current = plt.rcParams.get("font.family", "")
     if current and "sans-serif" not in str(current) and current != ["DejaVu Sans"]:
         return
+
+    # ── 優先使用 _ensure_cjk_font 確保字型存在 ──
+    fp = _ensure_cjk_font()
+    if fp and os.path.exists(fp):
+        try:
+            fm.fontManager.addfont(fp)
+            plt.rcParams["font.family"] = fm.FontProperties(fname=fp).get_name()
+            plt.rcParams["axes.unicode_minus"] = False
+            return
+        except Exception:
+            pass
 
     # ── 1. 已知路徑（Ubuntu / Render / Debian）──
     KNOWN_PATHS = [
@@ -2087,7 +2150,10 @@ def section_3():
     if ws_test is not None:
         st.success("☁️ Google Sheets 已連線，歷史紀錄永久保存")
     elif has_creds and has_sid:
-        st.warning("⚠️ 環境變數已設定但連線失敗，請確認試算表已授權給 Service Account：fen-52@stoked-coder-443500-f3.iam.gserviceaccount.com")
+        ws_test2 = _history_sheet(log_error=True)  # trigger error logging
+        err_detail = st.session_state.get("_gsheet_error", "")
+        st.warning(f"⚠️ 環境變數已設定但連線失敗\n{err_detail}")
+        st.info("💡 請到 Google Cloud Console 確認已啟用 **Google Sheets API** 與 **Google Drive API**：\nhttps://console.cloud.google.com/apis/library")
     else:
         st.info("ℹ️ 未連線 Google Sheets，歷史紀錄僅限本次瀏覽")
 
