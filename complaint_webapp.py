@@ -2196,7 +2196,243 @@ def section_2():
     )
 
 
-def section_3():
+def section_4():
+    """功能四：週/月/季/年度趨勢分析 + AI 口說報告"""
+    st.subheader("📈 功能四：週/月/季/年度趨勢分析")
+
+    # ── 時間維度選擇器 ──────────────────────────────────────────
+    dim_col, _, gen_col = st.columns([2, 3, 2])
+    dim = dim_col.selectbox(
+        "分析維度",
+        ["週", "月", "季", "年度"],
+        index=1,
+        key="trend_dim",
+        label_visibility="collapsed",
+    )
+    DIM_LABEL = {"週": "W", "月": "M", "季": "Q", "年度": "Y"}
+
+    # ── 從歷史紀錄讀取全部資料 ──────────────────────────────────
+    ws = _history_sheet()
+    all_dfs: list[pd.DataFrame] = []
+
+    # 從 Google Sheets
+    if ws:
+        import base64
+        try:
+            for grow in ws.get_all_values()[1:]:
+                if not grow or not grow[0]: continue
+                excel_b64 = grow[4] if len(grow) > 4 else ""
+                if excel_b64:
+                    try:
+                        all_dfs.append(pd.read_excel(io.BytesIO(base64.b64decode(excel_b64))))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # 從 session_state 補充
+    for v in st.session_state.get("_history_cache", {}).values():
+        try:
+            all_dfs.append(pd.read_excel(io.BytesIO(v["excel_bytes"])))
+        except Exception:
+            pass
+
+    if not all_dfs:
+        st.info("尚無歷史資料。請先在「上傳檔案區」完成分析並儲存，或確認 Google Sheets 已連線。")
+        return
+
+    # ── 合併所有歷史資料 ──────────────────────────────────────
+    df_all = pd.concat(all_dfs, ignore_index=True).drop_duplicates()
+
+    # 找日期欄
+    date_col = next((c for c in df_all.columns if "日期" in c or "date" in c.lower()), None)
+    if not date_col:
+        st.warning("找不到日期欄位，請確認資料包含「日期」相關欄位。")
+        return
+
+    df_all[date_col] = pd.to_datetime(df_all[date_col], errors="coerce")
+    df_all = df_all.dropna(subset=[date_col])
+
+    if df_all.empty:
+        st.warning("歷史資料中無有效日期，無法進行趨勢分析。")
+        return
+
+    # ── 依維度分組 ─────────────────────────────────────────────
+    freq = DIM_LABEL[dim]
+    df_all["_period"] = df_all[date_col].dt.to_period(freq).astype(str)
+
+    periods = sorted(df_all["_period"].unique(), reverse=True)
+    if not periods:
+        st.warning("資料不足，無法計算趨勢。")
+        return
+
+    period_sel = st.selectbox(f"選擇本期（{dim}）", periods, key="trend_period")
+    period_prev = periods[periods.index(period_sel) + 1] if periods.index(period_sel) + 1 < len(periods) else None
+
+    df_cur  = df_all[df_all["_period"] == period_sel]
+    df_prev = df_all[df_all["_period"] == period_prev] if period_prev else pd.DataFrame()
+
+    # ── 統計 ───────────────────────────────────────────────────
+    type_col   = next((c for c in df_all.columns if "問題類型" in c), None)
+    detail_col = next((c for c in df_all.columns if "問題細項" in c), None)
+
+    def count_by(df, col):
+        if col and col in df.columns:
+            return df[col].value_counts().head(10)
+        return pd.Series(dtype=int)
+
+    cur_type  = count_by(df_cur,  type_col)
+    prev_type = count_by(df_prev, type_col) if not df_prev.empty else pd.Series(dtype=int)
+    cur_detail = count_by(df_cur, detail_col)
+
+    # ── 圖表區 ─────────────────────────────────────────────────
+    st.markdown(f"#### 本期（{period_sel}）共 **{len(df_cur)}** 筆"
+                + (f"　|　上期（{period_prev}）共 **{len(df_prev)}** 筆" if period_prev else ""))
+
+    c1, c2 = st.columns(2)
+
+    # 趨勢對比長條圖
+    if type_col:
+        compare_df = pd.DataFrame({
+            "本期": cur_type,
+            "上期": prev_type,
+        }).fillna(0).astype(int).reset_index()
+        compare_df.columns = ["問題類型", "本期", "上期"]
+        fig_cmp = px.bar(
+            compare_df.melt(id_vars="問題類型", var_name="期間", value_name="件數"),
+            x="問題類型", y="件數", color="期間",
+            barmode="group", title="本期 vs 上期問題類型對比",
+            color_discrete_map={"本期": BRAND_ORANGE, "上期": BRAND_LBLUE},
+        )
+        fig_cmp.update_layout(height=380, yaxis=dict(dtick=1, tickformat="d"))
+        c1.plotly_chart(fig_cmp, use_container_width=True)
+
+    # 十大細項橫條
+    if detail_col and not cur_detail.empty:
+        fig_det = px.bar(
+            cur_detail.reset_index(), x=detail_col, y="count",
+            orientation="v", title="本期十大問題細項",
+            color_discrete_sequence=[BRAND_BLUE],
+        )
+        fig_det.update_layout(height=380, yaxis=dict(dtick=1, tickformat="d"),
+                               xaxis_tickangle=-25)
+        c2.plotly_chart(fig_det, use_container_width=True)
+
+    # 時間軸折線圖（每週/月件數趨勢）
+    if len(periods) >= 2:
+        trend_data = df_all.groupby("_period").size().reset_index(name="件數")
+        trend_data = trend_data.sort_values("_period")
+        fig_line = px.line(
+            trend_data, x="_period", y="件數",
+            title=f"歷史{dim}件數趨勢",
+            markers=True, color_discrete_sequence=[BRAND_BLUE],
+        )
+        fig_line.update_layout(
+            height=320, xaxis_title=dim,
+            yaxis=dict(dtick=1, tickformat="d"),
+        )
+        # 標記本期
+        fig_line.add_vline(
+            x=period_sel, line_dash="dash",
+            line_color=BRAND_ORANGE, annotation_text="本期",
+        )
+        st.plotly_chart(fig_line, use_container_width=True)
+
+    # ── 增減百分比摘要 ─────────────────────────────────────────
+    if not df_prev.empty:
+        st.markdown("#### 📊 本期 vs 上期增減")
+        delta_total = len(df_cur) - len(df_prev)
+        pct_total   = (delta_total / max(len(df_prev), 1) * 100)
+        arrow = "🔺" if delta_total > 0 else ("🔻" if delta_total < 0 else "➡️")
+        st.metric(
+            label=f"總件數（{period_sel}）",
+            value=len(df_cur),
+            delta=f"{delta_total:+d} 件（{pct_total:+.1f}%）",
+        )
+
+        if type_col:
+            cols_m = st.columns(min(len(cur_type), 4))
+            for idx, (cat, cnt) in enumerate(cur_type.items()):
+                prev_cnt = int(prev_type.get(cat, 0))
+                delta_cnt = int(cnt) - prev_cnt
+                pct = (delta_cnt / max(prev_cnt, 1) * 100)
+                cols_m[idx % 4].metric(
+                    label=cat[:8],
+                    value=int(cnt),
+                    delta=f"{delta_cnt:+d}（{pct:+.1f}%）",
+                )
+
+    # ── AI 口說報告 ────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 🎙️ AI 口說報告產生器")
+
+    report_dim = st.radio("報告類型", ["週會報告", "月會報告", "季報", "年度報告"], horizontal=True)
+
+    if st.button("🚀 產生 AI 口說報告", type="primary", use_container_width=False):
+        # 準備數據摘要
+        total_cur  = len(df_cur)
+        total_prev = len(df_prev) if not df_prev.empty else None
+        pct_chg    = ((total_cur - total_prev) / max(total_prev, 1) * 100) if total_prev else None
+
+        type_summary = "\n".join(
+            f"- {cat}：{cnt}件" + (
+                f"（較上期 {int(cnt) - int(prev_type.get(cat, 0)):+d}件"
+                f"，{(int(cnt) - int(prev_type.get(cat, 0))) / max(int(prev_type.get(cat, 0)), 1)*100:+.1f}%）"
+                if not df_prev.empty else ""
+            )
+            for cat, cnt in cur_type.items()
+        ) if type_col else "（無問題類型資料）"
+
+        top3_detail = "\n".join(
+            f"- {row[detail_col]}：{row['count']}件"
+            for _, row in cur_detail.reset_index().head(3).iterrows()
+        ) if detail_col and not cur_detail.empty else "（無細項資料）"
+
+        prompt = f"""你是一位 ECOCO 宜可可循環經濟客服部的高級分析專員。
+請根據以下【歷史紀錄數據】，產出一份適合在{report_dim}上對長官進行「口說報告」的完整內容。
+
+【語氣要求】：專業、條理清晰、帶有建議性，語氣自然流暢如同現場口語報告。
+【結構要求】：
+1. 開場白（點出本期重點數字與整體趨勢）
+2. 總體趨勢概述（與上期比較，說明數據背後的意義）
+3. 前三大痛點深度解析（不要只念數字，要解釋發生原因與影響）
+4. 改善成效追蹤（哪些問題有改善，哪些需持續關注）
+5. 下階段行動建議（具體可執行的改善方向）
+
+【本期數據】（{period_sel}，共 {total_cur} 件）：
+{type_summary}
+
+【前三大問題細項】：
+{top3_detail}
+""" + (
+    f"\n【上期對比】（{period_prev}，共 {total_prev} 件，總件數變化 {pct_chg:+.1f}%）" if total_prev else ""
+) + "\n\n請以繁體中文撰寫，口語化但不失專業，每段落約 2-4 句。"
+
+        with st.spinner("AI 正在產生口說報告，請稍候..."):
+            try:
+                import openai, os
+                client = openai.OpenAI(
+                    api_key=os.environ.get("OPENAI_API_KEY", "") or str(st.secrets.get("OPENAI_API_KEY", ""))
+                )
+                resp = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=1800,
+                )
+                report_text = resp.choices[0].message.content
+            except Exception as e:
+                report_text = f"⚠️ AI 服務暫時無法使用（{e}）\n\n以下為根據數據自動產生的摘要：\n\n" + prompt
+
+        st.text_area("📋 口說報告內容（可複製使用）", report_text, height=420)
+
+        # 下載按鈕
+        st.download_button(
+            "⬇️ 下載口說報告（TXT）",
+            data=report_text.encode("utf-8"),
+            file_name=f"{period_sel}_{report_dim}.txt",
+            mime="text/plain",
+        )
     st.subheader("功能三：歷史分析紀錄")
 
     # ── Google Sheets 連線狀態 ──
@@ -2344,6 +2580,8 @@ def main():
             st.session_state["menu"] = "圖表與 AI 分析"
         if st.button("🗂️ 歷史紀錄", use_container_width=True, type="primary" if st.session_state["menu"] == "歷史紀錄" else "secondary"):
             st.session_state["menu"] = "歷史紀錄"
+        if st.button("📈 週/月/季/年度分析", use_container_width=True, type="primary" if st.session_state["menu"] == "趨勢分析" else "secondary"):
+            st.session_state["menu"] = "趨勢分析"
         menu = st.session_state["menu"]
 
     if menu == "功能列表區":
@@ -2358,6 +2596,9 @@ def main():
             <div class="ecoco-card">
               <b>功能 3</b>：歷史分析紀錄管理（最新置頂），可預覽與下載。
             </div>
+            <div class="ecoco-card">
+              <b>功能 4</b>：週/月/季/年度趨勢分析——從歷史紀錄聚合數據、趨勢對比、AI 口說報告產生器。
+            </div>
             """,
             unsafe_allow_html=True,
         )
@@ -2365,6 +2606,8 @@ def main():
         section_1()
     elif menu == "圖表與 AI 分析":
         section_2()
+    elif menu == "趨勢分析":
+        section_4()
     else:
         section_3()
         
