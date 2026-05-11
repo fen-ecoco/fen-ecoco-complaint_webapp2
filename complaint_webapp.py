@@ -2559,6 +2559,93 @@ def section_4():
               </thead>
               <tbody>{rows_html}</tbody>
             </table>""", unsafe_allow_html=True)
+
+            # ── 區域排行：點擊城市展開站點 + 問題細項排行 ──────────────
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("#### 🏆 區域排行榜")
+            st.caption("點選城市，查看該區域站點排行與問題細項排行")
+
+            MEDAL = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+            for rank_i, (city, cnt) in enumerate(city_cur.items()):
+                prev_cnt = int(city_prev.get(city, 0))
+                badge    = delta_badge(int(cnt), prev_cnt, html=True)
+                medal    = MEDAL[rank_i] if rank_i < len(MEDAL) else f"#{rank_i+1}"
+
+                with st.expander(f"{medal} **{city}**　{int(cnt)} 件　{badge}", expanded=(rank_i==0)):
+                    mask_city = df_cur[city_col] == city
+                    df_city   = df_cur[mask_city]
+
+                    exp_col1, exp_col2 = st.columns(2)
+
+                    # 站點排行
+                    with exp_col1:
+                        st.markdown("**📍 站點排行**")
+                        if station_col and station_col in df_city.columns:
+                            sta_rank = df_city[station_col].value_counts().reset_index()
+                            sta_rank.columns = ["站點名稱", "件數"]
+                            # 加上上期對比
+                            if not df_prev.empty and city_col in df_prev.columns and station_col in df_prev.columns:
+                                sta_prev = df_prev[df_prev[city_col]==city][station_col].value_counts()
+                            else:
+                                sta_prev = pd.Series(dtype=int)
+
+                            sta_rows = ""
+                            for si, srow in sta_rank.head(8).iterrows():
+                                s_prev = int(sta_prev.get(srow["站點名稱"], 0))
+                                s_badge = delta_badge(int(srow["件數"]), s_prev, html=True) if s_prev else ""
+                                s_medal = MEDAL[si] if si < len(MEDAL) else f"#{si+1}"
+                                sta_rows += f"""<div style="display:flex;justify-content:space-between;
+                                  align-items:center;padding:5px 0;
+                                  border-bottom:0.5px solid rgba(0,0,0,.06);font-size:12px">
+                                  <span>{s_medal} {str(srow['站點名稱'])[:16]}</span>
+                                  <span style="display:flex;align-items:center;gap:6px">
+                                    <b>{int(srow['件數'])}</b>{s_badge}
+                                  </span>
+                                </div>"""
+                            st.markdown(sta_rows or "<i style='color:gray;font-size:12px'>無站點資料</i>",
+                                        unsafe_allow_html=True)
+                        else:
+                            st.info("無站點名稱欄位")
+
+                    # 問題細項排行
+                    with exp_col2:
+                        st.markdown("**🔍 問題細項排行**")
+                        if detail_col and detail_col in df_city.columns:
+                            det_rank = df_city[detail_col].value_counts().reset_index()
+                            det_rank.columns = ["問題細項", "件數"]
+
+                            if not df_prev.empty and city_col in df_prev.columns and detail_col in df_prev.columns:
+                                det_prev = df_prev[df_prev[city_col]==city][detail_col].value_counts()
+                            else:
+                                det_prev = pd.Series(dtype=int)
+
+                            # 小橫條圖
+                            max_cnt = int(det_rank["件數"].max()) if not det_rank.empty else 1
+                            det_rows = ""
+                            for di, drow in det_rank.head(8).iterrows():
+                                d_prev  = int(det_prev.get(drow["問題細項"], 0))
+                                d_badge = delta_badge(int(drow["件數"]), d_prev, html=True) if d_prev else ""
+                                d_medal = MEDAL[di] if di < len(MEDAL) else f"#{di+1}"
+                                bar_pct = int(drow["件數"]) / max_cnt * 100
+                                det_rows += f"""<div style="padding:5px 0;
+                                  border-bottom:0.5px solid rgba(0,0,0,.06)">
+                                  <div style="display:flex;justify-content:space-between;
+                                    align-items:center;margin-bottom:3px;font-size:12px">
+                                    <span>{d_medal} {str(drow['問題細項'])[:14]}</span>
+                                    <span style="display:flex;align-items:center;gap:5px">
+                                      <b>{int(drow['件數'])}</b>{d_badge}
+                                    </span>
+                                  </div>
+                                  <div style="background:rgba(6,14,159,.1);border-radius:3px;height:5px">
+                                    <div style="background:#060E9F;width:{bar_pct:.0f}%;height:100%;
+                                      border-radius:3px"></div>
+                                  </div>
+                                </div>"""
+                            st.markdown(det_rows or "<i style='color:gray;font-size:12px'>無細項資料</i>",
+                                        unsafe_allow_html=True)
+                        else:
+                            st.info("無問題細項欄位")
         else:
             st.info("資料無「站點區域」或「城市」欄位，無法顯示城市分析")
 
