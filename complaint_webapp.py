@@ -2196,6 +2196,140 @@ def section_2():
     )
 
 
+
+def section_3():
+    st.subheader("功能三：歷史分析紀錄")
+
+    # ── Google Sheets 連線狀態 ──
+    import os
+    has_creds = bool(os.environ.get("GOOGLE_CREDENTIALS_JSON", ""))
+    has_sid   = bool(os.environ.get("HISTORY_SHEET_ID", ""))
+    ws_test   = _history_sheet()
+    if ws_test is not None:
+        st.success("☁️ Google Sheets 已連線，歷史紀錄永久保存")
+    elif has_creds and has_sid:
+        ws_test2 = _history_sheet(log_error=True)  # trigger error logging
+        err_detail = st.session_state.get("_gsheet_error", "")
+        st.warning(f"⚠️ 環境變數已設定但連線失敗\n{err_detail}")
+        st.info("💡 請到 Google Cloud Console 確認已啟用 **Google Sheets API** 與 **Google Drive API**：\nhttps://console.cloud.google.com/apis/library")
+    else:
+        st.info("ℹ️ 未連線 Google Sheets，歷史紀錄僅限本次瀏覽")
+
+    history = load_history()
+    if not history:
+        st.info("尚無歷史紀錄。")
+        return
+
+    # De-duplicate: keep only latest entry per source_name
+    seen_names: dict = {}
+    deduped = []
+    for item in history:
+        sn = item.get("source_name", "")
+        if sn not in seen_names:
+            seen_names[sn] = item
+            deduped.append(item)
+    history = deduped
+
+    for item in history:
+        out_path = Path(item.get("output_path", ""))
+        cache = st.session_state.get("_history_cache", {})
+        item_id = item["id"]
+
+        # 取得 excel bytes：磁碟 → session_state 快取（已由 load_history 從 Sheets 填入）
+        dl_bytes = None
+        df_hist  = None
+        if out_path.exists():
+            try:
+                dl_bytes = out_path.read_bytes()
+                df_hist  = pd.read_excel(io.BytesIO(dl_bytes))
+            except Exception:
+                dl_bytes = None
+        if dl_bytes is None and item_id in cache:
+            try:
+                dl_bytes = cache[item_id]["excel_bytes"]
+                df_hist  = pd.read_excel(io.BytesIO(dl_bytes))
+            except Exception:
+                dl_bytes = None
+
+        if dl_bytes is None:
+            continue   # 真的找不到，跳過
+        
+        sname = item.get('source_name', '')
+        if len(sname) > 28:
+            sname = sname[:14] + "..." + sname[-10:]
+        label = f"{item['created_at'][:16]}  {sname}  ({item['rows']} 筆)"
+        with st.expander(label):
+            tab_data, tab_chart, tab_ai = st.tabs(["資料預覽", "圖表分析", "AI 重點摘要"])
+            
+            with tab_data:
+                st.dataframe(df_hist.head(30), use_container_width=True, hide_index=True)
+                col1, col2, col3 = st.columns([1, 1, 1])
+                col1.download_button(
+                    "下載該分析檔",
+                    data=dl_bytes,
+                    file_name=item["output_name"],
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key=f"download_{item['id']}",
+                )
+                if col2.button("[編輯]", key=f"edit_{item['id']}"):
+                    st.session_state["analysis_df"] = df_hist.copy()
+                    st.session_state["source_name"] = item["source_name"]
+                    st.session_state["_editing_history_id"] = item["id"]
+                    st.session_state["menu"] = "上傳檔案區（分析區）"
+                    st.rerun()
+                if col3.button("[刪除]", key=f"del_{item['id']}"):
+                    delete_history(item["id"])
+                    st.rerun()
+            
+            with tab_chart:
+                if not df_hist.empty:
+                    render_charts(df_hist, key_prefix=f"hist_{item['id']}")
+                    cdl1, cdl2 = st.columns(2)
+                    hist_stats = df_hist["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
+                    hist_stats["百分比"] = (hist_stats["件數"] / max(hist_stats["件數"].sum(), 1) * 100).round(0).astype(int)
+                    hist_stats["歸屬部門"] = hist_stats["問題類型"].map(DEPT_MAP).fillna("")
+                    hist_ai = generate_ai_summary(df_hist)
+                    hist_chart_pack = build_chart_pack(df_hist)
+
+                    hist_ppt = build_ppt_bytes(
+                        hist_stats,
+                        hist_ai,
+                        item.get("source_name", "history"),
+                        chart_pack=hist_chart_pack,
+                    )
+                    cdl1.download_button(
+                        "一鍵下載PPT",
+                        data=hist_ppt,
+                        file_name=f"{datetime.now().strftime('%Y%m%d')}_{safe_filename(item.get('source_name','history'))}_圖表分析.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                        key=f"hist_ppt_{item['id']}",
+                    )
+                    hist_zip = io.BytesIO()
+                    with zipfile.ZipFile(hist_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+                        for fn, b in hist_chart_pack.items():
+                            zi = zipfile.ZipInfo(fn)
+                            zi.flag_bits |= 0x800  # UTF-8 filename flag，避免中文亂碼
+                            zi.compress_type = zipfile.ZIP_DEFLATED
+                            zf.writestr(zi, b)
+                    cdl2.download_button(
+                        "下載圖檔（ZIP）",
+                        data=hist_zip.getvalue(),
+                        file_name=f"{datetime.now().strftime('%Y%m%d')}_{safe_filename(item.get('source_name','history'))}_圖表.zip",
+                        mime="application/zip",
+                        key=f"hist_img_{item['id']}",
+                    )
+                else:
+                    st.info("無資料可繪圖")
+                    
+            with tab_ai:
+                st.info("點擊下方按鈕即時生成本檔案的 AI 重點摘要")
+                if st.button("[產生 AI 摘要]", key=f"ai_btn_{item['id']}"):
+                    with st.spinner("AI 分析中..."):
+                        ai_result = generate_ai_summary_llm(df_hist)
+                        st.markdown(ai_result)
+
+
+
 def section_4():
     """功能四：週/月/季/年度趨勢分析儀表板 + AI 口說報告"""
 
@@ -2565,18 +2699,25 @@ def section_4():
 
         with st.spinner("AI 正在撰寫口說報告..."):
             try:
-                import openai, os
-                client_ai = openai.OpenAI(
-                    api_key=os.environ.get("OPENAI_API_KEY","") or str(st.secrets.get("OPENAI_API_KEY",""))
-                )
-                resp = client_ai.chat.completions.create(
-                    model="gpt-4o-mini",
+                import anthropic, os
+                api_key = (os.environ.get("ANTHROPIC_API_KEY","") or
+                           str(st.secrets.get("ANTHROPIC_API_KEY","")))
+                client_ai = anthropic.Anthropic(api_key=api_key)
+                msg = client_ai.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=2000,
                     messages=[{"role":"user","content":prompt}],
-                    temperature=0.7, max_tokens=2000,
                 )
-                report_text = resp.choices[0].message.content
+                report_text = msg.content[0].text
             except Exception as e:
-                report_text = f"⚠️ AI 暫時無法使用（{e}）\n\n以下為數據摘要：\n\n" + prompt
+                # fallback: use generate_ai_summary_llm if available
+                try:
+                    report_text = generate_ai_summary_llm(df_cur, model_name="haiku")
+                    report_text = f"【口說報告版本】\n\n{report_text}"
+                except Exception:
+                    report_text = (f"⚠️ AI 暫時無法使用（{e}）\n\n"
+                                   f"請確認 ANTHROPIC_API_KEY 環境變數已設定。\n\n"
+                                   f"以下為數據摘要供您參考：\n\n{prompt}")
 
         st.text_area("📋 口說報告（可複製）", report_text, height=460, key="s4_report_out")
         st.download_button("⬇️ 下載口說報告（TXT）",
