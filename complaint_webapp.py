@@ -2197,371 +2197,393 @@ def section_2():
 
 
 def section_4():
-    """功能四：週/月/季/年度趨勢分析 + AI 口說報告"""
-    st.subheader("📈 功能四：週/月/季/年度趨勢分析")
+    """功能四：週/月/季/年度趨勢分析儀表板 + AI 口說報告"""
 
-    # ── 時間維度選擇器 ──────────────────────────────────────────
-    dim_col, _, gen_col = st.columns([2, 3, 2])
-    dim = dim_col.selectbox(
-        "分析維度",
-        ["週", "月", "季", "年度"],
-        index=1,
-        key="trend_dim",
-        label_visibility="collapsed",
-    )
-    DIM_LABEL = {"週": "W", "月": "M", "季": "Q", "年度": "Y"}
+    # ── CSS ────────────────────────────────────────────────────────
+    st.markdown("""
+    <style>
+    .trend-hdr{background:#060E9F;color:#fff;padding:14px 20px;border-radius:10px;
+               display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem}
+    .trend-hdr-title{font-size:17px;font-weight:600;letter-spacing:.3px}
+    .trend-hdr-sub{font-size:12px;opacity:.8;margin-top:3px}
+    .metric-card{background:var(--secondary-background-color);border-radius:10px;
+                 padding:14px 16px;border-left:4px solid #060E9F}
+    .metric-val{font-size:28px;font-weight:700;color:#060E9F}
+    .metric-lbl{font-size:12px;color:gray;margin-bottom:4px}
+    .delta-up{color:#d04000;font-size:12px}
+    .delta-dn{color:#0a6e44;font-size:12px}
+    .delta-flat{color:gray;font-size:12px}
+    .city-badge-up{background:#ffe0d0;color:#8b2000;
+                   padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}
+    .city-badge-dn{background:#d0f0e0;color:#065a30;
+                   padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}
+    .city-badge-flat{background:#eee;color:#666;
+                     padding:2px 8px;border-radius:6px;font-size:11px}
+    </style>
+    """, unsafe_allow_html=True)
 
-    # ── 從歷史紀錄讀取全部資料 ──────────────────────────────────
-    ws = _history_sheet()
+    # ── 頁首 ────────────────────────────────────────────────────────
+    st.markdown("""
+    <div class="trend-hdr">
+      <div>
+        <div class="trend-hdr-title">📈 ECOCO 客訴趨勢分析儀表板</div>
+        <div class="trend-hdr-sub">城市 · 站點 · 部門 · 問題比例 · AI 口說報告</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── 資料來源選擇 ─────────────────────────────────────────────────
+    src_tab1, src_tab2 = st.tabs(["📂 使用歷史紀錄資料", "🔗 填入 Google Sheets 網址"])
+
     all_dfs: list[pd.DataFrame] = []
 
-    # 從 Google Sheets
-    if ws:
-        import base64
-        try:
-            for grow in ws.get_all_values()[1:]:
-                if not grow or not grow[0]: continue
-                excel_b64 = grow[4] if len(grow) > 4 else ""
-                if excel_b64:
-                    try:
-                        all_dfs.append(pd.read_excel(io.BytesIO(base64.b64decode(excel_b64))))
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+    with src_tab1:
+        ws = _history_sheet()
+        if ws:
+            import base64 as _b64
+            try:
+                for grow in ws.get_all_values()[1:]:
+                    if not grow or not grow[0]: continue
+                    excel_b64 = grow[4] if len(grow) > 4 else ""
+                    if excel_b64:
+                        try:
+                            all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(excel_b64))))
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        for v in st.session_state.get("_history_cache", {}).values():
+            try:
+                all_dfs.append(pd.read_excel(io.BytesIO(v["excel_bytes"])))
+            except Exception:
+                pass
+        if all_dfs:
+            st.success(f"✅ 已載入 {len(all_dfs)} 份歷史紀錄")
+        else:
+            st.info("尚無歷史資料。請先在功能一完成分析並儲存。")
 
-    # 從 session_state 補充
-    for v in st.session_state.get("_history_cache", {}).values():
-        try:
-            all_dfs.append(pd.read_excel(io.BytesIO(v["excel_bytes"])))
-        except Exception:
-            pass
+    with src_tab2:
+        gs_url = st.text_input(
+            "Google Sheets 網址",
+            placeholder="https://docs.google.com/spreadsheets/d/xxxxx/edit",
+            key="trend_gs_url",
+        )
+        gs_sheet = st.text_input("工作表名稱（留空則讀取第一張）", key="trend_gs_sheet", value="")
+        if st.button("📥 讀取 Google Sheets", key="btn_load_gs"):
+            if not gs_url:
+                st.error("請填入網址")
+            else:
+                try:
+                    # 解析 spreadsheet ID
+                    import re as _re
+                    m = _re.search(r"/spreadsheets/d/([^/]+)", gs_url)
+                    if not m:
+                        st.error("無法解析試算表 ID，請確認網址格式正確")
+                    else:
+                        sid = m.group(1)
+                        client = _get_gsheet_client()
+                        if not client:
+                            st.error("未連線 Google API，請確認 GOOGLE_CREDENTIALS_JSON 環境變數已設定")
+                        else:
+                            ss = client.open_by_key(sid)
+                            ws_gs = ss.worksheet(gs_sheet) if gs_sheet else ss.get_worksheet(0)
+                            rows = ws_gs.get_all_values()
+                            if not rows:
+                                st.error("試算表為空")
+                            else:
+                                df_gs = pd.DataFrame(rows[1:], columns=rows[0])
+                                all_dfs.append(df_gs)
+                                st.session_state["_trend_gs_df"] = df_gs
+                                st.success(f"✅ 已讀取「{ws_gs.title}」，共 {len(df_gs)} 列")
+                except Exception as e:
+                    st.error(f"讀取失敗：{e}")
+
+        # 使用快取的 GS 資料
+        if "trend_gs_df" in st.session_state:
+            if st.session_state["_trend_gs_df"] is not None:
+                all_dfs.append(st.session_state["_trend_gs_df"])
 
     if not all_dfs:
-        st.info("尚無歷史資料。請先在「上傳檔案區」完成分析並儲存，或確認 Google Sheets 已連線。")
-        return
+        st.stop()
 
-    # ── 合併所有歷史資料 ──────────────────────────────────────
+    # ── 合併資料 ─────────────────────────────────────────────────────
     df_all = pd.concat(all_dfs, ignore_index=True).drop_duplicates()
 
-    # 找日期欄
-    date_col = next((c for c in df_all.columns if "日期" in c or "date" in c.lower()), None)
+    # 自動偵測欄位
+    date_col   = next((c for c in df_all.columns if "日期" in c or "date" in c.lower()), None)
+    type_col   = next((c for c in df_all.columns if "問題類型" in c), None)
+    detail_col = next((c for c in df_all.columns if "問題細項" in c), None)
+    dept_col   = next((c for c in df_all.columns if "部門" in c or "歸屬" in c), None)
+    city_col   = next((c for c in df_all.columns if "站點區域" in c or "城市" in c or "區域" in c), None)
+    station_col= next((c for c in df_all.columns if "站點名稱" in c or "站點" in c), None)
+
     if not date_col:
-        st.warning("找不到日期欄位，請確認資料包含「日期」相關欄位。")
-        return
+        st.warning("找不到日期欄位，請確認資料包含「日期」欄位。")
+        st.stop()
 
     df_all[date_col] = pd.to_datetime(df_all[date_col], errors="coerce")
     df_all = df_all.dropna(subset=[date_col])
-
     if df_all.empty:
-        st.warning("歷史資料中無有效日期，無法進行趨勢分析。")
-        return
+        st.warning("資料無有效日期")
+        st.stop()
 
-    # ── 依維度分組 ─────────────────────────────────────────────
-    freq = DIM_LABEL[dim]
-    df_all["_period"] = df_all[date_col].dt.to_period(freq).astype(str)
-
+    # ── 時間維度選擇 ─────────────────────────────────────────────────
+    dim_col_ui, period_col_ui, _ = st.columns([2, 3, 2])
+    dim = dim_col_ui.selectbox("分析維度", ["週", "月", "季", "年度"], index=1, key="s4_dim",
+                                label_visibility="visible")
+    DIM_FREQ = {"週": "W", "月": "M", "季": "Q", "年度": "Y"}
+    df_all["_period"] = df_all[date_col].dt.to_period(DIM_FREQ[dim]).astype(str)
     periods = sorted(df_all["_period"].unique(), reverse=True)
-    if not periods:
-        st.warning("資料不足，無法計算趨勢。")
-        return
 
-    period_sel = st.selectbox(f"選擇本期（{dim}）", periods, key="trend_period")
-    period_prev = periods[periods.index(period_sel) + 1] if periods.index(period_sel) + 1 < len(periods) else None
+    period_sel  = period_col_ui.selectbox(f"本期（{dim}）", periods, key="s4_period")
+    period_prev = periods[periods.index(period_sel)+1] if periods.index(period_sel)+1 < len(periods) else None
 
     df_cur  = df_all[df_all["_period"] == period_sel]
     df_prev = df_all[df_all["_period"] == period_prev] if period_prev else pd.DataFrame()
 
-    # ── 統計 ───────────────────────────────────────────────────
-    type_col   = next((c for c in df_all.columns if "問題類型" in c), None)
-    detail_col = next((c for c in df_all.columns if "問題細項" in c), None)
+    def pct_change(cur, prev):
+        if prev == 0: return None
+        return (cur - prev) / prev * 100
 
-    def count_by(df, col):
-        if col and col in df.columns:
-            return df[col].value_counts().head(10)
-        return pd.Series(dtype=int)
+    def delta_badge(cur, prev, html=False):
+        d = cur - prev
+        p = pct_change(cur, prev)
+        if p is None: return ""
+        if html:
+            cls = "city-badge-up" if d > 0 else ("city-badge-dn" if d < 0 else "city-badge-flat")
+            sym = "▲" if d > 0 else ("▼" if d < 0 else "—")
+            return f'<span class="{cls}">{sym} {abs(p):.1f}%</span>'
+        sym = "🔺" if d > 0 else ("🔻" if d < 0 else "➡")
+        cls = "delta-up" if d > 0 else ("delta-dn" if d < 0 else "delta-flat")
+        return f'<span class="{cls}">{sym} {d:+d} 件（{p:+.1f}%）vs 上期</span>'
 
-    cur_type  = count_by(df_cur,  type_col)
-    prev_type = count_by(df_prev, type_col) if not df_prev.empty else pd.Series(dtype=int)
-    cur_detail = count_by(df_cur, detail_col)
+    # ── KPI 指標卡 ───────────────────────────────────────────────────
+    n_cur  = len(df_cur)
+    n_prev = len(df_prev) if not df_prev.empty else 0
 
-    # ── 圖表區 ─────────────────────────────────────────────────
-    st.markdown(f"#### 本期（{period_sel}）共 **{len(df_cur)}** 筆"
-                + (f"　|　上期（{period_prev}）共 **{len(df_prev)}** 筆" if period_prev else ""))
-
-    c1, c2 = st.columns(2)
-
-    # 趨勢對比長條圖
+    kpi_types = {}
     if type_col:
-        compare_df = pd.DataFrame({
-            "本期": cur_type,
-            "上期": prev_type,
-        }).fillna(0).astype(int).reset_index()
-        compare_df.columns = ["問題類型", "本期", "上期"]
-        fig_cmp = px.bar(
-            compare_df.melt(id_vars="問題類型", var_name="期間", value_name="件數"),
-            x="問題類型", y="件數", color="期間",
-            barmode="group", title="本期 vs 上期問題類型對比",
-            color_discrete_map={"本期": BRAND_ORANGE, "上期": BRAND_LBLUE},
-        )
-        fig_cmp.update_layout(height=380, yaxis=dict(dtick=1, tickformat="d"))
-        c1.plotly_chart(fig_cmp, use_container_width=True)
+        for t in df_cur[type_col].value_counts().index[:4]:
+            kpi_types[t] = {
+                "cur": int(df_cur[type_col].eq(t).sum()),
+                "prev": int(df_prev[type_col].eq(t).sum()) if not df_prev.empty else 0
+            }
 
-    # 十大細項橫條
-    if detail_col and not cur_detail.empty:
-        fig_det = px.bar(
-            cur_detail.reset_index(), x=detail_col, y="count",
-            orientation="v", title="本期十大問題細項",
-            color_discrete_sequence=[BRAND_BLUE],
-        )
-        fig_det.update_layout(height=380, yaxis=dict(dtick=1, tickformat="d"),
-                               xaxis_tickangle=-25)
-        c2.plotly_chart(fig_det, use_container_width=True)
+    kpis = [("總件數", n_cur, n_prev)] + [(k, v["cur"], v["prev"]) for k, v in kpi_types.items()]
+    cols_kpi = st.columns(min(len(kpis), 4))
+    for i, (lbl, cur, prev) in enumerate(kpis[:4]):
+        badge_html = delta_badge(cur, prev, html=False) if prev else ""
+        cols_kpi[i].markdown(f"""
+        <div class="metric-card">
+          <div class="metric-lbl">{lbl}</div>
+          <div class="metric-val">{cur}</div>
+          {badge_html}
+        </div>""", unsafe_allow_html=True)
 
-    # 時間軸折線圖（每週/月件數趨勢）
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── 城市分析 ──────────────────────────────────────────────────────
+    col_left, col_right = st.columns([3, 2])
+
+    with col_left:
+        if city_col and city_col in df_cur.columns:
+            st.markdown("#### 🏙️ 城市客訴件數與成長比例")
+            city_cur  = df_cur[city_col].value_counts()
+            city_prev = df_prev[city_col].value_counts() if not df_prev.empty else pd.Series(dtype=int)
+
+            top_station = {}
+            if station_col:
+                for city in city_cur.index:
+                    mask = df_cur[city_col] == city
+                    stations = df_cur[mask][station_col].value_counts()
+                    if not stations.empty:
+                        top_station[city] = stations.index[0]
+
+            rows_html = ""
+            for city, cnt in city_cur.items():
+                prev_cnt = int(city_prev.get(city, 0))
+                badge = delta_badge(int(cnt), prev_cnt, html=True)
+                sta = top_station.get(city, "—")[:10]
+                rows_html += f"""<tr>
+                  <td style="padding:6px 8px;font-size:13px">{city}</td>
+                  <td style="padding:6px 8px;font-size:13px;font-weight:600">{int(cnt)}</td>
+                  <td style="padding:6px 8px;font-size:13px;color:gray">{prev_cnt}</td>
+                  <td style="padding:6px 8px">{badge}</td>
+                  <td style="padding:6px 8px;font-size:12px;color:gray">{sta}</td>
+                </tr>"""
+
+            st.markdown(f"""
+            <table style="width:100%;border-collapse:collapse;font-family:inherit">
+              <thead>
+                <tr style="border-bottom:1.5px solid #060E9F">
+                  <th style="text-align:left;padding:6px 8px;font-size:12px;color:gray;font-weight:500">城市</th>
+                  <th style="text-align:left;padding:6px 8px;font-size:12px;color:gray;font-weight:500">本期</th>
+                  <th style="text-align:left;padding:6px 8px;font-size:12px;color:gray;font-weight:500">上期</th>
+                  <th style="text-align:left;padding:6px 8px;font-size:12px;color:gray;font-weight:500">成長率</th>
+                  <th style="text-align:left;padding:6px 8px;font-size:12px;color:gray;font-weight:500">熱門站點</th>
+                </tr>
+              </thead>
+              <tbody>{rows_html}</tbody>
+            </table>""", unsafe_allow_html=True)
+        else:
+            st.info("資料無「站點區域」或「城市」欄位，無法顯示城市分析")
+
+    with col_right:
+        st.markdown("#### 🏢 各部門件數")
+        if dept_col and dept_col in df_cur.columns:
+            DEPT_COLOR = {"營運部": "#FF5000", "行銷部": "#FFCE00", "資訊部": "#060E9F"}
+            dept_cur  = df_cur[dept_col].replace("", "未分配").value_counts()
+            dept_prev = df_prev[dept_col].replace("", "未分配").value_counts() if not df_prev.empty else pd.Series(dtype=int)
+
+            dept_rows = ""
+            for dept, cnt in dept_cur.items():
+                prev_cnt = int(dept_prev.get(dept, 0))
+                d = int(cnt) - prev_cnt
+                badge_cls = "city-badge-up" if d > 0 else ("city-badge-dn" if d < 0 else "city-badge-flat")
+                sym = f"▲{abs(d)}" if d > 0 else (f"▼{abs(d)}" if d < 0 else "—")
+                color = DEPT_COLOR.get(str(dept), "#888")
+                dept_rows += f"""<div style="display:flex;justify-content:space-between;align-items:center;
+                  padding:8px 0;border-bottom:0.5px solid rgba(0,0,0,.08)">
+                  <span style="font-size:13px;display:flex;align-items:center;gap:6px">
+                    <span style="width:10px;height:10px;border-radius:50%;background:{color};display:inline-block"></span>
+                    {dept}
+                  </span>
+                  <span style="display:flex;align-items:center;gap:8px">
+                    <b style="font-size:15px">{int(cnt)}</b>
+                    <span class="{badge_cls}">{sym}</span>
+                  </span>
+                </div>"""
+            st.markdown(dept_rows, unsafe_allow_html=True)
+        else:
+            st.info("無部門欄位")
+
+    st.markdown("---")
+
+    # ── 問題類型比例 + 十大細項 ──────────────────────────────────────
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        if type_col:
+            cur_type  = df_cur[type_col].value_counts().reset_index()
+            prev_type = df_prev[type_col].value_counts() if not df_prev.empty else pd.Series(dtype=int)
+            cur_type.columns = ["問題類型", "件數"]
+            cur_type["上期"] = cur_type["問題類型"].map(lambda x: int(prev_type.get(x, 0)))
+            fig_cmp = px.bar(
+                cur_type.melt(id_vars="問題類型", value_vars=["件數","上期"], var_name="期間", value_name="件數值"),
+                x="問題類型", y="件數值", color="期間", barmode="group",
+                title="問題類型比例（本期 vs 上期）",
+                color_discrete_map={"件數": "#060E9F", "上期": "#8EB9C9"},
+            )
+            fig_cmp.update_traces(texttemplate="%{y}", textposition="outside")
+            fig_cmp.update_layout(height=360, yaxis=dict(dtick=1, tickformat="d"),
+                                   margin=dict(t=45,b=0), showlegend=True)
+            st.plotly_chart(fig_cmp, use_container_width=True)
+
+    with col_b:
+        if detail_col:
+            top_detail = df_cur[detail_col].value_counts().head(8).reset_index()
+            top_detail.columns = ["問題細項", "件數"]
+            fig_det = px.bar(
+                top_detail, x="件數", y="問題細項", orientation="h",
+                title="TOP 8 問題細項",
+                color_discrete_sequence=["#060E9F"],
+            )
+            fig_det.update_layout(height=360, yaxis={"categoryorder":"total ascending"},
+                                   xaxis=dict(dtick=1, tickformat="d"), margin=dict(t=45,b=0))
+            st.plotly_chart(fig_det, use_container_width=True)
+
+    # ── 時間軸折線趨勢 ────────────────────────────────────────────────
     if len(periods) >= 2:
-        trend_data = df_all.groupby("_period").size().reset_index(name="件數")
-        trend_data = trend_data.sort_values("_period")
+        trend_data = df_all.groupby("_period").size().reset_index(name="件數").sort_values("_period")
         fig_line = px.line(
             trend_data, x="_period", y="件數",
             title=f"歷史{dim}件數趨勢",
-            markers=True, color_discrete_sequence=[BRAND_BLUE],
+            markers=True, color_discrete_sequence=["#060E9F"],
         )
-        fig_line.update_layout(
-            height=320, xaxis_title=dim,
-            yaxis=dict(dtick=1, tickformat="d"),
-        )
-        # 標記本期
-        fig_line.add_vline(
-            x=period_sel, line_dash="dash",
-            line_color=BRAND_ORANGE, annotation_text="本期",
-        )
+        fig_line.add_vline(x=period_sel, line_dash="dash", line_color="#FF5000",
+                           annotation_text="本期", annotation_font_color="#FF5000")
+        fig_line.update_layout(height=300, xaxis_title=dim,
+                                yaxis=dict(dtick=1, tickformat="d"), margin=dict(t=45,b=0))
         st.plotly_chart(fig_line, use_container_width=True)
 
-    # ── 增減百分比摘要 ─────────────────────────────────────────
-    if not df_prev.empty:
-        st.markdown("#### 📊 本期 vs 上期增減")
-        delta_total = len(df_cur) - len(df_prev)
-        pct_total   = (delta_total / max(len(df_prev), 1) * 100)
-        arrow = "🔺" if delta_total > 0 else ("🔻" if delta_total < 0 else "➡️")
-        st.metric(
-            label=f"總件數（{period_sel}）",
-            value=len(df_cur),
-            delta=f"{delta_total:+d} 件（{pct_total:+.1f}%）",
-        )
-
-        if type_col:
-            cols_m = st.columns(min(len(cur_type), 4))
-            for idx, (cat, cnt) in enumerate(cur_type.items()):
-                prev_cnt = int(prev_type.get(cat, 0))
-                delta_cnt = int(cnt) - prev_cnt
-                pct = (delta_cnt / max(prev_cnt, 1) * 100)
-                cols_m[idx % 4].metric(
-                    label=cat[:8],
-                    value=int(cnt),
-                    delta=f"{delta_cnt:+d}（{pct:+.1f}%）",
-                )
-
-    # ── AI 口說報告 ────────────────────────────────────────────
+    # ── AI 口說報告 ────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("#### 🎙️ AI 口說報告產生器")
 
-    report_dim = st.radio("報告類型", ["週會報告", "月會報告", "季報", "年度報告"], horizontal=True)
+    rep_type = st.radio("報告類型", ["週會報告","月會報告","季報","年度報告"], horizontal=True, key="s4_rep")
 
-    if st.button("🚀 產生 AI 口說報告", type="primary", use_container_width=False):
-        # 準備數據摘要
+    if st.button("🚀 產生 AI 口說報告", type="primary", key="s4_gen"):
         total_cur  = len(df_cur)
         total_prev = len(df_prev) if not df_prev.empty else None
-        pct_chg    = ((total_cur - total_prev) / max(total_prev, 1) * 100) if total_prev else None
+        pct_chg    = pct_change(total_cur, total_prev) if total_prev else None
 
-        type_summary = "\n".join(
-            f"- {cat}：{cnt}件" + (
-                f"（較上期 {int(cnt) - int(prev_type.get(cat, 0)):+d}件"
-                f"，{(int(cnt) - int(prev_type.get(cat, 0))) / max(int(prev_type.get(cat, 0)), 1)*100:+.1f}%）"
-                if not df_prev.empty else ""
-            )
-            for cat, cnt in cur_type.items()
-        ) if type_col else "（無問題類型資料）"
+        type_summary = ""
+        if type_col:
+            cur_type_s  = df_cur[type_col].value_counts()
+            prev_type_s = df_prev[type_col].value_counts() if not df_prev.empty else pd.Series(dtype=int)
+            for cat, cnt in cur_type_s.items():
+                prev_cnt = int(prev_type_s.get(cat, 0))
+                d = int(cnt) - prev_cnt
+                pline = f"（較上期 {d:+d} 件，{pct_change(int(cnt),prev_cnt):+.1f}%）" if prev_cnt else ""
+                type_summary += f"- {cat}：{int(cnt)} 件{pline}\n"
 
-        top3_detail = "\n".join(
-            f"- {row[detail_col]}：{row['count']}件"
-            for _, row in cur_detail.reset_index().head(3).iterrows()
-        ) if detail_col and not cur_detail.empty else "（無細項資料）"
+        city_summary = ""
+        if city_col:
+            cc = df_cur[city_col].value_counts()
+            pc = df_prev[city_col].value_counts() if not df_prev.empty else pd.Series(dtype=int)
+            for city, cnt in cc.head(5).items():
+                d = int(cnt) - int(pc.get(city,0))
+                city_summary += f"- {city}：{int(cnt)} 件（{d:+d}）\n"
 
-        prompt = f"""你是一位 ECOCO 宜可可循環經濟客服部的高級分析專員。
-請根據以下【歷史紀錄數據】，產出一份適合在{report_dim}上對長官進行「口說報告」的完整內容。
+        top3 = ""
+        if detail_col:
+            for _, r in df_cur[detail_col].value_counts().head(3).reset_index().iterrows():
+                top3 += f"- {r[detail_col]}：{r['count']} 件\n"
 
-【語氣要求】：專業、條理清晰、帶有建議性，語氣自然流暢如同現場口語報告。
-【結構要求】：
-1. 開場白（點出本期重點數字與整體趨勢）
-2. 總體趨勢概述（與上期比較，說明數據背後的意義）
-3. 前三大痛點深度解析（不要只念數字，要解釋發生原因與影響）
-4. 改善成效追蹤（哪些問題有改善，哪些需持續關注）
-5. 下階段行動建議（具體可執行的改善方向）
+        prompt = f"""你是 ECOCO 宜可可循環經濟客服部的高級分析專員。
+請根據以下數據，產出一份{rep_type}的「口說報告」，適合在會議中對長官簡報。
+
+【語氣】：專業、條理清晰、帶有建議性，如現場口語報告。
+【結構】：
+1. 開場白（點出本期重點）
+2. 總體趨勢概述（數字意義，非只念數字）
+3. 前三大痛點深度解析（原因與影響）
+4. 城市/區域分析亮點
+5. 改善成效追蹤
+6. 下階段行動建議
 
 【本期數據】（{period_sel}，共 {total_cur} 件）：
-{type_summary}
+{type_summary or "（無問題類型資料）"}
+
+【城市分布 TOP5】：
+{city_summary or "（無城市資料）"}
 
 【前三大問題細項】：
-{top3_detail}
-""" + (
-    f"\n【上期對比】（{period_prev}，共 {total_prev} 件，總件數變化 {pct_chg:+.1f}%）" if total_prev else ""
-) + "\n\n請以繁體中文撰寫，口語化但不失專業，每段落約 2-4 句。"
+{top3 or "（無細項資料）"}
+""" + (f"\n【上期對比】（{period_prev}，{total_prev} 件，總件數 {pct_chg:+.1f}%）" if pct_chg is not None else "")
+        + "\n\n請以繁體中文撰寫，口語自然但不失專業，每段落 2-4 句。"
 
-        with st.spinner("AI 正在產生口說報告，請稍候..."):
+        with st.spinner("AI 正在撰寫口說報告..."):
             try:
                 import openai, os
-                client = openai.OpenAI(
-                    api_key=os.environ.get("OPENAI_API_KEY", "") or str(st.secrets.get("OPENAI_API_KEY", ""))
+                client_ai = openai.OpenAI(
+                    api_key=os.environ.get("OPENAI_API_KEY","") or str(st.secrets.get("OPENAI_API_KEY",""))
                 )
-                resp = client.chat.completions.create(
+                resp = client_ai.chat.completions.create(
                     model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.7,
-                    max_tokens=1800,
+                    messages=[{"role":"user","content":prompt}],
+                    temperature=0.7, max_tokens=2000,
                 )
                 report_text = resp.choices[0].message.content
             except Exception as e:
-                report_text = f"⚠️ AI 服務暫時無法使用（{e}）\n\n以下為根據數據自動產生的摘要：\n\n" + prompt
+                report_text = f"⚠️ AI 暫時無法使用（{e}）\n\n以下為數據摘要：\n\n" + prompt
 
-        st.text_area("📋 口說報告內容（可複製使用）", report_text, height=420)
+        st.text_area("📋 口說報告（可複製）", report_text, height=460, key="s4_report_out")
+        st.download_button("⬇️ 下載口說報告（TXT）",
+                           data=report_text.encode("utf-8"),
+                           file_name=f"{period_sel}_{rep_type}.txt",
+                           mime="text/plain", key="s4_dl_report")
 
-        # 下載按鈕
-        st.download_button(
-            "⬇️ 下載口說報告（TXT）",
-            data=report_text.encode("utf-8"),
-            file_name=f"{period_sel}_{report_dim}.txt",
-            mime="text/plain",
-        )
-    st.subheader("功能三：歷史分析紀錄")
-
-    # ── Google Sheets 連線狀態 ──
-    import os
-    has_creds = bool(os.environ.get("GOOGLE_CREDENTIALS_JSON", ""))
-    has_sid   = bool(os.environ.get("HISTORY_SHEET_ID", ""))
-    ws_test   = _history_sheet()
-    if ws_test is not None:
-        st.success("☁️ Google Sheets 已連線，歷史紀錄永久保存")
-    elif has_creds and has_sid:
-        ws_test2 = _history_sheet(log_error=True)  # trigger error logging
-        err_detail = st.session_state.get("_gsheet_error", "")
-        st.warning(f"⚠️ 環境變數已設定但連線失敗\n{err_detail}")
-        st.info("💡 請到 Google Cloud Console 確認已啟用 **Google Sheets API** 與 **Google Drive API**：\nhttps://console.cloud.google.com/apis/library")
-    else:
-        st.info("ℹ️ 未連線 Google Sheets，歷史紀錄僅限本次瀏覽")
-
-    history = load_history()
-    if not history:
-        st.info("尚無歷史紀錄。")
-        return
-
-    # De-duplicate: keep only latest entry per source_name
-    seen_names: dict = {}
-    deduped = []
-    for item in history:
-        sn = item.get("source_name", "")
-        if sn not in seen_names:
-            seen_names[sn] = item
-            deduped.append(item)
-    history = deduped
-
-    for item in history:
-        out_path = Path(item.get("output_path", ""))
-        cache = st.session_state.get("_history_cache", {})
-        item_id = item["id"]
-
-        # 取得 excel bytes：磁碟 → session_state 快取（已由 load_history 從 Sheets 填入）
-        dl_bytes = None
-        df_hist  = None
-        if out_path.exists():
-            try:
-                dl_bytes = out_path.read_bytes()
-                df_hist  = pd.read_excel(io.BytesIO(dl_bytes))
-            except Exception:
-                dl_bytes = None
-        if dl_bytes is None and item_id in cache:
-            try:
-                dl_bytes = cache[item_id]["excel_bytes"]
-                df_hist  = pd.read_excel(io.BytesIO(dl_bytes))
-            except Exception:
-                dl_bytes = None
-
-        if dl_bytes is None:
-            continue   # 真的找不到，跳過
-        
-        sname = item.get('source_name', '')
-        if len(sname) > 28:
-            sname = sname[:14] + "..." + sname[-10:]
-        label = f"{item['created_at'][:16]}  {sname}  ({item['rows']} 筆)"
-        with st.expander(label):
-            tab_data, tab_chart, tab_ai = st.tabs(["資料預覽", "圖表分析", "AI 重點摘要"])
-            
-            with tab_data:
-                st.dataframe(df_hist.head(30), use_container_width=True, hide_index=True)
-                col1, col2, col3 = st.columns([1, 1, 1])
-                col1.download_button(
-                    "下載該分析檔",
-                    data=dl_bytes,
-                    file_name=item["output_name"],
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"download_{item['id']}",
-                )
-                if col2.button("[編輯]", key=f"edit_{item['id']}"):
-                    st.session_state["analysis_df"] = df_hist.copy()
-                    st.session_state["source_name"] = item["source_name"]
-                    st.session_state["_editing_history_id"] = item["id"]
-                    st.session_state["menu"] = "上傳檔案區（分析區）"
-                    st.rerun()
-                if col3.button("[刪除]", key=f"del_{item['id']}"):
-                    delete_history(item["id"])
-                    st.rerun()
-            
-            with tab_chart:
-                if not df_hist.empty:
-                    render_charts(df_hist, key_prefix=f"hist_{item['id']}")
-                    cdl1, cdl2 = st.columns(2)
-                    hist_stats = df_hist["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
-                    hist_stats["百分比"] = (hist_stats["件數"] / max(hist_stats["件數"].sum(), 1) * 100).round(0).astype(int)
-                    hist_stats["歸屬部門"] = hist_stats["問題類型"].map(DEPT_MAP).fillna("")
-                    hist_ai = generate_ai_summary(df_hist)
-                    hist_chart_pack = build_chart_pack(df_hist)
-
-                    hist_ppt = build_ppt_bytes(
-                        hist_stats,
-                        hist_ai,
-                        item.get("source_name", "history"),
-                        chart_pack=hist_chart_pack,
-                    )
-                    cdl1.download_button(
-                        "一鍵下載PPT",
-                        data=hist_ppt,
-                        file_name=f"{datetime.now().strftime('%Y%m%d')}_{safe_filename(item.get('source_name','history'))}_圖表分析.pptx",
-                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                        key=f"hist_ppt_{item['id']}",
-                    )
-                    hist_zip = io.BytesIO()
-                    with zipfile.ZipFile(hist_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-                        for fn, b in hist_chart_pack.items():
-                            zi = zipfile.ZipInfo(fn)
-                            zi.flag_bits |= 0x800  # UTF-8 filename flag，避免中文亂碼
-                            zi.compress_type = zipfile.ZIP_DEFLATED
-                            zf.writestr(zi, b)
-                    cdl2.download_button(
-                        "下載圖檔（ZIP）",
-                        data=hist_zip.getvalue(),
-                        file_name=f"{datetime.now().strftime('%Y%m%d')}_{safe_filename(item.get('source_name','history'))}_圖表.zip",
-                        mime="application/zip",
-                        key=f"hist_img_{item['id']}",
-                    )
-                else:
-                    st.info("無資料可繪圖")
-                    
-            with tab_ai:
-                st.info("點擊下方按鈕即時生成本檔案的 AI 重點摘要")
-                if st.button("[產生 AI 摘要]", key=f"ai_btn_{item['id']}"):
-                    with st.spinner("AI 分析中..."):
-                        ai_result = generate_ai_summary_llm(df_hist)
-                        st.markdown(ai_result)
 
 
 def main():
