@@ -2208,7 +2208,7 @@ def section_3():
     if ws_test is not None:
         st.success("☁️ Google Sheets 已連線，歷史紀錄永久保存")
     elif has_creds and has_sid:
-        ws_test2 = _history_sheet(log_error=True)  # trigger error logging
+        ws_test2 = _history_sheet(log_error=True)
         err_detail = st.session_state.get("_gsheet_error", "")
         st.warning(f"⚠️ 環境變數已設定但連線失敗\n{err_detail}")
         st.info("💡 請到 Google Cloud Console 確認已啟用 **Google Sheets API** 與 **Google Drive API**：\nhttps://console.cloud.google.com/apis/library")
@@ -2220,7 +2220,7 @@ def section_3():
         st.info("尚無歷史紀錄。")
         return
 
-    # De-duplicate: keep only latest entry per source_name
+    # De-duplicate
     seen_names: dict = {}
     deduped = []
     for item in history:
@@ -2229,6 +2229,58 @@ def section_3():
             seen_names[sn] = item
             deduped.append(item)
     history = deduped
+
+    # ── 日期區間篩選器 ─────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("##### 📅 日期區間篩選（有篩選時才顯示紀錄）")
+    f_col1, f_col2, f_col3 = st.columns([2, 2, 1])
+
+    # 取得所有紀錄的日期範圍
+    all_dates = []
+    for item in history:
+        try:
+            all_dates.append(datetime.fromisoformat(item["created_at"]).date())
+        except Exception:
+            pass
+
+    if all_dates:
+        min_date = min(all_dates)
+        max_date = max(all_dates)
+    else:
+        min_date = max_date = datetime.now().date()
+
+    start_filter = f_col1.date_input("開始日期", value=None, min_value=min_date, max_value=max_date,
+                                      key="s3_start", format="YYYY/MM/DD")
+    end_filter   = f_col2.date_input("結束日期", value=None, min_value=min_date, max_value=max_date,
+                                      key="s3_end", format="YYYY/MM/DD")
+    do_filter = f_col3.button("🔍 篩選", key="s3_filter", use_container_width=True)
+
+    # 是否已啟動篩選
+    filter_active = start_filter is not None or end_filter is not None
+
+    if not filter_active:
+        st.caption("請選擇日期區間後按「篩選」按鈕，即可顯示該區間的歷史紀錄。")
+        return
+
+    # 依日期區間過濾
+    filtered = []
+    for item in history:
+        try:
+            item_date = datetime.fromisoformat(item["created_at"]).date()
+            if start_filter and item_date < start_filter:
+                continue
+            if end_filter and item_date > end_filter:
+                continue
+            filtered.append(item)
+        except Exception:
+            filtered.append(item)
+
+    if not filtered:
+        st.info(f"所選日期區間（{start_filter} ～ {end_filter}）無歷史紀錄。")
+        return
+
+    st.caption(f"共找到 {len(filtered)} 筆紀錄")
+    history = filtered
 
     for item in history:
         out_path = Path(item.get("output_path", ""))
@@ -2779,28 +2831,30 @@ def section_4():
             for _, r in df_cur[detail_col].value_counts().head(3).reset_index().iterrows():
                 top3 += f"- {r[detail_col]}：{r['count']} 件\n"
 
-        prompt = f"""你是 ECOCO 宜可可循環經濟客服部的高級分析專員。
-請根據以下數據，產出一份{rep_type}的「口說報告」，適合在會議中對長官簡報。
-
-【語氣】：專業、條理清晰、帶有建議性，如現場口語報告。
-【結構】：
-1. 開場白（點出本期重點）
-2. 總體趨勢概述（數字意義，非只念數字）
-3. 前三大痛點深度解析（原因與影響）
-4. 城市/區域分析亮點
-5. 改善成效追蹤
-6. 下階段行動建議
-
-【本期數據】（{period_sel}，共 {total_cur} 件）：
-{type_summary or "（無問題類型資料）"}
-
-【城市分布 TOP5】：
-{city_summary or "（無城市資料）"}
-
-【前三大問題細項】：
-{top3 or "（無細項資料）"}
-""" + (f"\n【上期對比】（{period_prev}，{total_prev} 件，總件數 {pct_chg:+.1f}%）" if pct_chg is not None else "")
-        + "\n\n請以繁體中文撰寫，口語自然但不失專業，每段落 2-4 句。"
+        _upper_cmp = (
+            f"\n【上期對比】（{period_prev}，{total_prev} 件，總件數 {pct_chg:+.1f}%）"
+            if pct_chg is not None else ""
+        )
+        prompt = (
+            f"你是 ECOCO 宜可可循環經濟客服部的高級分析專員。\n"
+            f"請根據以下數據，產出一份{rep_type}的「口說報告」，適合在會議中對長官簡報。\n\n"
+            f"【語氣】：專業、條理清晰、帶有建議性，如現場口語報告。\n"
+            f"【結構】：\n"
+            f"1. 開場白（點出本期重點）\n"
+            f"2. 總體趨勢概述（數字意義，非只念數字）\n"
+            f"3. 前三大痛點深度解析（原因與影響）\n"
+            f"4. 城市/區域分析亮點\n"
+            f"5. 改善成效追蹤\n"
+            f"6. 下階段行動建議\n\n"
+            f"【本期數據】（{period_sel}，共 {total_cur} 件）：\n"
+            f"{type_summary or '（無問題類型資料）'}\n\n"
+            f"【城市分布 TOP5】：\n"
+            f"{city_summary or '（無城市資料）'}\n\n"
+            f"【前三大問題細項】：\n"
+            f"{top3 or '（無細項資料）'}\n"
+            f"{_upper_cmp}\n\n"
+            f"請以繁體中文撰寫，口語自然但不失專業，每段落 2-4 句。"
+        )
 
         with st.spinner("AI 正在撰寫口說報告..."):
             try:
@@ -2825,10 +2879,79 @@ def section_4():
                                    f"以下為數據摘要供您參考：\n\n{prompt}")
 
         st.text_area("📋 口說報告（可複製）", report_text, height=460, key="s4_report_out")
-        st.download_button("⬇️ 下載口說報告（TXT）",
-                           data=report_text.encode("utf-8"),
-                           file_name=f"{period_sel}_{rep_type}.txt",
-                           mime="text/plain", key="s4_dl_report")
+
+        # ── 一鍵下載：報告 TXT + 圖表 ZIP ──
+        dl_c1, dl_c2 = st.columns(2)
+        dl_c1.download_button(
+            "⬇️ 下載口說報告（TXT）",
+            data=report_text.encode("utf-8"),
+            file_name=f"{period_sel}_{rep_type}.txt",
+            mime="text/plain", key="s4_dl_report",
+            use_container_width=True,
+        )
+        # 產生圖表 ZIP
+        try:
+            _setup_cjk_font()
+            chart_bytes_map: dict[str, bytes] = {}
+
+            # 1. 類型對比圖
+            if type_col:
+                import matplotlib.pyplot as _plt
+                _fig, _ax = _plt.subplots(figsize=(9, 4))
+                _x = list(cur_type_s.index)
+                _cur_v = [int(cur_type_s[t]) for t in _x]
+                _prev_v = [int(prev_type_s.get(t, 0)) for t in _x]
+                _xi = range(len(_x))
+                _ax.bar([i-0.2 for i in _xi], _cur_v, 0.35, label="本期", color="#060E9F")
+                _ax.bar([i+0.2 for i in _xi], _prev_v, 0.35, label="上期", color="#8EB9C9")
+                _ax.set_xticks(list(_xi)); _ax.set_xticklabels(_x, rotation=15)
+                _ax.legend(); _ax.set_title(f"{period_sel} 問題類型對比")
+                _ax.yaxis.set_major_locator(_plt.MaxNLocator(integer=True))
+                _buf = io.BytesIO(); _fig.savefig(_buf, format="png", dpi=150, bbox_inches="tight")
+                _plt.close(_fig); chart_bytes_map["問題類型對比.png"] = _buf.getvalue()
+
+            # 2. 細項圖
+            if detail_col:
+                _det = df_cur[detail_col].value_counts().head(8)
+                _fig2, _ax2 = _plt.subplots(figsize=(9, 4))
+                _ax2.barh(list(_det.index)[::-1], list(_det.values)[::-1], color="#060E9F")
+                _ax2.set_title(f"{period_sel} TOP 8 問題細項")
+                _ax2.xaxis.set_major_locator(_plt.MaxNLocator(integer=True))
+                _buf2 = io.BytesIO(); _fig2.savefig(_buf2, format="png", dpi=150, bbox_inches="tight")
+                _plt.close(_fig2); chart_bytes_map["問題細項排行.png"] = _buf2.getvalue()
+
+            # 3. 城市排行圖
+            if city_col:
+                _fig3, _ax3 = _plt.subplots(figsize=(9, 4))
+                _cc = df_cur[city_col].value_counts().head(10)
+                _ax3.bar(list(_cc.index), list(_cc.values), color="#FF5000")
+                _ax3.set_title(f"{period_sel} 城市件數排行")
+                _ax3.yaxis.set_major_locator(_plt.MaxNLocator(integer=True))
+                _buf3 = io.BytesIO(); _fig3.savefig(_buf3, format="png", dpi=150, bbox_inches="tight")
+                _plt.close(_fig3); chart_bytes_map["城市排行.png"] = _buf3.getvalue()
+
+            # 打包 ZIP
+            _zbuf = io.BytesIO()
+            with zipfile.ZipFile(_zbuf, "w", zipfile.ZIP_DEFLATED) as _zf:
+                for _fn, _fb in chart_bytes_map.items():
+                    _zi = zipfile.ZipInfo(_fn)
+                    _zi.flag_bits |= 0x800
+                    _zi.compress_type = zipfile.ZIP_DEFLATED
+                    _zf.writestr(_zi, _fb)
+                # 加入口說報告 txt
+                _zr = zipfile.ZipInfo(f"{period_sel}_{rep_type}.txt")
+                _zr.flag_bits |= 0x800
+                _zf.writestr(_zr, report_text.encode("utf-8"))
+
+            dl_c2.download_button(
+                "⬇️ 下載圖表+報告（ZIP）",
+                data=_zbuf.getvalue(),
+                file_name=f"{period_sel}_趨勢分析.zip",
+                mime="application/zip", key="s4_dl_zip",
+                use_container_width=True,
+            )
+        except Exception as _ze:
+            dl_c2.warning(f"圖表 ZIP 產生失敗：{_ze}")
 
 
 
