@@ -2449,7 +2449,11 @@ def section_4():
     detail_col = next((c for c in df_all.columns if "問題細項" in c), None)
     dept_col   = next((c for c in df_all.columns if "部門" in c or "歸屬" in c), None)
     city_col   = next((c for c in df_all.columns if "站點區域" in c or "城市" in c or "區域" in c), None)
-    station_col= next((c for c in df_all.columns if "站點名稱" in c or "站點" in c), None)
+    # 站點名稱欄：優先取「站點名稱」，排除「站點編號」/「站點代碼」
+    station_col = next(
+        (c for c in df_all.columns if c in ("站點名稱",)),
+        next((c for c in df_all.columns if "站點名稱" in c and "編號" not in c and "代碼" not in c), None)
+    )
 
     if not date_col:
         st.warning("找不到日期欄位，請確認資料包含「日期」欄位。")
@@ -2569,10 +2573,17 @@ def section_4():
 
             for rank_i, (city, cnt) in enumerate(city_cur.items()):
                 prev_cnt = int(city_prev.get(city, 0))
-                badge    = delta_badge(int(cnt), prev_cnt, html=True)
+                d_total  = int(cnt) - prev_cnt
+                if prev_cnt:
+                    pct_s = f"{pct_change(int(cnt), prev_cnt):+.1f}%"
+                    sym_s = "▲" if d_total > 0 else ("▼" if d_total < 0 else "—")
+                    badge_s = f"　{sym_s}{abs(pct_change(int(cnt),prev_cnt)):.1f}%"
+                else:
+                    badge_s = ""
                 medal    = MEDAL[rank_i] if rank_i < len(MEDAL) else f"#{rank_i+1}"
+                label    = f"{medal} **{city}**　{int(cnt)} 件{badge_s}"
 
-                with st.expander(f"{medal} **{city}**　{int(cnt)} 件　{badge}", expanded=(rank_i==0)):
+                with st.expander(label, expanded=(rank_i==0)):
                     mask_city = df_cur[city_col] == city
                     df_city   = df_cur[mask_city]
 
@@ -2721,8 +2732,15 @@ def section_4():
             title=f"歷史{dim}件數趨勢",
             markers=True, color_discrete_sequence=["#060E9F"],
         )
-        fig_line.add_vline(x=period_sel, line_dash="dash", line_color="#FF5000",
-                           annotation_text="本期", annotation_font_color="#FF5000")
+        # add_vline 需要數值索引而非字串，改用 annotation
+        if period_sel in trend_data["_period"].values:
+            sel_x_idx = trend_data.index[trend_data["_period"] == period_sel].tolist()
+            if sel_x_idx:
+                fig_line.add_vline(
+                    x=sel_x_idx[0],
+                    line_dash="dash", line_color="#FF5000",
+                    annotation_text="本期", annotation_font_color="#FF5000",
+                )
         fig_line.update_layout(height=300, xaxis_title=dim,
                                 yaxis=dict(dtick=1, tickformat="d"), margin=dict(t=45,b=0))
         st.plotly_chart(fig_line, use_container_width=True)
