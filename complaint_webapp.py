@@ -2383,44 +2383,44 @@ def section_3():
 
 
 def section_4():
-    """功能四：週/月/季/年度趨勢分析儀表板 + AI 口說報告"""
+    """功能四：週/月/季/年度趨勢分析儀表板"""
 
-    # ── CSS ────────────────────────────────────────────────────────
+    # ── ECOCO 品牌 CSS（對齊 HTML 範本風格）──────────────────────
+    st.markdown("""<style>
+    .s4-header{background:#060E9F;color:#fff;padding:22px 26px;border-radius:12px;
+               border-bottom:6px solid #FF5000;margin-bottom:18px}
+    .s4-header h2{margin:0;font-size:20px;font-weight:700;letter-spacing:.3px}
+    .s4-header p{margin:4px 0 0;opacity:.85;font-size:13px}
+    .s4-section{border-left:6px solid #FF5000;padding-left:14px;
+                color:#060E9F;font-size:17px;font-weight:700;margin:22px 0 14px}
+    .s4-card{background:#fff;border-radius:12px;padding:20px 24px;
+             box-shadow:0 4px 10px rgba(0,0,0,.06);margin-bottom:16px}
+    .s4-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+    .s4-kpi{background:#fff;border-radius:10px;padding:18px 16px;text-align:center;
+            border-top:4px solid #FFCE00;box-shadow:0 2px 6px rgba(0,0,0,.05)}
+    .s4-kpi-val{font-size:30px;font-weight:700;color:#FF5000}
+    .s4-kpi-lbl{font-size:12px;color:#666;margin-top:4px}
+    .s4-kpi-delta{font-size:11px;margin-top:3px}
+    .delta-up{color:#c03000} .delta-dn{color:#0a6e44} .delta-flat{color:#888}
+    .s4-rank-table{width:100%;border-collapse:collapse}
+    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 12px;font-size:13px;text-align:center}
+    .s4-rank-table td{padding:10px 12px;text-align:center;border-bottom:1px solid #eee;font-size:13px}
+    .s4-rank-val{color:#FF5000;font-weight:700}
+    .filter-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+    .filter-chip{padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
+                 border:1.5px solid #060E9F;background:#fff;color:#060E9F}
+    .filter-chip.active{background:#060E9F;color:#fff}
+    </style>""", unsafe_allow_html=True)
+
+    # ── 頁首 ──────────────────────────────────────────────────────
     st.markdown("""
-    <style>
-    .trend-hdr{background:#060E9F;color:#fff;padding:14px 20px;border-radius:10px;
-               display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem}
-    .trend-hdr-title{font-size:17px;font-weight:600;letter-spacing:.3px}
-    .trend-hdr-sub{font-size:12px;opacity:.8;margin-top:3px}
-    .metric-card{background:var(--secondary-background-color);border-radius:10px;
-                 padding:14px 16px;border-left:4px solid #060E9F}
-    .metric-val{font-size:28px;font-weight:700;color:#060E9F}
-    .metric-lbl{font-size:12px;color:gray;margin-bottom:4px}
-    .delta-up{color:#d04000;font-size:12px}
-    .delta-dn{color:#0a6e44;font-size:12px}
-    .delta-flat{color:gray;font-size:12px}
-    .city-badge-up{background:#ffe0d0;color:#8b2000;
-                   padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}
-    .city-badge-dn{background:#d0f0e0;color:#065a30;
-                   padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}
-    .city-badge-flat{background:#eee;color:#666;
-                     padding:2px 8px;border-radius:6px;font-size:11px}
-    </style>
-    """, unsafe_allow_html=True)
+    <div class="s4-header">
+      <h2>📈 ECOCO 客訴趨勢分析儀表板</h2>
+      <p>城市・站點・部門・問題類型・機台比例 | 自訂日期區間 + 維度篩選</p>
+    </div>""", unsafe_allow_html=True)
 
-    # ── 頁首 ────────────────────────────────────────────────────────
-    st.markdown("""
-    <div class="trend-hdr">
-      <div>
-        <div class="trend-hdr-title">📈 ECOCO 客訴趨勢分析儀表板</div>
-        <div class="trend-hdr-sub">城市 · 站點 · 部門 · 問題比例 · AI 口說報告</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # ── 資料來源選擇 ─────────────────────────────────────────────────
-    src_tab1, src_tab2 = st.tabs(["📂 使用歷史紀錄資料", "🔗 填入 Google Sheets 網址"])
-
+    # ── 資料來源 ──────────────────────────────────────────────────
+    src_tab1, src_tab2 = st.tabs(["📂 歷史紀錄資料", "🔗 填入 Google Sheets 網址"])
     all_dfs: list[pd.DataFrame] = []
 
     with src_tab1:
@@ -2432,403 +2432,353 @@ def section_4():
                     if not grow or not grow[0]: continue
                     excel_b64 = grow[4] if len(grow) > 4 else ""
                     if excel_b64:
-                        try:
-                            all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(excel_b64))))
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+                        try: all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(excel_b64))))
+                        except Exception: pass
+            except Exception: pass
         for v in st.session_state.get("_history_cache", {}).values():
-            try:
-                all_dfs.append(pd.read_excel(io.BytesIO(v["excel_bytes"])))
-            except Exception:
-                pass
-        if all_dfs:
-            st.success(f"✅ 已載入 {len(all_dfs)} 份歷史紀錄")
-        else:
-            st.info("尚無歷史資料。請先在功能一完成分析並儲存。")
+            try: all_dfs.append(pd.read_excel(io.BytesIO(v["excel_bytes"])))
+            except Exception: pass
+        st.caption(f"已載入 {len(all_dfs)} 份歷史紀錄" if all_dfs else "尚無歷史資料")
 
     with src_tab2:
-        gs_url = st.text_input(
-            "Google Sheets 網址",
-            placeholder="https://docs.google.com/spreadsheets/d/xxxxx/edit",
-            key="trend_gs_url",
-        )
-        gs_sheet = st.text_input("工作表名稱（留空則讀取第一張）", key="trend_gs_sheet", value="")
-        if st.button("📥 讀取 Google Sheets", key="btn_load_gs"):
+        gs_url = st.text_input("Google Sheets 網址", placeholder="https://docs.google.com/spreadsheets/d/xxxxx/edit", key="s4v3_gsurl")
+        gs_sheet = st.text_input("工作表名稱（留空讀取第一張）", key="s4v3_gssheet", value="")
+        if st.button("📥 讀取", key="s4v3_load_gs"):
             if not gs_url:
                 st.error("請填入網址")
             else:
                 try:
-                    # 解析 spreadsheet ID
                     import re as _re
                     m = _re.search(r"/spreadsheets/d/([^/]+)", gs_url)
                     if not m:
-                        st.error("無法解析試算表 ID，請確認網址格式正確")
+                        st.error("無法解析試算表 ID")
                     else:
-                        sid = m.group(1)
-                        client = _get_gsheet_client()
-                        if not client:
-                            st.error("未連線 Google API，請確認 GOOGLE_CREDENTIALS_JSON 環境變數已設定")
+                        _client = _get_gsheet_client()
+                        if not _client:
+                            st.error("未連線 Google API")
                         else:
-                            ss = client.open_by_key(sid)
-                            ws_gs = ss.worksheet(gs_sheet) if gs_sheet else ss.get_worksheet(0)
-                            rows = ws_gs.get_all_values()
-                            if not rows:
-                                st.error("試算表為空")
-                            else:
-                                df_gs = pd.DataFrame(rows[1:], columns=rows[0])
-                                all_dfs.append(df_gs)
-                                st.session_state["_trend_gs_df"] = df_gs
-                                st.success(f"✅ 已讀取「{ws_gs.title}」，共 {len(df_gs)} 列")
+                            _ss = _client.open_by_key(m.group(1))
+                            _ws = _ss.worksheet(gs_sheet) if gs_sheet else _ss.get_worksheet(0)
+                            _rows = _ws.get_all_values()
+                            if _rows:
+                                _df = pd.DataFrame(_rows[1:], columns=_rows[0])
+                                all_dfs.append(_df)
+                                st.session_state["_s4v3_gs_df"] = _df
+                                st.success(f"✅ 已讀取「{_ws.title}」，共 {len(_df)} 列")
                 except Exception as e:
                     st.error(f"讀取失敗：{e}")
-
-        # 使用快取的 GS 資料
-        if "trend_gs_df" in st.session_state:
-            if st.session_state["_trend_gs_df"] is not None:
-                all_dfs.append(st.session_state["_trend_gs_df"])
+        if st.session_state.get("_s4v3_gs_df") is not None:
+            all_dfs.append(st.session_state["_s4v3_gs_df"])
 
     if not all_dfs:
-        st.stop()
+        st.info("尚無資料，請先在功能一完成分析儲存，或填入 Google Sheets 網址。")
+        return
 
-    # ── 合併資料 ─────────────────────────────────────────────────────
     df_all = pd.concat(all_dfs, ignore_index=True).drop_duplicates()
 
-    # 自動偵測欄位
+    # ── 欄位自動偵測 ──────────────────────────────────────────────
     date_col   = next((c for c in df_all.columns if "日期" in c or "date" in c.lower()), None)
     type_col   = next((c for c in df_all.columns if "問題類型" in c), None)
     detail_col = next((c for c in df_all.columns if "問題細項" in c), None)
     dept_col   = next((c for c in df_all.columns if "部門" in c or "歸屬" in c), None)
     city_col   = next((c for c in df_all.columns if "站點區域" in c or "城市" in c or "區域" in c), None)
-    # 站點名稱欄：優先取「站點名稱」，排除「站點編號」/「站點代碼」
-    station_col = next(
-        (c for c in df_all.columns if c in ("站點名稱",)),
-        next((c for c in df_all.columns if "站點名稱" in c and "編號" not in c and "代碼" not in c), None)
-    )
+    station_col= next((c for c in df_all.columns if c == "站點名稱"), None) or \
+                 next((c for c in df_all.columns if "站點名稱" in c and "編號" not in c), None)
+    machine_col= next((c for c in df_all.columns if "機台類型" in c or "機台" in c), None)
 
     if not date_col:
-        st.warning("找不到日期欄位，請確認資料包含「日期」欄位。")
-        st.stop()
+        st.warning("找不到日期欄位")
+        return
 
     df_all[date_col] = pd.to_datetime(df_all[date_col], errors="coerce")
     df_all = df_all.dropna(subset=[date_col])
     if df_all.empty:
-        st.warning("資料無有效日期")
-        st.stop()
+        st.warning("無有效日期資料")
+        return
 
-    # ── 時間維度選擇 ─────────────────────────────────────────────────
-    dim_col_ui, period_col_ui, _ = st.columns([2, 3, 2])
-    dim = dim_col_ui.selectbox("分析維度", ["週", "月", "季", "年度"], index=1, key="s4_dim",
-                                label_visibility="visible")
+    # ── 時間區間選擇（維度 + 自訂日期）────────────────────────────
+    st.markdown('<div class="s4-section">⚙️ 篩選條件</div>', unsafe_allow_html=True)
+    filter_c1, filter_c2, filter_c3 = st.columns([2, 3, 2])
+
+    dim_mode = filter_c1.radio("時間模式", ["維度選擇", "自訂日期區間"], horizontal=True, key="s4v3_dimmode")
+
     DIM_FREQ = {"週": "W", "月": "M", "季": "Q", "年度": "Y"}
-    df_all["_period"] = df_all[date_col].dt.to_period(DIM_FREQ[dim]).astype(str)
-    periods = sorted(df_all["_period"].unique(), reverse=True)
+    period_sel = period_prev = None
+    df_cur = df_prev = pd.DataFrame()
 
-    period_sel  = period_col_ui.selectbox(f"本期（{dim}）", periods, key="s4_period")
-    period_prev = periods[periods.index(period_sel)+1] if periods.index(period_sel)+1 < len(periods) else None
+    if dim_mode == "維度選擇":
+        dim = filter_c2.selectbox("分析維度", ["週", "月", "季", "年度"], index=1, key="s4v3_dim")
+        df_all["_period"] = df_all[date_col].dt.to_period(DIM_FREQ[dim]).astype(str)
+        periods = sorted(df_all["_period"].unique(), reverse=True)
+        if not periods:
+            st.warning("資料不足")
+            return
+        period_sel = filter_c3.selectbox(f"本期", periods, key="s4v3_period")
+        p_idx = periods.index(period_sel)
+        period_prev = periods[p_idx + 1] if p_idx + 1 < len(periods) else None
+        df_cur  = df_all[df_all["_period"] == period_sel].copy()
+        df_prev = df_all[df_all["_period"] == period_prev].copy() if period_prev else pd.DataFrame()
+        period_label = period_sel
+    else:
+        min_d = df_all[date_col].min().date()
+        max_d = df_all[date_col].max().date()
+        d_col1, d_col2 = filter_c2.columns(2)
+        start_d = d_col1.date_input("開始", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_sd")
+        end_d   = d_col2.date_input("結束", value=max_d, min_value=min_d, max_value=max_d, key="s4v3_ed")
+        df_cur  = df_all[(df_all[date_col].dt.date >= start_d) & (df_all[date_col].dt.date <= end_d)].copy()
+        period_label = f"{start_d} ～ {end_d}"
+        period_prev = None
+        df_prev = pd.DataFrame()
 
-    df_cur  = df_all[df_all["_period"] == period_sel]
-    df_prev = df_all[df_all["_period"] == period_prev] if period_prev else pd.DataFrame()
+    # ── 多維篩選 chips（城市/部門/問題類型/機台）──────────────────
+    st.markdown("**篩選維度：**")
+    chip_cols = st.columns(4)
+
+    city_filter   = chip_cols[0].multiselect("🏙️ 城市", sorted(df_cur[city_col].dropna().unique().tolist()) if city_col and city_col in df_cur.columns else [], key="s4v3_city")
+    dept_filter   = chip_cols[1].multiselect("🏢 部門", sorted(df_cur[dept_col].dropna().unique().tolist()) if dept_col and dept_col in df_cur.columns else [], key="s4v3_dept")
+    type_filter   = chip_cols[2].multiselect("❓ 問題類型", sorted(df_cur[type_col].dropna().unique().tolist()) if type_col and type_col in df_cur.columns else [], key="s4v3_type")
+    mach_filter   = chip_cols[3].multiselect("🔧 機台類型", sorted(df_cur[machine_col].dropna().unique().tolist()) if machine_col and machine_col in df_cur.columns else [], key="s4v3_mach")
+
+    df_filt = df_cur.copy()
+    if city_filter  and city_col:   df_filt = df_filt[df_filt[city_col].isin(city_filter)]
+    if dept_filter  and dept_col:   df_filt = df_filt[df_filt[dept_col].isin(dept_filter)]
+    if type_filter  and type_col:   df_filt = df_filt[df_filt[type_col].isin(type_filter)]
+    if mach_filter  and machine_col: df_filt = df_filt[df_filt[machine_col].isin(mach_filter)]
+
+    n_cur  = len(df_filt)
+    n_prev = len(df_prev)
 
     def pct_change(cur, prev):
         if prev == 0: return None
         return (cur - prev) / prev * 100
 
-    def delta_badge(cur, prev, html=False):
-        d = cur - prev
+    # ── KPI 卡片 ──────────────────────────────────────────────────
+    st.markdown(f'<div class="s4-section">📊 本期即時統計（{period_label}）</div>', unsafe_allow_html=True)
+
+    kpi_items = [("總進件數", n_cur, n_prev)]
+    if type_col and type_col in df_filt.columns:
+        for t, tc in df_filt[type_col].value_counts().items():
+            prev_tc = int(df_prev[type_col].eq(t).sum()) if not df_prev.empty and type_col in df_prev.columns else 0
+            kpi_items.append((str(t)[:8], int(tc), prev_tc))
+            if len(kpi_items) >= 4: break
+
+    kpi_html = '<div class="s4-kpi-grid">'
+    for lbl, cur, prev in kpi_items[:4]:
         p = pct_change(cur, prev)
-        if p is None: return ""
-        if html:
-            cls = "city-badge-up" if d > 0 else ("city-badge-dn" if d < 0 else "city-badge-flat")
-            sym = "▲" if d > 0 else ("▼" if d < 0 else "—")
-            return f'<span class="{cls}">{sym} {abs(p):.1f}%</span>'
-        sym = "🔺" if d > 0 else ("🔻" if d < 0 else "➡")
-        cls = "delta-up" if d > 0 else ("delta-dn" if d < 0 else "delta-flat")
-        return f'<span class="{cls}">{sym} {d:+d} 件（{p:+.1f}%）vs 上期</span>'
-
-    # ── KPI 指標卡 ───────────────────────────────────────────────────
-    n_cur  = len(df_cur)
-    n_prev = len(df_prev) if not df_prev.empty else 0
-
-    kpi_types = {}
-    if type_col:
-        for t in df_cur[type_col].value_counts().index[:4]:
-            kpi_types[t] = {
-                "cur": int(df_cur[type_col].eq(t).sum()),
-                "prev": int(df_prev[type_col].eq(t).sum()) if not df_prev.empty else 0
-            }
-
-    kpis = [("總件數", n_cur, n_prev)] + [(k, v["cur"], v["prev"]) for k, v in kpi_types.items()]
-    cols_kpi = st.columns(min(len(kpis), 4))
-    for i, (lbl, cur, prev) in enumerate(kpis[:4]):
-        badge_html = delta_badge(cur, prev, html=False) if prev else ""
-        cols_kpi[i].markdown(f"""
-        <div class="metric-card">
-          <div class="metric-lbl">{lbl}</div>
-          <div class="metric-val">{cur}</div>
-          {badge_html}
-        </div>""", unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── 城市分析 ──────────────────────────────────────────────────────
-    col_left, col_right = st.columns([3, 2])
-
-    with col_left:
-        if city_col and city_col in df_cur.columns:
-            st.markdown("#### 🏙️ 城市客訴件數與成長比例")
-            city_cur  = df_cur[city_col].value_counts()
-            city_prev = df_prev[city_col].value_counts() if not df_prev.empty else pd.Series(dtype=int)
-
-            top_station = {}
-            if station_col:
-                for city in city_cur.index:
-                    mask = df_cur[city_col] == city
-                    stations = df_cur[mask][station_col].value_counts()
-                    if not stations.empty:
-                        top_station[city] = stations.index[0]
-
-            rows_html = ""
-            for city, cnt in city_cur.items():
-                prev_cnt = int(city_prev.get(city, 0))
-                badge = delta_badge(int(cnt), prev_cnt, html=True)
-                sta = top_station.get(city, "—")[:10]
-                rows_html += f"""<tr>
-                  <td style="padding:6px 8px;font-size:13px">{city}</td>
-                  <td style="padding:6px 8px;font-size:13px;font-weight:600">{int(cnt)}</td>
-                  <td style="padding:6px 8px;font-size:13px;color:gray">{prev_cnt}</td>
-                  <td style="padding:6px 8px">{badge}</td>
-                  <td style="padding:6px 8px;font-size:12px;color:gray">{sta}</td>
-                </tr>"""
-
-            st.markdown(f"""
-            <table style="width:100%;border-collapse:collapse;font-family:inherit">
-              <thead>
-                <tr style="border-bottom:1.5px solid #060E9F">
-                  <th style="text-align:left;padding:6px 8px;font-size:12px;color:gray;font-weight:500">城市</th>
-                  <th style="text-align:left;padding:6px 8px;font-size:12px;color:gray;font-weight:500">本期</th>
-                  <th style="text-align:left;padding:6px 8px;font-size:12px;color:gray;font-weight:500">上期</th>
-                  <th style="text-align:left;padding:6px 8px;font-size:12px;color:gray;font-weight:500">成長率</th>
-                  <th style="text-align:left;padding:6px 8px;font-size:12px;color:gray;font-weight:500">熱門站點</th>
-                </tr>
-              </thead>
-              <tbody>{rows_html}</tbody>
-            </table>""", unsafe_allow_html=True)
-
-            # ── 區域排行：點擊城市展開站點 + 問題細項排行 ──────────────
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("#### 🏆 區域排行榜")
-            st.caption("點選城市，查看該區域站點排行與問題細項排行")
-
-            MEDAL = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-
-            for rank_i, (city, cnt) in enumerate(city_cur.items()):
-                prev_cnt = int(city_prev.get(city, 0))
-                d_total  = int(cnt) - prev_cnt
-                if prev_cnt:
-                    pct_s = f"{pct_change(int(cnt), prev_cnt):+.1f}%"
-                    sym_s = "▲" if d_total > 0 else ("▼" if d_total < 0 else "—")
-                    badge_s = f"　{sym_s}{abs(pct_change(int(cnt),prev_cnt)):.1f}%"
-                else:
-                    badge_s = ""
-                medal    = MEDAL[rank_i] if rank_i < len(MEDAL) else f"#{rank_i+1}"
-                label    = f"{medal} **{city}**　{int(cnt)} 件{badge_s}"
-
-                with st.expander(label, expanded=(rank_i==0)):
-                    mask_city = df_cur[city_col] == city
-                    df_city   = df_cur[mask_city]
-
-                    exp_col1, exp_col2 = st.columns(2)
-
-                    # 站點排行
-                    with exp_col1:
-                        st.markdown("**📍 站點排行**")
-                        if station_col and station_col in df_city.columns:
-                            sta_rank = df_city[station_col].value_counts().reset_index()
-                            sta_rank.columns = ["站點名稱", "件數"]
-                            # 加上上期對比
-                            if not df_prev.empty and city_col in df_prev.columns and station_col in df_prev.columns:
-                                sta_prev = df_prev[df_prev[city_col]==city][station_col].value_counts()
-                            else:
-                                sta_prev = pd.Series(dtype=int)
-
-                            sta_rows = ""
-                            for si, srow in sta_rank.head(8).iterrows():
-                                s_prev = int(sta_prev.get(srow["站點名稱"], 0))
-                                s_badge = delta_badge(int(srow["件數"]), s_prev, html=True) if s_prev else ""
-                                s_medal = MEDAL[si] if si < len(MEDAL) else f"#{si+1}"
-                                sta_rows += f"""<div style="display:flex;justify-content:space-between;
-                                  align-items:center;padding:5px 0;
-                                  border-bottom:0.5px solid rgba(0,0,0,.06);font-size:12px">
-                                  <span>{s_medal} {str(srow['站點名稱'])[:16]}</span>
-                                  <span style="display:flex;align-items:center;gap:6px">
-                                    <b>{int(srow['件數'])}</b>{s_badge}
-                                  </span>
-                                </div>"""
-                            st.markdown(sta_rows or "<i style='color:gray;font-size:12px'>無站點資料</i>",
-                                        unsafe_allow_html=True)
-                        else:
-                            st.info("無站點名稱欄位")
-
-                    # 問題細項排行
-                    with exp_col2:
-                        st.markdown("**🔍 問題細項排行**")
-                        if detail_col and detail_col in df_city.columns:
-                            det_rank = df_city[detail_col].value_counts().reset_index()
-                            det_rank.columns = ["問題細項", "件數"]
-
-                            if not df_prev.empty and city_col in df_prev.columns and detail_col in df_prev.columns:
-                                det_prev = df_prev[df_prev[city_col]==city][detail_col].value_counts()
-                            else:
-                                det_prev = pd.Series(dtype=int)
-
-                            # 小橫條圖
-                            max_cnt = int(det_rank["件數"].max()) if not det_rank.empty else 1
-                            det_rows = ""
-                            for di, drow in det_rank.head(8).iterrows():
-                                d_prev  = int(det_prev.get(drow["問題細項"], 0))
-                                d_badge = delta_badge(int(drow["件數"]), d_prev, html=True) if d_prev else ""
-                                d_medal = MEDAL[di] if di < len(MEDAL) else f"#{di+1}"
-                                bar_pct = int(drow["件數"]) / max_cnt * 100
-                                det_rows += f"""<div style="padding:5px 0;
-                                  border-bottom:0.5px solid rgba(0,0,0,.06)">
-                                  <div style="display:flex;justify-content:space-between;
-                                    align-items:center;margin-bottom:3px;font-size:12px">
-                                    <span>{d_medal} {str(drow['問題細項'])[:14]}</span>
-                                    <span style="display:flex;align-items:center;gap:5px">
-                                      <b>{int(drow['件數'])}</b>{d_badge}
-                                    </span>
-                                  </div>
-                                  <div style="background:rgba(6,14,159,.1);border-radius:3px;height:5px">
-                                    <div style="background:#060E9F;width:{bar_pct:.0f}%;height:100%;
-                                      border-radius:3px"></div>
-                                  </div>
-                                </div>"""
-                            st.markdown(det_rows or "<i style='color:gray;font-size:12px'>無細項資料</i>",
-                                        unsafe_allow_html=True)
-                        else:
-                            st.info("無問題細項欄位")
+        if p is not None:
+            sym = "▲" if p > 0 else ("▼" if p < 0 else "—")
+            cls = "delta-up" if p > 0 else ("delta-dn" if p < 0 else "delta-flat")
+            delta_html = f'<div class="s4-kpi-delta {cls}">{sym} {abs(p):.1f}% vs 上期</div>'
         else:
-            st.info("資料無「站點區域」或「城市」欄位，無法顯示城市分析")
+            delta_html = ""
+        kpi_html += f'''<div class="s4-kpi">
+          <div class="s4-kpi-val">{cur}</div>
+          <div class="s4-kpi-lbl">{lbl}</div>
+          {delta_html}
+        </div>'''
+    kpi_html += '</div>'
+    st.markdown(kpi_html, unsafe_allow_html=True)
 
-    with col_right:
-        st.markdown("#### 🏢 各部門件數")
-        if dept_col and dept_col in df_cur.columns:
-            DEPT_COLOR = {"營運部": "#FF5000", "行銷部": "#FFCE00", "資訊部": "#060E9F"}
-            dept_cur  = df_cur[dept_col].replace("", "未分配").value_counts()
-            dept_prev = df_prev[dept_col].replace("", "未分配").value_counts() if not df_prev.empty else pd.Series(dtype=int)
+    # ── 排行統計（區域/站點/問題細項）───────────────────────────────
+    st.markdown('<div class="s4-section">🏆 案件排行統計 (Top 5)</div>', unsafe_allow_html=True)
 
-            dept_rows = ""
-            for dept, cnt in dept_cur.items():
-                prev_cnt = int(dept_prev.get(dept, 0))
-                d = int(cnt) - prev_cnt
-                badge_cls = "city-badge-up" if d > 0 else ("city-badge-dn" if d < 0 else "city-badge-flat")
-                sym = f"▲{abs(d)}" if d > 0 else (f"▼{abs(d)}" if d < 0 else "—")
-                color = DEPT_COLOR.get(str(dept), "#888")
-                dept_rows += f"""<div style="display:flex;justify-content:space-between;align-items:center;
-                  padding:8px 0;border-bottom:0.5px solid rgba(0,0,0,.08)">
-                  <span style="font-size:13px;display:flex;align-items:center;gap:6px">
-                    <span style="width:10px;height:10px;border-radius:50%;background:{color};display:inline-block"></span>
-                    {dept}
-                  </span>
-                  <span style="display:flex;align-items:center;gap:8px">
-                    <b style="font-size:15px">{int(cnt)}</b>
-                    <span class="{badge_cls}">{sym}</span>
-                  </span>
-                </div>"""
-            st.markdown(dept_rows, unsafe_allow_html=True)
+    rank_cols = st.columns(3)
+    MEDAL = ["🥇","🥈","🥉","4️⃣","5️⃣"]
+
+    def rank_table_html(series, header1, header2):
+        rows = ""
+        for idx, (k, v) in enumerate(series.head(5).items()):
+            m = MEDAL[idx] if idx < len(MEDAL) else str(idx+1)
+            rows += f'<tr><td>{m} {str(k)[:20]}</td><td class="s4-rank-val">{int(v)}</td></tr>'
+        return f'''<table class="s4-rank-table">
+          <thead><tr><th>{header1}</th><th>{header2}</th></tr></thead>
+          <tbody>{rows}</tbody>
+        </table>'''
+
+    with rank_cols[0]:
+        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">📍 區域排行</div>', unsafe_allow_html=True)
+        if city_col and city_col in df_filt.columns and not df_filt[city_col].dropna().empty:
+            st.markdown('<div class="s4-card">' + rank_table_html(df_filt[city_col].value_counts(), "城市/區域", "件數") + '</div>', unsafe_allow_html=True)
         else:
-            st.info("無部門欄位")
+            st.info("無城市資料")
 
-    st.markdown("---")
+    with rank_cols[1]:
+        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">🏬 站點排行</div>', unsafe_allow_html=True)
+        if station_col and station_col in df_filt.columns and not df_filt[station_col].dropna().empty:
+            st.markdown('<div class="s4-card">' + rank_table_html(df_filt[station_col].value_counts(), "站點名稱", "件數") + '</div>', unsafe_allow_html=True)
+        else:
+            st.info("無站點資料")
 
-    # ── 問題類型比例 + 十大細項 ──────────────────────────────────────
-    col_a, col_b = st.columns(2)
+    with rank_cols[2]:
+        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">🔍 問題細項排行</div>', unsafe_allow_html=True)
+        if detail_col and detail_col in df_filt.columns and not df_filt[detail_col].dropna().empty:
+            st.markdown('<div class="s4-card">' + rank_table_html(df_filt[detail_col].value_counts(), "問題細項", "件數") + '</div>', unsafe_allow_html=True)
+        else:
+            st.info("無細項資料")
 
-    with col_a:
-        if type_col:
-            cur_type  = df_cur[type_col].value_counts().reset_index()
-            prev_type = df_prev[type_col].value_counts() if not df_prev.empty else pd.Series(dtype=int)
-            cur_type.columns = ["問題類型", "件數"]
-            cur_type["上期"] = cur_type["問題類型"].map(lambda x: int(prev_type.get(x, 0)))
-            fig_cmp = px.bar(
-                cur_type.melt(id_vars="問題類型", value_vars=["件數","上期"], var_name="期間", value_name="件數值"),
-                x="問題類型", y="件數值", color="期間", barmode="group",
-                title="問題類型比例（本期 vs 上期）",
-                color_discrete_map={"件數": "#060E9F", "上期": "#8EB9C9"},
+    # ── 圖表：問題類型 + 機台佔比（對齊 HTML 範本）─────────────────
+    st.markdown('<div class="s4-section">📉 數據可視化分析</div>', unsafe_allow_html=True)
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        if type_col and type_col in df_filt.columns:
+            _tc = df_filt[type_col].value_counts()
+            fig_pie = px.pie(
+                values=_tc.values, names=_tc.index,
+                title="客訴類別分佈",
+                hole=0.3,
+                color_discrete_sequence=["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"],
             )
-            fig_cmp.update_traces(texttemplate="%{y}", textposition="outside")
-            fig_cmp.update_layout(height=360, yaxis=dict(dtick=1, tickformat="d"),
-                                   margin=dict(t=45,b=0), showlegend=True)
-            st.plotly_chart(fig_cmp, use_container_width=True)
+            fig_pie.update_traces(textinfo="percent+label")
+            fig_pie.update_layout(height=380, margin=dict(t=45,b=0,l=0,r=0))
+            st.plotly_chart(fig_pie, use_container_width=True)
 
-    with col_b:
-        if detail_col:
-            top_detail = df_cur[detail_col].value_counts().head(8).reset_index()
-            top_detail.columns = ["問題細項", "件數"]
+    with chart_col2:
+        if machine_col and machine_col in df_filt.columns:
+            _mc = df_filt[machine_col].value_counts()
+            fig_mac = px.pie(
+                values=_mc.values, names=_mc.index,
+                title="機台客訴佔比",
+                color_discrete_sequence=["#FF5000","#060E9F","#8EB9C9","#FFCE00"],
+            )
+            fig_mac.update_traces(textinfo="percent+label")
+            fig_mac.update_layout(height=380, margin=dict(t=45,b=0,l=0,r=0))
+            st.plotly_chart(fig_mac, use_container_width=True)
+        elif type_col and detail_col and detail_col in df_filt.columns:
+            _dc = df_filt[detail_col].value_counts().head(8)
             fig_det = px.bar(
-                top_detail, x="件數", y="問題細項", orientation="h",
-                title="TOP 8 問題細項",
+                x=list(_dc.values)[::-1], y=list(_dc.index)[::-1],
+                orientation="h", title="TOP 8 問題細項",
                 color_discrete_sequence=["#060E9F"],
             )
-            fig_det.update_layout(height=360, yaxis={"categoryorder":"total ascending"},
-                                   xaxis=dict(dtick=1, tickformat="d"), margin=dict(t=45,b=0))
+            fig_det.update_layout(height=380, xaxis=dict(dtick=1,tickformat="d"),
+                                   margin=dict(t=45,b=0,l=0,r=0))
             st.plotly_chart(fig_det, use_container_width=True)
 
-    # ── 時間軸折線趨勢 ────────────────────────────────────────────────
-    if len(periods) >= 2:
-        trend_data = df_all.groupby("_period").size().reset_index(name="件數").sort_values("_period")
+    # ── 趨勢折線圖 ────────────────────────────────────────────────
+    st.markdown('<div class="s4-section">📈 客訴趨勢分析</div>', unsafe_allow_html=True)
+    if dim_mode == "維度選擇" and len(df_all["_period"].unique()) >= 2:
+        _trend = df_all.groupby("_period").size().reset_index(name="件數").sort_values("_period")
         fig_line = px.line(
-            trend_data, x="_period", y="件數",
-            title=f"歷史{dim}件數趨勢",
-            markers=True, color_discrete_sequence=["#060E9F"],
+            _trend, x="_period", y="件數",
+            title=f"歷史件數趨勢",
+            markers=True,
+            color_discrete_sequence=["#FF5000"],
         )
-        # add_vline 需要數值索引而非字串，改用 annotation
-        if period_sel in trend_data["_period"].values:
-            sel_x_idx = trend_data.index[trend_data["_period"] == period_sel].tolist()
-            if sel_x_idx:
-                fig_line.add_vline(
-                    x=sel_x_idx[0],
-                    line_dash="dash", line_color="#FF5000",
-                    annotation_text="本期", annotation_font_color="#FF5000",
-                )
-        fig_line.update_layout(height=300, xaxis_title=dim,
-                                yaxis=dict(dtick=1, tickformat="d"), margin=dict(t=45,b=0))
+        fig_line.update_traces(fill="tozeroy", fillcolor="rgba(255,80,0,0.1)")
+        if period_sel and period_sel in _trend["_period"].values:
+            _sel_i = _trend.index[_trend["_period"] == period_sel].tolist()
+            if _sel_i:
+                fig_line.add_vline(x=_sel_i[0], line_dash="dash", line_color="#060E9F",
+                                   annotation_text="本期", annotation_font_color="#060E9F")
+        fig_line.update_layout(
+            height=320, xaxis_title="期間",
+            yaxis=dict(dtick=1, tickformat="d"),
+            paper_bgcolor="white", plot_bgcolor="rgba(250,224,184,0.15)",
+            margin=dict(t=45,b=0),
+        )
         st.plotly_chart(fig_line, use_container_width=True)
+    else:
+        # 自訂日期：每日件數
+        _daily = df_filt.groupby(df_filt[date_col].dt.date).size().reset_index(name="件數")
+        _daily.columns = ["日期", "件數"]
+        if not _daily.empty:
+            fig_daily = px.bar(
+                _daily, x="日期", y="件數",
+                title="期間內每日件數",
+                color_discrete_sequence=["#060E9F"],
+            )
+            fig_daily.update_layout(height=300, yaxis=dict(dtick=1, tickformat="d"), margin=dict(t=45,b=0))
+            st.plotly_chart(fig_daily, use_container_width=True)
 
-    # ── AI 口說報告 ────────────────────────────────────────────────────
+    # ── 城市展開排行（可折疊）────────────────────────────────────
+    if city_col and city_col in df_filt.columns and not df_filt.empty:
+        st.markdown('<div class="s4-section">🏙️ 區域排行榜（點選展開站點與細項）</div>', unsafe_allow_html=True)
+        city_rank = df_filt[city_col].value_counts()
+        MEDAL_LIST = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
+        for ri, (city, cnt) in enumerate(city_rank.items()):
+            prev_cnt = int(df_prev[city_col].eq(city).sum()) if not df_prev.empty and city_col in df_prev.columns else 0
+            p = pct_change(int(cnt), prev_cnt)
+            delta_s = (f"　{'▲' if p>0 else '▼'}{abs(p):.1f}%") if p is not None else ""
+            medal = MEDAL_LIST[ri] if ri < len(MEDAL_LIST) else f"#{ri+1}"
+            with st.expander(f"{medal} **{city}**　{int(cnt)} 件{delta_s}", expanded=(ri==0)):
+                df_city = df_filt[df_filt[city_col] == city]
+                ec1, ec2 = st.columns(2)
+                with ec1:
+                    st.markdown("**📍 站點排行**")
+                    if station_col and station_col in df_city.columns:
+                        _sr = df_city[station_col].value_counts().head(8)
+                        _sr_prev = df_prev[df_prev[city_col]==city][station_col].value_counts() if not df_prev.empty and city_col in df_prev.columns and station_col in df_prev.columns else pd.Series(dtype=int)
+                        _html = ""
+                        for si, (sn, sv) in enumerate(_sr.items()):
+                            _sp = int(_sr_prev.get(sn, 0))
+                            _sd = (f"　{'▲' if int(sv)-_sp>0 else '▼'}{abs(pct_change(int(sv),_sp)):.0f}%") if _sp and pct_change(int(sv),_sp) is not None else ""
+                            _sm = MEDAL_LIST[si] if si < len(MEDAL_LIST) else f"#{si+1}"
+                            _html += f'<div style="padding:5px 0;border-bottom:.5px solid #eee;font-size:13px;display:flex;justify-content:space-between"><span>{_sm} {str(sn)[:18]}</span><b style="color:#FF5000">{int(sv)}{_sd}</b></div>'
+                        st.markdown(_html, unsafe_allow_html=True)
+                with ec2:
+                    st.markdown("**🔍 問題細項排行**")
+                    if detail_col and detail_col in df_city.columns:
+                        _dr = df_city[detail_col].value_counts().head(8)
+                        _max = int(_dr.max()) if not _dr.empty else 1
+                        _dhtml = ""
+                        for di, (dn, dv) in enumerate(_dr.items()):
+                            _dm = MEDAL_LIST[di] if di < len(MEDAL_LIST) else f"#{di+1}"
+                            _bp = int(dv)/_max*100
+                            _dhtml += f'''<div style="padding:5px 0;border-bottom:.5px solid #eee">
+                              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+                                <span>{_dm} {str(dn)[:14]}</span><b style="color:#060E9F">{int(dv)}</b></div>
+                              <div style="background:#f0f0f0;border-radius:3px;height:5px">
+                                <div style="background:#060E9F;width:{_bp:.0f}%;height:100%;border-radius:3px"></div></div>
+                            </div>'''
+                        st.markdown(_dhtml, unsafe_allow_html=True)
+
+    # ── 部門分析 ─────────────────────────────────────────────────
+    if dept_col and dept_col in df_filt.columns:
+        st.markdown('<div class="s4-section">🏢 各部門件數分析</div>', unsafe_allow_html=True)
+        dept_rank = df_filt[dept_col].replace("","未分配").value_counts()
+        DEPT_COLOR = {"營運部":"#FF5000","行銷部":"#FFCE00","資訊部":"#060E9F"}
+        fig_dept = px.bar(
+            dept_rank.reset_index(), x=dept_col, y="count",
+            title="各部門件數",
+            color=dept_col,
+            color_discrete_map=DEPT_COLOR,
+        )
+        fig_dept.update_layout(height=300, yaxis=dict(dtick=1,tickformat="d"),
+                                showlegend=False, margin=dict(t=45,b=0))
+        st.plotly_chart(fig_dept, use_container_width=True)
+
+    # ── AI 口說報告 ────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("#### 🎙️ AI 口說報告產生器")
+    st.markdown('<div class="s4-section">🎙️ AI 口說報告產生器</div>', unsafe_allow_html=True)
+    rep_type = st.radio("報告類型", ["週會報告","月會報告","季報","年度報告"], horizontal=True, key="s4v3_rep")
 
-    rep_type = st.radio("報告類型", ["週會報告","月會報告","季報","年度報告"], horizontal=True, key="s4_rep")
-
-    if st.button("🚀 產生 AI 口說報告", type="primary", key="s4_gen"):
-        total_cur  = len(df_cur)
+    if st.button("🚀 產生 AI 口說報告", type="primary", key="s4v3_gen"):
+        total_cur  = len(df_filt)
         total_prev = len(df_prev) if not df_prev.empty else None
         pct_chg    = pct_change(total_cur, total_prev) if total_prev else None
 
         type_summary = ""
-        if type_col:
-            cur_type_s  = df_cur[type_col].value_counts()
-            prev_type_s = df_prev[type_col].value_counts() if not df_prev.empty else pd.Series(dtype=int)
-            for cat, cnt in cur_type_s.items():
-                prev_cnt = int(prev_type_s.get(cat, 0))
+        if type_col and type_col in df_filt.columns:
+            _cvs = df_filt[type_col].value_counts()
+            _pvs = df_prev[type_col].value_counts() if not df_prev.empty and type_col in df_prev.columns else pd.Series(dtype=int)
+            for cat, cnt in _cvs.items():
+                prev_cnt = int(_pvs.get(cat, 0))
                 d = int(cnt) - prev_cnt
                 pline = f"（較上期 {d:+d} 件，{pct_change(int(cnt),prev_cnt):+.1f}%）" if prev_cnt else ""
                 type_summary += f"- {cat}：{int(cnt)} 件{pline}\n"
 
         city_summary = ""
-        if city_col:
-            cc = df_cur[city_col].value_counts()
-            pc = df_prev[city_col].value_counts() if not df_prev.empty else pd.Series(dtype=int)
-            for city, cnt in cc.head(5).items():
-                d = int(cnt) - int(pc.get(city,0))
+        if city_col and city_col in df_filt.columns:
+            _cc = df_filt[city_col].value_counts()
+            _pc = df_prev[city_col].value_counts() if not df_prev.empty and city_col in df_prev.columns else pd.Series(dtype=int)
+            for city, cnt in _cc.head(5).items():
+                d = int(cnt) - int(_pc.get(city,0))
                 city_summary += f"- {city}：{int(cnt)} 件（{d:+d}）\n"
 
         top3 = ""
-        if detail_col:
-            for _, r in df_cur[detail_col].value_counts().head(3).reset_index().iterrows():
+        if detail_col and detail_col in df_filt.columns:
+            for _, r in df_filt[detail_col].value_counts().head(3).reset_index().iterrows():
                 top3 += f"- {r[detail_col]}：{r['count']} 件\n"
 
         _upper_cmp = (
@@ -2846,7 +2796,7 @@ def section_4():
             f"4. 城市/區域分析亮點\n"
             f"5. 改善成效追蹤\n"
             f"6. 下階段行動建議\n\n"
-            f"【本期數據】（{period_sel}，共 {total_cur} 件）：\n"
+            f"【本期數據】（{period_label}，共 {total_cur} 件）：\n"
             f"{type_summary or '（無問題類型資料）'}\n\n"
             f"【城市分布 TOP5】：\n"
             f"{city_summary or '（無城市資料）'}\n\n"
@@ -2858,100 +2808,74 @@ def section_4():
 
         with st.spinner("AI 正在撰寫口說報告..."):
             try:
-                import anthropic, os
-                api_key = (os.environ.get("ANTHROPIC_API_KEY","") or
-                           str(st.secrets.get("ANTHROPIC_API_KEY","")))
-                client_ai = anthropic.Anthropic(api_key=api_key)
-                msg = client_ai.messages.create(
+                import anthropic as _anth, os
+                _api_key = (os.environ.get("ANTHROPIC_API_KEY","") or
+                            str(st.secrets.get("ANTHROPIC_API_KEY","")))
+                _client_ai = _anth.Anthropic(api_key=_api_key)
+                _msg = _client_ai.messages.create(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=2000,
                     messages=[{"role":"user","content":prompt}],
                 )
-                report_text = msg.content[0].text
+                report_text = _msg.content[0].text
             except Exception as e:
-                # fallback: use generate_ai_summary_llm if available
                 try:
-                    report_text = generate_ai_summary_llm(df_cur, model_name="haiku")
-                    report_text = f"【口說報告版本】\n\n{report_text}"
+                    report_text = generate_ai_summary_llm(df_filt, model_name="haiku")
+                    report_text = f"【口說報告】\n\n{report_text}"
                 except Exception:
-                    report_text = (f"⚠️ AI 暫時無法使用（{e}）\n\n"
-                                   f"請確認 ANTHROPIC_API_KEY 環境變數已設定。\n\n"
-                                   f"以下為數據摘要供您參考：\n\n{prompt}")
+                    report_text = f"⚠️ AI 暫時無法使用（{e}）\n\n數據摘要：\n\n{prompt}"
 
-        st.text_area("📋 口說報告（可複製）", report_text, height=460, key="s4_report_out")
+        st.text_area("📋 口說報告（可複製）", report_text, height=460, key="s4v3_report_out")
 
-        # ── 一鍵下載：報告 TXT + 圖表 ZIP ──
         dl_c1, dl_c2 = st.columns(2)
-        dl_c1.download_button(
-            "⬇️ 下載口說報告（TXT）",
-            data=report_text.encode("utf-8"),
-            file_name=f"{period_sel}_{rep_type}.txt",
-            mime="text/plain", key="s4_dl_report",
-            use_container_width=True,
-        )
-        # 產生圖表 ZIP
+        dl_c1.download_button("⬇️ 下載口說報告（TXT）",
+                              data=report_text.encode("utf-8"),
+                              file_name=f"{period_label}_{rep_type}.txt",
+                              mime="text/plain", key="s4v3_dl_txt",
+                              use_container_width=True)
         try:
             _setup_cjk_font()
-            chart_bytes_map: dict[str, bytes] = {}
-
-            # 1. 類型對比圖
-            if type_col:
-                import matplotlib.pyplot as _plt
-                _fig, _ax = _plt.subplots(figsize=(9, 4))
-                _x = list(cur_type_s.index)
-                _cur_v = [int(cur_type_s[t]) for t in _x]
-                _prev_v = [int(prev_type_s.get(t, 0)) for t in _x]
-                _xi = range(len(_x))
-                _ax.bar([i-0.2 for i in _xi], _cur_v, 0.35, label="本期", color="#060E9F")
-                _ax.bar([i+0.2 for i in _xi], _prev_v, 0.35, label="上期", color="#8EB9C9")
-                _ax.set_xticks(list(_xi)); _ax.set_xticklabels(_x, rotation=15)
-                _ax.legend(); _ax.set_title(f"{period_sel} 問題類型對比")
-                _ax.yaxis.set_major_locator(_plt.MaxNLocator(integer=True))
-                _buf = io.BytesIO(); _fig.savefig(_buf, format="png", dpi=150, bbox_inches="tight")
-                _plt.close(_fig); chart_bytes_map["問題類型對比.png"] = _buf.getvalue()
-
-            # 2. 細項圖
-            if detail_col:
-                _det = df_cur[detail_col].value_counts().head(8)
-                _fig2, _ax2 = _plt.subplots(figsize=(9, 4))
-                _ax2.barh(list(_det.index)[::-1], list(_det.values)[::-1], color="#060E9F")
-                _ax2.set_title(f"{period_sel} TOP 8 問題細項")
-                _ax2.xaxis.set_major_locator(_plt.MaxNLocator(integer=True))
-                _buf2 = io.BytesIO(); _fig2.savefig(_buf2, format="png", dpi=150, bbox_inches="tight")
-                _plt.close(_fig2); chart_bytes_map["問題細項排行.png"] = _buf2.getvalue()
-
-            # 3. 城市排行圖
-            if city_col:
-                _fig3, _ax3 = _plt.subplots(figsize=(9, 4))
-                _cc = df_cur[city_col].value_counts().head(10)
-                _ax3.bar(list(_cc.index), list(_cc.values), color="#FF5000")
-                _ax3.set_title(f"{period_sel} 城市件數排行")
-                _ax3.yaxis.set_major_locator(_plt.MaxNLocator(integer=True))
-                _buf3 = io.BytesIO(); _fig3.savefig(_buf3, format="png", dpi=150, bbox_inches="tight")
-                _plt.close(_fig3); chart_bytes_map["城市排行.png"] = _buf3.getvalue()
-
-            # 打包 ZIP
+            import matplotlib.pyplot as _mplt
+            _charts = {}
+            if type_col and type_col in df_filt.columns:
+                _tc2 = df_filt[type_col].value_counts()
+                _f, _a = _mplt.subplots(figsize=(8,4))
+                _colors = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9"]
+                _a.pie(list(_tc2.values), labels=list(_tc2.index), autopct="%1.1f%%",
+                       colors=_colors[:len(_tc2)], startangle=90)
+                _a.set_title(f"{period_label} 客訴類別分佈")
+                _b = io.BytesIO(); _f.savefig(_b, format="png", dpi=150, bbox_inches="tight")
+                _mplt.close(_f); _charts["客訴類別分佈.png"] = _b.getvalue()
+            if city_col and city_col in df_filt.columns:
+                _cc2 = df_filt[city_col].value_counts().head(10)
+                _f2, _a2 = _mplt.subplots(figsize=(8,4))
+                _a2.bar(list(_cc2.index), list(_cc2.values), color="#FF5000")
+                _a2.set_title(f"{period_label} 城市件數排行")
+                _a2.yaxis.set_major_locator(_mplt.MaxNLocator(integer=True))
+                _a2.tick_params(axis="x", rotation=15)
+                _b2 = io.BytesIO(); _f2.savefig(_b2, format="png", dpi=150, bbox_inches="tight")
+                _mplt.close(_f2); _charts["城市排行.png"] = _b2.getvalue()
+            if detail_col and detail_col in df_filt.columns:
+                _dc2 = df_filt[detail_col].value_counts().head(8)
+                _f3, _a3 = _mplt.subplots(figsize=(8,4))
+                _a3.barh(list(_dc2.index)[::-1], list(_dc2.values)[::-1], color="#060E9F")
+                _a3.set_title(f"{period_label} TOP 8 問題細項")
+                _b3 = io.BytesIO(); _f3.savefig(_b3, format="png", dpi=150, bbox_inches="tight")
+                _mplt.close(_f3); _charts["問題細項排行.png"] = _b3.getvalue()
             _zbuf = io.BytesIO()
             with zipfile.ZipFile(_zbuf, "w", zipfile.ZIP_DEFLATED) as _zf:
-                for _fn, _fb in chart_bytes_map.items():
-                    _zi = zipfile.ZipInfo(_fn)
-                    _zi.flag_bits |= 0x800
-                    _zi.compress_type = zipfile.ZIP_DEFLATED
-                    _zf.writestr(_zi, _fb)
-                # 加入口說報告 txt
-                _zr = zipfile.ZipInfo(f"{period_sel}_{rep_type}.txt")
-                _zr.flag_bits |= 0x800
-                _zf.writestr(_zr, report_text.encode("utf-8"))
-
-            dl_c2.download_button(
-                "⬇️ 下載圖表+報告（ZIP）",
-                data=_zbuf.getvalue(),
-                file_name=f"{period_sel}_趨勢分析.zip",
-                mime="application/zip", key="s4_dl_zip",
-                use_container_width=True,
-            )
+                for _fn, _fb in _charts.items():
+                    _zi = zipfile.ZipInfo(_fn); _zi.flag_bits |= 0x800
+                    _zi.compress_type = zipfile.ZIP_DEFLATED; _zf.writestr(_zi, _fb)
+                _zr = zipfile.ZipInfo(f"{period_label}_{rep_type}.txt")
+                _zr.flag_bits |= 0x800; _zf.writestr(_zr, report_text.encode("utf-8"))
+            dl_c2.download_button("⬇️ 下載圖表+報告（ZIP）",
+                                  data=_zbuf.getvalue(),
+                                  file_name=f"{period_label}_趨勢分析.zip",
+                                  mime="application/zip", key="s4v3_dl_zip",
+                                  use_container_width=True)
         except Exception as _ze:
-            dl_c2.warning(f"圖表 ZIP 產生失敗：{_ze}")
+            dl_c2.warning(f"ZIP 產生失敗：{_ze}")
 
 
 
