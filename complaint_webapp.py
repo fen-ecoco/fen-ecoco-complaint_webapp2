@@ -902,8 +902,14 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
     for i, (_, row) in enumerate(table_df.iterrows()):
         fill_rgb = (0xEB, 0xF4, 0xFA) if i % 2 == 0 else (0xFF, 0xFF, 0xFF)
 
-        # ── 準備文字 ──
-        cell_texts = {col: safe_text(str(row[col])) for col in col_list}
+        # ── 準備文字（去除多餘空白與換行）──
+        cell_texts = {
+            col: safe_text(
+                " ".join(str(row[col]).split())   # 多空白合併為單一空格
+                .replace("  ", " ").strip()
+            )
+            for col in col_list
+        }
 
         # ── 精確計算每欄行數 ──
         col_lines: dict[str, int] = {}
@@ -1059,6 +1065,12 @@ def build_chart_pack(df: pd.DataFrame,
     _setup_cjk_font()
 
     data = df.copy()
+    # ── 機台類型正規化：方舟/方舟站 → 收瓶機 ──
+    if "機台類型" in data.columns:
+        data["機台類型"] = data["機台類型"].apply(
+            lambda v: "收瓶機" if ("方舟" in str(v) or "收瓶" in str(v))
+            else ("電池機" if "電池" in str(v) else str(v))
+        )
     stats = data["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
     stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(1)
     detail_stats = data["問題細項"].value_counts().reset_index().head(10)
@@ -2552,32 +2564,40 @@ def section_4():
         if prev == 0: return None
         return (cur - prev) / prev * 100
 
-    # ── KPI 卡片 ──────────────────────────────────────────────────
-    st.markdown(f'<div class="s4-section">📊 本期即時統計（{period_label}）</div>', unsafe_allow_html=True)
+    # ── 機台類型：將「方舟」歸類為「收瓶機」────────────────────────
+    if machine_col and machine_col in df_filt.columns:
+        def _normalize_machine(val):
+            v = str(val).strip()
+            if "方舟" in v or "收瓶" in v: return "收瓶機"
+            if "電池" in v: return "電池機"
+            return v
+        df_filt = df_filt.copy()
+        df_filt[machine_col] = df_filt[machine_col].apply(_normalize_machine)
+    if machine_col and machine_col in df_all.columns:
+        df_all = df_all.copy()
+        df_all[machine_col] = df_all[machine_col].apply(
+            lambda v: "收瓶機" if ("方舟" in str(v) or "收瓶" in str(v)) else ("電池機" if "電池" in str(v) else str(v))
+        )
 
-    kpi_items = [("總進件數", n_cur, n_prev)]
+    # ── KPI 卡片（用 st.metric 避免 HTML escape 問題）────────────────
+    st.markdown(f'<div class="s4-section">📊 本期即時統計（{period_label}）</div>', unsafe_allow_html=True)
+    st.caption(f"📅 資料區間：{period_label}　共 **{n_cur}** 筆")
+
+    kpi_items = [("🗂️ 總進件數", n_cur, n_prev)]
     if type_col and type_col in df_filt.columns:
         for t, tc in df_filt[type_col].value_counts().items():
             prev_tc = int(df_prev[type_col].eq(t).sum()) if not df_prev.empty and type_col in df_prev.columns else 0
-            kpi_items.append((str(t)[:8], int(tc), prev_tc))
+            kpi_items.append((str(t)[:12], int(tc), prev_tc))
             if len(kpi_items) >= 4: break
 
-    kpi_html = '<div class="s4-kpi-grid">'
-    for lbl, cur, prev in kpi_items[:4]:
+    kpi_cols = st.columns(len(kpi_items[:4]))
+    for col_i, (lbl, cur, prev) in enumerate(kpi_items[:4]):
         p = pct_change(cur, prev)
+        delta_str = None
         if p is not None:
-            sym = "▲" if p > 0 else ("▼" if p < 0 else "—")
-            cls = "delta-up" if p > 0 else ("delta-dn" if p < 0 else "delta-flat")
-            delta_html = f'<div class="s4-kpi-delta {cls}">{sym} {abs(p):.1f}% vs 上期</div>'
-        else:
-            delta_html = ""
-        kpi_html += f'''<div class="s4-kpi">
-          <div class="s4-kpi-val">{cur}</div>
-          <div class="s4-kpi-lbl">{lbl}</div>
-          {delta_html}
-        </div>'''
-    kpi_html += '</div>'
-    st.markdown(kpi_html, unsafe_allow_html=True)
+            sym = "+" if p >= 0 else ""
+            delta_str = f"{sym}{p:.1f}% vs 上期"
+        kpi_cols[col_i].metric(label=lbl, value=cur, delta=delta_str)
 
     # ── 排行統計（區域/站點/問題細項）───────────────────────────────
     st.markdown('<div class="s4-section">🏆 案件排行統計 (Top 5)</div>', unsafe_allow_html=True)
@@ -2626,34 +2646,47 @@ def section_4():
             fig_pie = px.pie(
                 values=_tc.values, names=_tc.index,
                 title="客訴類別分佈",
-                hole=0.3,
+                hole=0.35,
                 color_discrete_sequence=["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"],
             )
-            fig_pie.update_traces(textinfo="percent+label")
-            fig_pie.update_layout(height=380, margin=dict(t=45,b=0,l=0,r=0))
+            fig_pie.update_traces(
+                textposition="inside",
+                textinfo="percent+label",
+                textfont_size=11,
+                insidetextorientation="radial",
+                pull=[0.03]*len(_tc),
+            )
+            fig_pie.update_layout(
+                height=400,
+                showlegend=True,
+                legend=dict(orientation="v", x=1.02, y=0.5, font=dict(size=11)),
+                margin=dict(t=50, b=10, l=10, r=120),
+                title_font_size=14,
+            )
             st.plotly_chart(fig_pie, use_container_width=True)
 
     with chart_col2:
-        if machine_col and machine_col in df_filt.columns:
+        if machine_col and machine_col in df_filt.columns and not df_filt[machine_col].dropna().empty:
             _mc = df_filt[machine_col].value_counts()
             fig_mac = px.pie(
                 values=_mc.values, names=_mc.index,
-                title="機台客訴佔比",
+                title="機台客訴佔比（收瓶機/電池機）",
                 color_discrete_sequence=["#FF5000","#060E9F","#8EB9C9","#FFCE00"],
             )
-            fig_mac.update_traces(textinfo="percent+label")
-            fig_mac.update_layout(height=380, margin=dict(t=45,b=0,l=0,r=0))
-            st.plotly_chart(fig_mac, use_container_width=True)
-        elif type_col and detail_col and detail_col in df_filt.columns:
-            _dc = df_filt[detail_col].value_counts().head(8)
-            fig_det = px.bar(
-                x=list(_dc.values)[::-1], y=list(_dc.index)[::-1],
-                orientation="h", title="TOP 8 問題細項",
-                color_discrete_sequence=["#060E9F"],
+            fig_mac.update_traces(
+                textposition="inside",
+                textinfo="percent+label",
+                textfont_size=12,
+                insidetextorientation="radial",
+                pull=[0.03]*len(_mc),
             )
-            fig_det.update_layout(height=380, xaxis=dict(dtick=1,tickformat="d"),
-                                   margin=dict(t=45,b=0,l=0,r=0))
-            st.plotly_chart(fig_det, use_container_width=True)
+            fig_mac.update_layout(
+                height=400,
+                showlegend=True,
+                legend=dict(orientation="v", x=1.02, y=0.5, font=dict(size=11)),
+                margin=dict(t=50, b=10, l=10, r=120),
+            )
+            st.plotly_chart(fig_mac, use_container_width=True)
 
     # ── 趨勢折線圖 ────────────────────────────────────────────────
     st.markdown('<div class="s4-section">📈 客訴趨勢分析</div>', unsafe_allow_html=True)
