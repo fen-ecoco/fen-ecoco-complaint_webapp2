@@ -2581,7 +2581,7 @@ def section_4():
 
     # ── KPI 卡片（用 st.metric 避免 HTML escape 問題）────────────────
     st.markdown(f'<div class="s4-section">📊 本期即時統計（{period_label}）</div>', unsafe_allow_html=True)
-    st.caption(f"📅 資料區間：{period_label}　共 **{n_cur}** 筆")
+    st.caption(f"📅 資料區間：{period_label}　篩選後共 **{n_cur}** 筆")
 
     kpi_items = [("🗂️ 總進件數", n_cur, n_prev)]
     if type_col and type_col in df_filt.columns:
@@ -2600,7 +2600,7 @@ def section_4():
         kpi_cols[col_i].metric(label=lbl, value=cur, delta=delta_str)
 
     # ── 排行統計（區域/站點/問題細項）───────────────────────────────
-    st.markdown('<div class="s4-section">🏆 案件排行統計 (Top 5)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="s4-section">🏆 案件排行統計 Top 5 ── {period_label}</div>', unsafe_allow_html=True)
 
     rank_cols = st.columns(3)
     MEDAL = ["🥇","🥈","🥉","4️⃣","5️⃣"]
@@ -2637,31 +2637,38 @@ def section_4():
             st.info("無細項資料")
 
     # ── 圖表：問題類型 + 機台佔比（對齊 HTML 範本）─────────────────
-    st.markdown('<div class="s4-section">📉 數據可視化分析</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="s4-section">📉 數據可視化分析 ── {period_label}</div>', unsafe_allow_html=True)
     chart_col1, chart_col2 = st.columns(2)
 
     with chart_col1:
         if type_col and type_col in df_filt.columns:
             _tc = df_filt[type_col].value_counts()
+            _total = _tc.sum()
             fig_pie = px.pie(
                 values=_tc.values, names=_tc.index,
-                title="客訴類別分佈",
+                title=f"{period_label} 客訴類別分佈",
                 hole=0.35,
                 color_discrete_sequence=["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"],
             )
+            # 小於5%的扇形只顯示在圖例，避免標籤重疊
             fig_pie.update_traces(
-                textposition="inside",
-                textinfo="percent+label",
-                textfont_size=11,
-                insidetextorientation="radial",
-                pull=[0.03]*len(_tc),
+                texttemplate="%{label}<br>%{percent:.1%}",
+                textposition="auto",
+                textfont_size=12,
             )
             fig_pie.update_layout(
-                height=400,
+                height=420,
                 showlegend=True,
-                legend=dict(orientation="v", x=1.02, y=0.5, font=dict(size=11)),
-                margin=dict(t=50, b=10, l=10, r=120),
-                title_font_size=14,
+                legend=dict(
+                    orientation="v",
+                    yanchor="middle", y=0.5,
+                    xanchor="left", x=1.0,
+                    font=dict(size=12),
+                    itemsizing="constant",
+                ),
+                margin=dict(t=55, b=20, l=20, r=160),
+                title_font_size=15,
+                title_x=0.0,
             )
             st.plotly_chart(fig_pie, use_container_width=True)
 
@@ -2670,26 +2677,40 @@ def section_4():
             _mc = df_filt[machine_col].value_counts()
             fig_mac = px.pie(
                 values=_mc.values, names=_mc.index,
-                title="機台客訴佔比（收瓶機/電池機）",
+                title=f"{period_label} 機台客訴佔比",
                 color_discrete_sequence=["#FF5000","#060E9F","#8EB9C9","#FFCE00"],
             )
             fig_mac.update_traces(
-                textposition="inside",
-                textinfo="percent+label",
-                textfont_size=12,
-                insidetextorientation="radial",
-                pull=[0.03]*len(_mc),
+                texttemplate="%{label}<br>%{percent:.1%}",
+                textposition="auto",
+                textfont_size=13,
             )
             fig_mac.update_layout(
-                height=400,
+                height=420,
                 showlegend=True,
-                legend=dict(orientation="v", x=1.02, y=0.5, font=dict(size=11)),
-                margin=dict(t=50, b=10, l=10, r=120),
+                legend=dict(
+                    orientation="v",
+                    yanchor="middle", y=0.5,
+                    xanchor="left", x=1.0,
+                    font=dict(size=12),
+                ),
+                margin=dict(t=55, b=20, l=20, r=160),
+                title_font_size=15,
             )
             st.plotly_chart(fig_mac, use_container_width=True)
+        elif detail_col and detail_col in df_filt.columns:
+            _dc = df_filt[detail_col].value_counts().head(8)
+            fig_det = px.bar(
+                x=list(_dc.values)[::-1], y=list(_dc.index)[::-1],
+                orientation="h", title=f"{period_label} TOP 8 問題細項",
+                color_discrete_sequence=["#060E9F"],
+            )
+            fig_det.update_layout(height=420, xaxis=dict(dtick=1,tickformat="d"),
+                                   margin=dict(t=45,b=0,l=0,r=0))
+            st.plotly_chart(fig_det, use_container_width=True)
 
     # ── 趨勢折線圖 ────────────────────────────────────────────────
-    st.markdown('<div class="s4-section">📈 客訴趨勢分析</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="s4-section">📈 客訴趨勢分析 ── {period_label}</div>', unsafe_allow_html=True)
     if dim_mode == "維度選擇" and len(df_all["_period"].unique()) >= 2:
         _trend = df_all.groupby("_period").size().reset_index(name="件數").sort_values("_period")
         fig_line = px.line(
@@ -2726,7 +2747,7 @@ def section_4():
 
     # ── 城市展開排行（可折疊）────────────────────────────────────
     if city_col and city_col in df_filt.columns and not df_filt.empty:
-        st.markdown('<div class="s4-section">🏙️ 區域排行榜（點選展開站點與細項）</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="s4-section">🏙️ 區域排行榜 ── {period_label}</div>', unsafe_allow_html=True)
         city_rank = df_filt[city_col].value_counts()
         MEDAL_LIST = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
         for ri, (city, cnt) in enumerate(city_rank.items()):
@@ -2768,7 +2789,7 @@ def section_4():
 
     # ── 部門分析 ─────────────────────────────────────────────────
     if dept_col and dept_col in df_filt.columns:
-        st.markdown('<div class="s4-section">🏢 各部門件數分析</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="s4-section">🏢 各部門件數分析 ── {period_label}</div>', unsafe_allow_html=True)
         dept_rank = df_filt[dept_col].replace("","未分配").value_counts()
         DEPT_COLOR = {"營運部":"#FF5000","行銷部":"#FFCE00","資訊部":"#060E9F"}
         fig_dept = px.bar(
@@ -2781,9 +2802,155 @@ def section_4():
                                 showlegend=False, margin=dict(t=45,b=0))
         st.plotly_chart(fig_dept, use_container_width=True)
 
+    # ── 完整頁面 PDF 下載 ────────────────────────────────────────
+    st.markdown("---")
+    st.markdown(f'<div class="s4-section">⬇️ 下載完整分析報告</div>', unsafe_allow_html=True)
+
+    if st.button("📄 產生完整分析 PDF", key="s4_full_pdf", use_container_width=False):
+        with st.spinner("正在產生 PDF 報告..."):
+            try:
+                from fpdf import FPDF
+                from fpdf.enums import XPos, YPos
+                import os, glob
+
+                # 找字型
+                _FONT_CANDS = [
+                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
+                    "/usr/share/fonts/truetype/arphic/uming.ttc",
+                    "/tmp/NotoSansCJK.ttc",
+                ]
+                _FONT_CANDS += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
+                _font_path = next((p for p in _FONT_CANDS if os.path.exists(p)), None)
+
+                pdf = FPDF(orientation="L", format="A4")
+                pdf.set_auto_page_break(auto=True, margin=12)
+                pdf.add_page()
+
+                if _font_path:
+                    pdf.add_font("CJK", style="", fname=_font_path)
+                    F = "CJK"
+                else:
+                    F = "Helvetica"
+
+                def _st(s): return s if F != "Helvetica" else s.encode("ascii","replace").decode()
+
+                # ── 頁首 ──
+                pdf.set_fill_color(6,14,159)
+                pdf.rect(10, 8, 277, 18, style="F")
+                pdf.set_font(F, size=14); pdf.set_text_color(255,255,255)
+                pdf.set_xy(12,10)
+                pdf.cell(0, 10, _st(f"ECOCO 客訴趨勢分析報告　{period_label}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.set_draw_color(255,80,0); pdf.set_line_width(1.5)
+                pdf.line(10, 26, 287, 26); pdf.set_line_width(0.2)
+                pdf.ln(4)
+
+                # ── KPI 摘要 ──
+                pdf.set_font(F, size=11); pdf.set_text_color(6,14,159)
+                pdf.cell(0, 7, _st(f"本期摘要（{period_label}）　總件數：{n_cur}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.ln(2)
+                pdf.set_font(F, size=9); pdf.set_text_color(50,50,50)
+                if type_col and type_col in df_filt.columns:
+                    _summary_line = "　".join([f"{t}：{int(c)}件" for t, c in df_filt[type_col].value_counts().head(5).items()])
+                    pdf.cell(0, 6, _st(_summary_line), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.ln(4)
+
+                # ── 排行表格（區域 / 站點 / 細項）──
+                pdf.set_font(F, size=10); pdf.set_text_color(6,14,159)
+                pdf.set_fill_color(6,14,159); pdf.set_text_color(255,255,255)
+
+                def _mini_table(title, series, x, y, w=85):
+                    pdf.set_xy(x, y)
+                    pdf.set_font(F, size=9)
+                    pdf.set_fill_color(6,14,159); pdf.set_text_color(255,255,255)
+                    pdf.cell(w, 7, _st(title), border=1, fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
+                    pdf.set_xy(x, y+7)
+                    for i, (k, v) in enumerate(series.head(5).items()):
+                        bg = (235,244,250) if i%2==0 else (255,255,255)
+                        pdf.set_fill_color(*bg); pdf.set_text_color(30,30,30)
+                        pdf.set_xy(x, y+7+i*7)
+                        label = str(k)[:20]; val = str(int(v))
+                        pdf.cell(w-18, 7, _st(label), border=1, fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+                        pdf.cell(18, 7, val, border=1, fill=True, align="C", new_x=XPos.RIGHT, new_y=YPos.TOP)
+
+                _row1_y = pdf.get_y()
+                if city_col and city_col in df_filt.columns:
+                    _mini_table("區域排行", df_filt[city_col].value_counts(), 10, _row1_y)
+                if station_col and station_col in df_filt.columns:
+                    _mini_table("站點排行", df_filt[station_col].value_counts(), 100, _row1_y)
+                if detail_col and detail_col in df_filt.columns:
+                    _mini_table("問題細項排行", df_filt[detail_col].value_counts(), 192, _row1_y)
+
+                pdf.set_y(_row1_y + 50)
+                pdf.ln(4)
+
+                # ── matplotlib 圖表嵌入 ──
+                _setup_cjk_font()
+                import matplotlib.pyplot as _mplt
+
+                def _embed_chart(fig_plt, x, y, w=130, h=80):
+                    _buf = io.BytesIO()
+                    fig_plt.savefig(_buf, format="png", dpi=150, bbox_inches="tight")
+                    _mplt.close(fig_plt)
+                    _buf.seek(0)
+                    pdf.image(_buf, x=x, y=y, w=w, h=h)
+
+                _chart_y = pdf.get_y()
+                # 類別圓餅圖
+                if type_col and type_col in df_filt.columns:
+                    _tc3 = df_filt[type_col].value_counts()
+                    _f1, _a1 = _mplt.subplots(figsize=(5,4))
+                    _clrs = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9"]
+                    _a1.pie(list(_tc3.values), labels=list(_tc3.index), autopct="%1.0f%%",
+                            colors=_clrs[:len(_tc3)], startangle=90,
+                            textprops={"fontsize":9})
+                    _a1.set_title(_st(f"客訴類別分佈"), fontsize=11)
+                    _embed_chart(_f1, 10, _chart_y)
+
+                # 機台圓餅圖
+                if machine_col and machine_col in df_filt.columns and not df_filt[machine_col].dropna().empty:
+                    _mc3 = df_filt[machine_col].value_counts()
+                    _f2, _a2 = _mplt.subplots(figsize=(5,4))
+                    _a2.pie(list(_mc3.values), labels=list(_mc3.index), autopct="%1.0f%%",
+                            colors=["#FF5000","#060E9F","#8EB9C9"],
+                            textprops={"fontsize":10})
+                    _a2.set_title(_st("機台客訴佔比"), fontsize=11)
+                    _embed_chart(_f2, 148, _chart_y)
+
+                pdf.set_y(_chart_y + 84)
+                pdf.ln(2)
+
+                # 每日趨勢長條圖
+                _daily2 = df_filt.groupby(df_filt[date_col].dt.date).size().reset_index(name="件數")
+                if len(_daily2) > 1:
+                    _f3, _a3 = _mplt.subplots(figsize=(11,3))
+                    _a3.bar([str(d) for d in _daily2.iloc[:,0]], list(_daily2["件數"]), color="#060E9F")
+                    _a3.set_title(_st(f"{period_label} 每日件數趨勢"), fontsize=11)
+                    _a3.tick_params(axis="x", rotation=25, labelsize=7)
+                    _a3.yaxis.set_major_locator(_mplt.MaxNLocator(integer=True))
+                    _embed_chart(_f3, 10, pdf.get_y(), w=277, h=60)
+                    pdf.set_y(pdf.get_y() + 64)
+
+                # ── 儲存 PDF ──
+                _pdf_bytes = bytes(pdf.output())
+                st.session_state["_s4_pdf_bytes"] = _pdf_bytes
+                st.success(f"✅ PDF 已產生（{len(_pdf_bytes)//1024} KB）")
+            except Exception as _e:
+                st.error(f"PDF 產生失敗：{_e}")
+
+    if st.session_state.get("_s4_pdf_bytes"):
+        st.download_button(
+            "⬇️ 下載完整分析 PDF",
+            data=st.session_state["_s4_pdf_bytes"],
+            file_name=f"ECOCO_客訴分析_{period_label.replace(' ','').replace('～','-')}.pdf",
+            mime="application/pdf",
+            use_container_width=False,
+            key="s4_dl_full_pdf",
+        )
+
     # ── AI 口說報告 ────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="s4-section">🎙️ AI 口說報告產生器</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="s4-section">🎙️ AI 口說報告產生器</div>', unsafe_allow_html=True)
     rep_type = st.radio("報告類型", ["週會報告","月會報告","季報","年度報告"], horizontal=True, key="s4v3_rep")
 
     if st.button("🚀 產生 AI 口說報告", type="primary", key="s4v3_gen"):
