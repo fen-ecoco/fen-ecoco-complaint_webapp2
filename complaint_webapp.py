@@ -886,12 +886,23 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
             return s.encode("ascii", "replace").decode()
         return s
 
-    # 表頭
+    def fit_text_in_cell(pdf_obj, text, max_width, max_size=8, min_size=5):
+        """縮小字型直到文字適合欄寬"""
+        for fs in range(max_size, min_size-1, -1):
+            pdf_obj.set_font(FONT, size=fs)
+            if pdf_obj.get_string_width(text) <= max_width - 1:
+                return fs
+        return min_size
+
+    # 表頭（自動縮小以適應欄寬）
     pdf.set_fill_color(0x06, 0x0E, 0x9F)
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font(FONT, size=FS_HDR)
     for col in table_df.columns:
-        pdf.cell(col_widths[col], HDR_H, safe_text(col), border=1, fill=True,
+        cw = col_widths[col]
+        header_text = safe_text(col)
+        fs = fit_text_in_cell(pdf, header_text, cw, max_size=FS_HDR, min_size=4)
+        pdf.set_font(FONT, size=fs)
+        pdf.cell(cw, HDR_H, header_text, border=1, fill=True,
                  new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
     pdf.ln(HDR_H)
 
@@ -943,9 +954,12 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
             pdf.add_page()
             pdf.set_fill_color(0x06, 0x0E, 0x9F)
             pdf.set_text_color(255, 255, 255)
-            pdf.set_font(FONT, size=FS_HDR)
             for col in col_list:
-                pdf.cell(col_widths[col], HDR_H, safe_text(col), border=1, fill=True,
+                cw = col_widths[col]
+                hdr_t = safe_text(col)
+                fs = fit_text_in_cell(pdf, hdr_t, cw, max_size=FS_HDR, min_size=4)
+                pdf.set_font(FONT, size=fs)
+                pdf.cell(cw, HDR_H, hdr_t, border=1, fill=True,
                          new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
             pdf.ln(HDR_H)
             pdf.set_font(FONT, size=FS_CELL)
@@ -990,6 +1004,7 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
     pdf.set_font(FONT, size=6)
     pdf.set_text_color(120, 120, 120)
     pdf.cell(0, 6, safe_text(f"ECOCO 客訴分析報告  共 {len(table_df)} 筆  產出日期：{datetime.now().strftime('%Y/%m/%d')}"), align="C")
+
     return bytes(pdf.output())
 
 def _setup_cjk_font() -> None:
@@ -3013,36 +3028,60 @@ def section_4():
 
                 if type_col and type_col in df_filt.columns:
                     _tc4 = df_filt[type_col].value_counts()
-                    _f4, _a4 = _mplt.subplots(figsize=(7, 5))
+                    _total4 = _tc4.sum()
+                    # 大圖（figsize 更寬），標籤改用圖例避免重疊
+                    _f4, _a4 = _mplt.subplots(figsize=(9, 6))
                     _clrs4 = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"]
+                    _labels4 = [f"{k}（{int(v)}件）" for k, v in _tc4.items()]
                     wedges, texts, autotexts = _a4.pie(
                         list(_tc4.values),
-                        labels=[f"{k}\n({int(v)}件)" for k,v in _tc4.items()],
-                        autopct="%1.1f%%",
+                        labels=None,           # 不在扇形上顯示標籤，改用圖例
+                        autopct=lambda p: f"{p:.0f}%" if p >= 5 else "",  # 小扇形不顯示%
                         colors=_clrs4[:len(_tc4)],
                         startangle=90,
-                        pctdistance=0.7,
-                        labeldistance=1.15,
+                        pctdistance=0.75,
+                        wedgeprops={"linewidth": 1.5, "edgecolor": "white"},
                     )
-                    for _at in autotexts: _at.set_fontsize(10)
-                    for _t in texts: _t.set_fontsize(10)
-                    _a4.set_title(f"{period_label}　客訴類別分佈", fontsize=13, pad=15)
-                    pdf.embed_image(_f4, w=170, h=120)
+                    for _at in autotexts:
+                        _at.set_fontsize(11)
+                        _at.set_fontweight("bold")
+                    _a4.legend(
+                        wedges, _labels4,
+                        loc="center left",
+                        bbox_to_anchor=(1.0, 0.5),
+                        fontsize=9,
+                        frameon=False,
+                    )
+                    _a4.set_title(f"{period_label}　客訴類別分佈", fontsize=13, pad=12)
+                    _f4.tight_layout()
+                    pdf.embed_image(_f4, w=175, h=120)
 
                 if machine_col and machine_col in df_filt.columns and not df_filt[machine_col].dropna().empty:
                     _mc4 = df_filt[machine_col].value_counts()
+                    _labels_mc = [f"{k}（{int(v)}件）" for k, v in _mc4.items()]
                     _f5, _a5 = _mplt.subplots(figsize=(7, 5))
-                    _a5.pie(
+                    wedges5, texts5, autotexts5 = _a5.pie(
                         list(_mc4.values),
-                        labels=[f"{k}\n({int(v)}件)" for k,v in _mc4.items()],
-                        autopct="%1.1f%%",
-                        colors=["#FF5000","#060E9F","#8EB9C9"],
+                        labels=None,
+                        autopct=lambda p: f"{p:.0f}%" if p >= 5 else "",
+                        colors=["#FF5000","#060E9F","#8EB9C9","#FFCE00"],
                         startangle=90,
-                        pctdistance=0.7,
-                        labeldistance=1.15,
+                        pctdistance=0.72,
+                        wedgeprops={"linewidth": 1.5, "edgecolor": "white"},
                     )
-                    _a5.set_title(f"{period_label}　機台客訴佔比", fontsize=13, pad=15)
-                    pdf.embed_image(_f5, w=170, h=120)
+                    for _at5 in autotexts5:
+                        _at5.set_fontsize(12)
+                        _at5.set_fontweight("bold")
+                    _a5.legend(
+                        wedges5, _labels_mc,
+                        loc="center left",
+                        bbox_to_anchor=(1.0, 0.5),
+                        fontsize=10,
+                        frameon=False,
+                    )
+                    _a5.set_title(f"{period_label}　機台客訴佔比", fontsize=13, pad=12)
+                    _f5.tight_layout()
+                    pdf.embed_image(_f5, w=175, h=110)
 
                 # ════════════════════════════════════════════
                 # Page 5：趨勢 + 部門分析
