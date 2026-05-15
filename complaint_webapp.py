@@ -2917,7 +2917,6 @@ def section_4():
                 pdf.add_page()
                 # 大標題框
                 pdf.set_fill_color(6, 14, 159)
-                pdf.set_rect_join_style("round")
                 pdf.rect(15, 20, 180, 38, style="F")
                 pdf.set_font(F, size=20)
                 pdf.set_text_color(255, 255, 255)
@@ -2981,7 +2980,7 @@ def section_4():
                     pdf.set_font(F, size=10); pdf.set_text_color(6,14,159)
                     pdf.cell(0, 7, pdf._s("📍 城市/區域排行"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                     _city_v = df_filt[city_col].value_counts()
-                    rows_c = [[i+1, c, int(v), f"{int(v)/n_cur*100:.1f}%"]
+                    rows_c = [[i+1, c, int(v), f"{int(v)/n_cur*100:.0f}%"]
                                for i, (c, v) in enumerate(_city_v.head(10).items())]
                     pdf.full_table(["排名","城市/區域","件數","佔比"], rows_c, [15,110,25,30])
 
@@ -3002,7 +3001,7 @@ def section_4():
 
                 if detail_col and detail_col in df_filt.columns:
                     _det_v = df_filt[detail_col].value_counts()
-                    rows_d = [[i+1, str(d)[:35], int(v), f"{int(v)/n_cur*100:.1f}%"]
+                    rows_d = [[i+1, str(d)[:35], int(v), f"{int(v)/n_cur*100:.0f}%"]
                                for i, (d, v) in enumerate(_det_v.head(15).items())]
                     pdf.full_table(["排名","問題細項","件數","佔比"], rows_d, [15,120,20,25])
 
@@ -3067,7 +3066,7 @@ def section_4():
                 if dept_col and dept_col in df_filt.columns:
                     pdf.section_title("各部門件數分析")
                     _dp = df_filt[dept_col].replace("","未分配").value_counts()
-                    rows_dp = [[i+1, str(d), int(v), f"{int(v)/n_cur*100:.1f}%"]
+                    rows_dp = [[i+1, str(d), int(v), f"{int(v)/n_cur*100:.0f}%"]
                                 for i, (d, v) in enumerate(_dp.items())]
                     pdf.full_table(["排名","部門","件數","佔比"], rows_dp, [15,80,20,20])
 
