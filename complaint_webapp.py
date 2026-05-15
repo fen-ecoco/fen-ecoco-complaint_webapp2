@@ -2891,7 +2891,7 @@ def section_4():
                             self.set_fill_color(*bg)
                             self.set_x(x0)
                             for val, w in zip(row, col_widths):
-                                self.cell(w, 7, self._s(str(val)[:24]), border=1, fill=True,
+                                self.cell(w, 7, self._s(str(val)[:40]), border=1, fill=True,
                                           new_x=XPos.RIGHT, new_y=YPos.TOP)
                             self.ln(7)
                         self.ln(3)
@@ -2907,7 +2907,7 @@ def section_4():
                         self.image(_b, x=x, y=self.get_y(), w=w, h=h)
                         self.set_y(self.get_y() + h + 4)
 
-                F = self.fn if (_font_path and False) else ("CJK" if _font_path else "Helvetica")
+                F = "CJK" if _font_path else "Helvetica"
 
                 pdf = EcocoPDF(_font_path, F)
 
@@ -2983,16 +2983,16 @@ def section_4():
                     _city_v = df_filt[city_col].value_counts()
                     rows_c = [[i+1, c, int(v), f"{int(v)/n_cur*100:.1f}%"]
                                for i, (c, v) in enumerate(_city_v.head(10).items())]
-                    pdf.full_table(["排名","城市/區域","件數","佔比"], rows_c, [15,80,25,25])
+                    pdf.full_table(["排名","城市/區域","件數","佔比"], rows_c, [15,110,25,30])
 
                 # 站點排行
                 if station_col and station_col in df_filt.columns:
                     pdf.set_font(F, size=10); pdf.set_text_color(6,14,159)
                     pdf.cell(0, 7, pdf._s("🏬 站點排行"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                     _sta_v = df_filt[station_col].value_counts()
-                    rows_s = [[i+1, str(s)[:28], int(v)]
+                    rows_s = [[i+1, str(s)[:30], int(v)]
                                for i, (s, v) in enumerate(_sta_v.head(10).items())]
-                    pdf.full_table(["排名","站點名稱","件數"], rows_s, [15,120,15])
+                    pdf.full_table(["排名","站點名稱","件數"], rows_s, [15,140,25])
 
                 # ════════════════════════════════════════════
                 # Page 3：問題細項排行
@@ -3002,9 +3002,9 @@ def section_4():
 
                 if detail_col and detail_col in df_filt.columns:
                     _det_v = df_filt[detail_col].value_counts()
-                    rows_d = [[i+1, str(d)[:30], int(v), f"{int(v)/n_cur*100:.1f}%"]
+                    rows_d = [[i+1, str(d)[:35], int(v), f"{int(v)/n_cur*100:.1f}%"]
                                for i, (d, v) in enumerate(_det_v.head(15).items())]
-                    pdf.full_table(["排名","問題細項","件數","佔比"], rows_d, [15,110,15,20])
+                    pdf.full_table(["排名","問題細項","件數","佔比"], rows_d, [15,120,20,25])
 
                 # ════════════════════════════════════════════
                 # Page 4：圖表（圓餅 + 機台）
