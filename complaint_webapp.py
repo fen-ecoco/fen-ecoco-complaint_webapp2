@@ -2807,142 +2807,285 @@ def section_4():
     st.markdown(f'<div class="s4-section">⬇️ 下載完整分析報告</div>', unsafe_allow_html=True)
 
     if st.button("📄 產生完整分析 PDF", key="s4_full_pdf", use_container_width=False):
-        with st.spinner("正在產生 PDF 報告..."):
+        with st.spinner("正在產生多頁 PDF 報告..."):
             try:
                 from fpdf import FPDF
                 from fpdf.enums import XPos, YPos
-                import os, glob
+                import os, glob, matplotlib.pyplot as _mplt
+                from matplotlib.ticker import MaxNLocator as _MNL
 
-                # 找字型
                 _FONT_CANDS = [
                     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
                     "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
+                    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
                     "/usr/share/fonts/truetype/arphic/uming.ttc",
                     "/tmp/NotoSansCJK.ttc",
                 ]
                 _FONT_CANDS += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
-                _font_path = next((p for p in _FONT_CANDS if os.path.exists(p)), None)
+                _font_path = _ensure_cjk_font()  # 使用已快取的字型路徑
+                if not _font_path:
+                    _font_path = next((p for p in _FONT_CANDS if os.path.exists(p)), None)
 
-                pdf = FPDF(orientation="L", format="A4")
-                pdf.set_auto_page_break(auto=True, margin=12)
-                pdf.add_page()
-
-                if _font_path:
-                    pdf.add_font("CJK", style="", fname=_font_path)
-                    F = "CJK"
-                else:
-                    F = "Helvetica"
-
-                def _st(s): return s if F != "Helvetica" else s.encode("ascii","replace").decode()
-
-                # ── 頁首 ──
-                pdf.set_fill_color(6,14,159)
-                pdf.rect(10, 8, 277, 18, style="F")
-                pdf.set_font(F, size=14); pdf.set_text_color(255,255,255)
-                pdf.set_xy(12,10)
-                pdf.cell(0, 10, _st(f"ECOCO 客訴趨勢分析報告　{period_label}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-                pdf.set_draw_color(255,80,0); pdf.set_line_width(1.5)
-                pdf.line(10, 26, 287, 26); pdf.set_line_width(0.2)
-                pdf.ln(4)
-
-                # ── KPI 摘要 ──
-                pdf.set_font(F, size=11); pdf.set_text_color(6,14,159)
-                pdf.cell(0, 7, _st(f"本期摘要（{period_label}）　總件數：{n_cur}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-                pdf.ln(2)
-                pdf.set_font(F, size=9); pdf.set_text_color(50,50,50)
-                if type_col and type_col in df_filt.columns:
-                    _summary_line = "　".join([f"{t}：{int(c)}件" for t, c in df_filt[type_col].value_counts().head(5).items()])
-                    pdf.cell(0, 6, _st(_summary_line), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-                pdf.ln(4)
-
-                # ── 排行表格（區域 / 站點 / 細項）──
-                pdf.set_font(F, size=10); pdf.set_text_color(6,14,159)
-                pdf.set_fill_color(6,14,159); pdf.set_text_color(255,255,255)
-
-                def _mini_table(title, series, x, y, w=85):
-                    pdf.set_xy(x, y)
-                    pdf.set_font(F, size=9)
-                    pdf.set_fill_color(6,14,159); pdf.set_text_color(255,255,255)
-                    pdf.cell(w, 7, _st(title), border=1, fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
-                    pdf.set_xy(x, y+7)
-                    for i, (k, v) in enumerate(series.head(5).items()):
-                        bg = (235,244,250) if i%2==0 else (255,255,255)
-                        pdf.set_fill_color(*bg); pdf.set_text_color(30,30,30)
-                        pdf.set_xy(x, y+7+i*7)
-                        label = str(k)[:20]; val = str(int(v))
-                        pdf.cell(w-18, 7, _st(label), border=1, fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
-                        pdf.cell(18, 7, val, border=1, fill=True, align="C", new_x=XPos.RIGHT, new_y=YPos.TOP)
-
-                _row1_y = pdf.get_y()
-                if city_col and city_col in df_filt.columns:
-                    _mini_table("區域排行", df_filt[city_col].value_counts(), 10, _row1_y)
-                if station_col and station_col in df_filt.columns:
-                    _mini_table("站點排行", df_filt[station_col].value_counts(), 100, _row1_y)
-                if detail_col and detail_col in df_filt.columns:
-                    _mini_table("問題細項排行", df_filt[detail_col].value_counts(), 192, _row1_y)
-
-                pdf.set_y(_row1_y + 50)
-                pdf.ln(4)
-
-                # ── matplotlib 圖表嵌入 ──
                 _setup_cjk_font()
-                import matplotlib.pyplot as _mplt
 
-                def _embed_chart(fig_plt, x, y, w=130, h=80):
-                    _buf = io.BytesIO()
-                    fig_plt.savefig(_buf, format="png", dpi=150, bbox_inches="tight")
-                    _mplt.close(fig_plt)
-                    _buf.seek(0)
-                    pdf.image(_buf, x=x, y=y, w=w, h=h)
+                class EcocoPDF(FPDF):
+                    def __init__(self, font_path, font_name):
+                        super().__init__(orientation="P", format="A4")
+                        self.fp = font_path
+                        self.fn = font_name
+                        self.set_auto_page_break(auto=True, margin=15)
+                        if font_path:
+                            self.add_font(font_name, style="", fname=font_path)
+                        self.set_margins(15, 15, 15)
 
-                _chart_y = pdf.get_y()
-                # 類別圓餅圖
+                    def header(self):
+                        # 藍色頁首條
+                        self.set_fill_color(6, 14, 159)
+                        self.rect(0, 0, 210, 14, style="F")
+                        self.set_font(self.fn, size=9)
+                        self.set_text_color(255, 255, 255)
+                        self.set_xy(5, 3)
+                        self.cell(0, 8, self._s(f"ECOCO 客訴趨勢分析報告　{period_label}"))
+                        self.set_draw_color(255, 80, 0)
+                        self.set_line_width(1.5)
+                        self.line(0, 14, 210, 14)
+                        self.set_line_width(0.2)
+                        self.set_text_color(30, 30, 30)
+                        self.ln(6)
+
+                    def footer(self):
+                        self.set_y(-12)
+                        self.set_font(self.fn, size=8)
+                        self.set_text_color(150, 150, 150)
+                        self.cell(0, 8, self._s(f"第 {self.page_no()} 頁　產出日期：{datetime.now().strftime('%Y/%m/%d')}"), align="C")
+
+                    def _s(self, s):
+                        return s if self.fn != "Helvetica" else s.encode("ascii", "replace").decode()
+
+                    def section_title(self, title):
+                        self.ln(3)
+                        self.set_fill_color(255, 80, 0)
+                        self.rect(self.get_x(), self.get_y(), 6, 9, style="F")
+                        self.set_font(self.fn, size=13)
+                        self.set_text_color(6, 14, 159)
+                        self.set_x(self.get_x() + 9)
+                        self.cell(0, 9, self._s(title), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                        self.ln(2)
+
+                    def full_table(self, headers, rows, col_widths):
+                        """全幅表格，支援多行自動換行"""
+                        # 表頭
+                        self.set_fill_color(6, 14, 159)
+                        self.set_text_color(255, 255, 255)
+                        self.set_font(self.fn, size=9)
+                        x0 = self.get_x()
+                        for h, w in zip(headers, col_widths):
+                            self.cell(w, 8, self._s(str(h)), border=1, fill=True, align="C",
+                                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+                        self.ln(8)
+                        # 資料列
+                        self.set_text_color(30, 30, 30)
+                        self.set_font(self.fn, size=9)
+                        for i, row in enumerate(rows):
+                            bg = (235, 244, 250) if i % 2 == 0 else (255, 255, 255)
+                            self.set_fill_color(*bg)
+                            self.set_x(x0)
+                            for val, w in zip(row, col_widths):
+                                self.cell(w, 7, self._s(str(val)[:24]), border=1, fill=True,
+                                          new_x=XPos.RIGHT, new_y=YPos.TOP)
+                            self.ln(7)
+                        self.ln(3)
+
+                    def embed_image(self, fig, w=180, h=110):
+                        """嵌入 matplotlib 圖表"""
+                        _b = io.BytesIO()
+                        fig.savefig(_b, format="png", dpi=180, bbox_inches="tight",
+                                    facecolor="white")
+                        _mplt.close(fig)
+                        _b.seek(0)
+                        x = (210 - w) / 2  # 置中
+                        self.image(_b, x=x, y=self.get_y(), w=w, h=h)
+                        self.set_y(self.get_y() + h + 4)
+
+                F = self.fn if (_font_path and False) else ("CJK" if _font_path else "Helvetica")
+
+                pdf = EcocoPDF(_font_path, F)
+
+                # ════════════════════════════════════════════
+                # Page 1：封面 + KPI 摘要
+                # ════════════════════════════════════════════
+                pdf.add_page()
+                # 大標題框
+                pdf.set_fill_color(6, 14, 159)
+                pdf.set_rect_join_style("round")
+                pdf.rect(15, 20, 180, 38, style="F")
+                pdf.set_font(F, size=20)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_xy(15, 26)
+                pdf.cell(180, 12, pdf._s("ECOCO 客訴趨勢分析報告"), align="C",
+                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.set_font(F, size=11)
+                pdf.set_xy(15, 42)
+                pdf.cell(180, 8, pdf._s(f"資料區間：{period_label}"), align="C",
+                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.set_draw_color(255, 80, 0)
+                pdf.set_line_width(2)
+                pdf.line(15, 58, 195, 58)
+                pdf.set_line_width(0.2)
+                pdf.set_y(68)
+
+                # KPI 卡片（橫排）
+                pdf.section_title("本期即時統計摘要")
+                kpi_data = [("🗂️ 總進件數", n_cur)]
                 if type_col and type_col in df_filt.columns:
-                    _tc3 = df_filt[type_col].value_counts()
-                    _f1, _a1 = _mplt.subplots(figsize=(5,4))
-                    _clrs = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9"]
-                    _a1.pie(list(_tc3.values), labels=list(_tc3.index), autopct="%1.0f%%",
-                            colors=_clrs[:len(_tc3)], startangle=90,
-                            textprops={"fontsize":9})
-                    _a1.set_title(_st(f"客訴類別分佈"), fontsize=11)
-                    _embed_chart(_f1, 10, _chart_y)
+                    for t, tc in df_filt[type_col].value_counts().head(3).items():
+                        kpi_data.append((str(t), int(tc)))
+                card_w = 170 // len(kpi_data)
+                card_x = 20
+                for lbl, val in kpi_data:
+                    pdf.set_fill_color(255, 206, 0)  # 黃色頂線
+                    pdf.rect(card_x, pdf.get_y(), card_w - 4, 3, style="F")
+                    pdf.set_fill_color(248, 249, 252)
+                    pdf.rect(card_x, pdf.get_y() + 3, card_w - 4, 28, style="F")
+                    pdf.set_font(F, size=22)
+                    pdf.set_text_color(255, 80, 0)
+                    pdf.set_xy(card_x, pdf.get_y() + 5)
+                    pdf.cell(card_w - 4, 14, str(val), align="C",
+                             new_x=XPos.RIGHT, new_y=YPos.TOP)
+                    pdf.set_font(F, size=8)
+                    pdf.set_text_color(80, 80, 80)
+                    pdf.set_xy(card_x, pdf.get_y() + 20)
+                    pdf.cell(card_w - 4, 8, pdf._s(str(lbl)[:10]), align="C",
+                             new_x=XPos.RIGHT, new_y=YPos.TOP)
+                    card_x += card_w
+                pdf.set_y(pdf.get_y() + 36)
 
-                # 機台圓餅圖
+                # 城市 KPI
+                if city_col and city_col in df_filt.columns:
+                    pdf.ln(4)
+                    pdf.set_font(F, size=9)
+                    pdf.set_text_color(60, 60, 60)
+                    city_top = df_filt[city_col].value_counts().head(3)
+                    line = "　|　".join([f"{c}：{int(v)} 件" for c, v in city_top.items()])
+                    pdf.set_x(20)
+                    pdf.cell(0, 7, pdf._s(f"前三大城市：{line}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+                # ════════════════════════════════════════════
+                # Page 2：排行統計
+                # ════════════════════════════════════════════
+                pdf.add_page()
+                pdf.section_title("案件排行統計")
+
+                # 區域排行
+                if city_col and city_col in df_filt.columns:
+                    pdf.set_font(F, size=10); pdf.set_text_color(6,14,159)
+                    pdf.cell(0, 7, pdf._s("📍 城市/區域排行"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                    _city_v = df_filt[city_col].value_counts()
+                    rows_c = [[i+1, c, int(v), f"{int(v)/n_cur*100:.1f}%"]
+                               for i, (c, v) in enumerate(_city_v.head(10).items())]
+                    pdf.full_table(["排名","城市/區域","件數","佔比"], rows_c, [15,80,25,25])
+
+                # 站點排行
+                if station_col and station_col in df_filt.columns:
+                    pdf.set_font(F, size=10); pdf.set_text_color(6,14,159)
+                    pdf.cell(0, 7, pdf._s("🏬 站點排行"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                    _sta_v = df_filt[station_col].value_counts()
+                    rows_s = [[i+1, str(s)[:28], int(v)]
+                               for i, (s, v) in enumerate(_sta_v.head(10).items())]
+                    pdf.full_table(["排名","站點名稱","件數"], rows_s, [15,120,15])
+
+                # ════════════════════════════════════════════
+                # Page 3：問題細項排行
+                # ════════════════════════════════════════════
+                pdf.add_page()
+                pdf.section_title("問題細項排行")
+
+                if detail_col and detail_col in df_filt.columns:
+                    _det_v = df_filt[detail_col].value_counts()
+                    rows_d = [[i+1, str(d)[:30], int(v), f"{int(v)/n_cur*100:.1f}%"]
+                               for i, (d, v) in enumerate(_det_v.head(15).items())]
+                    pdf.full_table(["排名","問題細項","件數","佔比"], rows_d, [15,110,15,20])
+
+                # ════════════════════════════════════════════
+                # Page 4：圖表（圓餅 + 機台）
+                # ════════════════════════════════════════════
+                pdf.add_page()
+                pdf.section_title("數據可視化分析")
+
+                if type_col and type_col in df_filt.columns:
+                    _tc4 = df_filt[type_col].value_counts()
+                    _f4, _a4 = _mplt.subplots(figsize=(7, 5))
+                    _clrs4 = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"]
+                    wedges, texts, autotexts = _a4.pie(
+                        list(_tc4.values),
+                        labels=[f"{k}\n({int(v)}件)" for k,v in _tc4.items()],
+                        autopct="%1.1f%%",
+                        colors=_clrs4[:len(_tc4)],
+                        startangle=90,
+                        pctdistance=0.7,
+                        labeldistance=1.15,
+                    )
+                    for _at in autotexts: _at.set_fontsize(10)
+                    for _t in texts: _t.set_fontsize(10)
+                    _a4.set_title(f"{period_label}　客訴類別分佈", fontsize=13, pad=15)
+                    pdf.embed_image(_f4, w=170, h=120)
+
                 if machine_col and machine_col in df_filt.columns and not df_filt[machine_col].dropna().empty:
-                    _mc3 = df_filt[machine_col].value_counts()
-                    _f2, _a2 = _mplt.subplots(figsize=(5,4))
-                    _a2.pie(list(_mc3.values), labels=list(_mc3.index), autopct="%1.0f%%",
-                            colors=["#FF5000","#060E9F","#8EB9C9"],
-                            textprops={"fontsize":10})
-                    _a2.set_title(_st("機台客訴佔比"), fontsize=11)
-                    _embed_chart(_f2, 148, _chart_y)
+                    _mc4 = df_filt[machine_col].value_counts()
+                    _f5, _a5 = _mplt.subplots(figsize=(7, 5))
+                    _a5.pie(
+                        list(_mc4.values),
+                        labels=[f"{k}\n({int(v)}件)" for k,v in _mc4.items()],
+                        autopct="%1.1f%%",
+                        colors=["#FF5000","#060E9F","#8EB9C9"],
+                        startangle=90,
+                        pctdistance=0.7,
+                        labeldistance=1.15,
+                    )
+                    _a5.set_title(f"{period_label}　機台客訴佔比", fontsize=13, pad=15)
+                    pdf.embed_image(_f5, w=170, h=120)
 
-                pdf.set_y(_chart_y + 84)
-                pdf.ln(2)
+                # ════════════════════════════════════════════
+                # Page 5：趨勢 + 部門分析
+                # ════════════════════════════════════════════
+                pdf.add_page()
+                pdf.section_title("客訴趨勢分析")
 
-                # 每日趨勢長條圖
-                _daily2 = df_filt.groupby(df_filt[date_col].dt.date).size().reset_index(name="件數")
-                if len(_daily2) > 1:
-                    _f3, _a3 = _mplt.subplots(figsize=(11,3))
-                    _a3.bar([str(d) for d in _daily2.iloc[:,0]], list(_daily2["件數"]), color="#060E9F")
-                    _a3.set_title(_st(f"{period_label} 每日件數趨勢"), fontsize=11)
-                    _a3.tick_params(axis="x", rotation=25, labelsize=7)
-                    _a3.yaxis.set_major_locator(_mplt.MaxNLocator(integer=True))
-                    _embed_chart(_f3, 10, pdf.get_y(), w=277, h=60)
-                    pdf.set_y(pdf.get_y() + 64)
+                _daily3 = df_filt.groupby(df_filt[date_col].dt.date).size().reset_index(name="件數")
+                if len(_daily3) > 1:
+                    _f6, _a6 = _mplt.subplots(figsize=(10, 4))
+                    _a6.bar([str(d) for d in _daily3.iloc[:,0]], list(_daily3["件數"]),
+                            color="#060E9F", edgecolor="white", linewidth=0.5)
+                    _a6.set_title(f"{period_label}　每日件數趨勢", fontsize=13)
+                    _a6.tick_params(axis="x", rotation=30, labelsize=8)
+                    _a6.yaxis.set_major_locator(_MNL(integer=True))
+                    _a6.set_ylabel("件數", fontsize=10)
+                    _a6.grid(axis="y", alpha=0.3)
+                    _f6.tight_layout()
+                    pdf.embed_image(_f6, w=180, h=100)
 
-                # ── 儲存 PDF ──
+                if dept_col and dept_col in df_filt.columns:
+                    pdf.section_title("各部門件數分析")
+                    _dp = df_filt[dept_col].replace("","未分配").value_counts()
+                    rows_dp = [[i+1, str(d), int(v), f"{int(v)/n_cur*100:.1f}%"]
+                                for i, (d, v) in enumerate(_dp.items())]
+                    pdf.full_table(["排名","部門","件數","佔比"], rows_dp, [15,80,20,20])
+
                 _pdf_bytes = bytes(pdf.output())
                 st.session_state["_s4_pdf_bytes"] = _pdf_bytes
-                st.success(f"✅ PDF 已產生（{len(_pdf_bytes)//1024} KB）")
+                st.session_state["_s4_pdf_label"] = period_label
+                st.success(f"✅ PDF 已產生，共 {pdf.page_no()} 頁（{len(_pdf_bytes)//1024} KB）")
             except Exception as _e:
+                import traceback
                 st.error(f"PDF 產生失敗：{_e}")
+                st.code(traceback.format_exc())
 
     if st.session_state.get("_s4_pdf_bytes"):
+        _label = st.session_state.get("_s4_pdf_label", period_label)
         st.download_button(
-            "⬇️ 下載完整分析 PDF",
+            "⬇️ 下載完整分析 PDF（多頁）",
             data=st.session_state["_s4_pdf_bytes"],
-            file_name=f"ECOCO_客訴分析_{period_label.replace(' ','').replace('～','-')}.pdf",
+            file_name=f"ECOCO_客訴分析_{_label.replace(' ','').replace('～','-').replace('/','-')}.pdf",
             mime="application/pdf",
             use_container_width=False,
             key="s4_dl_full_pdf",
