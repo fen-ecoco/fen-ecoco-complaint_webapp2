@@ -656,7 +656,7 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
         st.session_state["_history_cache"] = {}
     st.session_state["_history_cache"][ts] = {"meta": meta, "excel_bytes": excel_bytes}
 
-    # 2. Google Sheets（永久）
+    # 2. Google Sheets（永久）— 歷史索引 + 獨立工作表
     ws = _history_sheet()
     if ws:
         try:
@@ -666,6 +666,29 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
                     if row and row[0] == existing_id:
                         ws.delete_rows(i); break
             ws.append_row([ts, meta["created_at"], source_name, str(len(df)), excel_b64])
+
+            # ── 新增獨立分析工作表（每次創建唯一 sheet）──
+            try:
+                _ss = ws.spreadsheet
+                _sheet_name = f"{ts[:8]}_{source_name[:12]}"
+                # 清除非法字元
+                import re as _re2
+                _sheet_name = _re2.sub(r"[\[\]:*?/\\]", "_", _sheet_name)[:31]
+                # 若同名已存在則刪除舊的
+                try:
+                    _old = _ss.worksheet(_sheet_name)
+                    _ss.del_worksheet(_old)
+                except Exception:
+                    pass
+                _new_ws = _ss.add_worksheet(title=_sheet_name, rows=max(len(df)+5, 50), cols=max(len(df.columns)+2, 20))
+                # 寫入標題列
+                _new_ws.append_row(df.columns.tolist())
+                # 寫入資料（分批，每次200列）
+                _rows_data = df.fillna("").astype(str).values.tolist()
+                for _i in range(0, len(_rows_data), 200):
+                    _new_ws.append_rows(_rows_data[_i:_i+200])
+            except Exception:
+                pass  # 獨立 sheet 失敗不影響主流程
         except Exception:
             pass
 
@@ -1690,6 +1713,52 @@ def section_1():
 
     st.markdown("#### 可編輯標記表（支援下拉 + 手動編輯）")
 
+    # ── 欄位顯示控制（隱藏/釘選/刪除）────────────────────────────
+    if "hidden_cols" not in st.session_state:
+        st.session_state["hidden_cols"] = set()
+    if "pinned_cols" not in st.session_state:
+        st.session_state["pinned_cols"] = []
+
+    with st.expander("⚙️ 欄位設定（隱藏 / 釘選 / 刪除）", expanded=False):
+        all_data_cols = [c for c in show_display.columns if c not in ("選取", MARKER_COL)]
+        col_chunks = [all_data_cols[i:i+5] for i in range(0, len(all_data_cols), 5)]
+        for chunk in col_chunks:
+            ck_cols = st.columns(len(chunk))
+            for ci, col_name in enumerate(chunk):
+                with ck_cols[ci]:
+                    st.markdown(f"**{col_name}**")
+                    h_key = f"hide_{col_name}"
+                    p_key = f"pin_{col_name}"
+                    d_key = f"del_{col_name}"
+                    if st.checkbox("隱藏", key=h_key,
+                                   value=col_name in st.session_state["hidden_cols"]):
+                        st.session_state["hidden_cols"].add(col_name)
+                    else:
+                        st.session_state["hidden_cols"].discard(col_name)
+                    if st.checkbox("釘選", key=p_key,
+                                   value=col_name in st.session_state["pinned_cols"]):
+                        if col_name not in st.session_state["pinned_cols"]:
+                            st.session_state["pinned_cols"].append(col_name)
+                    else:
+                        if col_name in st.session_state["pinned_cols"]:
+                            st.session_state["pinned_cols"].remove(col_name)
+                    if st.button("🗑 刪除欄", key=d_key):
+                        for target_df in ["analysis_df"]:
+                            if target_df in st.session_state and col_name in st.session_state[target_df].columns:
+                                st.session_state[target_df].drop(columns=[col_name], inplace=True)
+                        st.session_state["hidden_cols"].discard(col_name)
+                        if col_name in st.session_state["pinned_cols"]:
+                            st.session_state["pinned_cols"].remove(col_name)
+                        st.rerun()
+
+    # ── 依設定重排欄位：釘選在前，其次一般，隱藏排除 ──────────────
+    pinned = [c for c in st.session_state["pinned_cols"] if c in show_display.columns]
+    others = [c for c in show_display.columns
+              if c not in pinned and c not in st.session_state["hidden_cols"]]
+    display_order = ["選取", MARKER_COL] + pinned + [c for c in others if c not in ("選取", MARKER_COL)]
+    display_order = [c for c in display_order if c in show_display.columns]   # 確保欄位存在
+    show_display_ordered = show_display[display_order]
+
     # ---- AI填入標示 ---
     ai_col = "_ai_filled"
     MARKER_COL = "AI標記"  # kept for save compatibility only
@@ -1737,7 +1806,7 @@ def section_1():
         st.rerun()
 
     edited = st.data_editor(
-        show_display,
+        show_display_ordered,
         use_container_width=True,
         num_rows="dynamic",
         hide_index=True,
@@ -1800,9 +1869,9 @@ def section_1():
                 st.rerun()
 
     st.markdown("##### 批次處理與儲存")
-    
+
     b1, b2, b3, b4 = st.columns([2, 2, 2, 2])
-    batch_type = b1.selectbox("批次問題類型", ["(不變更)"] + TYPE_OPTIONS, key="batch_type_sel")
+    batch_type   = b1.selectbox("批次問題類型", ["(不變更)"] + TYPE_OPTIONS, key="batch_type_sel")
     valid_batch_det = ["(不變更)"]
     if batch_type != "(不變更)":
         valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
@@ -1812,31 +1881,60 @@ def section_1():
         if "選取" not in edited.columns or not edited["選取"].any():
             st.warning("請先在表格內勾選要處理的資料列！")
         else:
-            mask = edited["選取"] == True
+            full_df = st.session_state["analysis_df"].copy()
+            save_edited = edited.drop(columns=["選取", MARKER_COL], errors="ignore")
+            # 只更新存在於 full_df 的欄位，避免因隱藏欄位造成欄位消失
+            common_cols = [c for c in save_edited.columns if c in full_df.columns]
+            full_df.update(save_edited[common_cols])
+
+            mask_idx = edited.index[edited["選取"] == True]
             if batch_type != "(不變更)":
-                edited.loc[mask, "問題類型"] = batch_type
-                edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("")
+                full_df.loc[mask_idx, "問題類型"] = batch_type
+                full_df.loc[mask_idx, "部門"] = DEPT_MAP.get(batch_type, "")
             if batch_detail != "(不變更)":
-                edited.loc[mask, "問題細項"] = batch_detail
-            # Auto-fix rows whose detail mismatches topic
-            edited["問題細項"] = edited.apply(
-                lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], []) else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
+                full_df.loc[mask_idx, "問題細項"] = batch_detail
+            full_df["問題細項"] = full_df.apply(
+                lambda r: r["問題細項"]
+                if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], [])
+                else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
                 axis=1,
             )
-            st.session_state["analysis_df"] = edited.copy()
+            st.session_state["analysis_df"] = full_df
+            # ── 保留隱藏/釘選狀態（不重置）──
             st.session_state["_batch_applied"] = True
+            # 不呼叫 st.rerun() 而是直接更新，避免清空 hidden_cols/pinned_cols
             st.rerun()
-            
+
     if st.session_state.pop("_batch_applied", False):
-        st.success("已套用批次編輯。")
-        
+        st.success("✅ 已套用批次編輯，勾選狀態與欄位隱藏/釘選設定均已保留。")
+
     if b4.button("刪除勾選列"):
         if "選取" not in edited.columns or not edited["選取"].any():
             st.warning("請先在表格內勾選要刪除的資料列！")
         else:
-            st.session_state["analysis_df"] = edited[edited["選取"] != True].copy()
+            full_df = st.session_state["analysis_df"].copy()
+            save_edited = edited.drop(columns=["選取", MARKER_COL], errors="ignore")
+            full_df.update(save_edited)
+            full_df = full_df.drop(index=edited.index[edited["選取"] == True]).reset_index(drop=True)
+            st.session_state["analysis_df"] = full_df
             st.success("已刪除勾選列。")
             st.rerun()
+
+    # ── 刪除整欄功能 ──────────────────────────────────────────────
+    with st.expander("🗑️ 刪除整欄（永久移除不需要的欄位）", expanded=False):
+        PROTECTED = {"選取", "問題類型", "問題細項", "部門", "_ai_filled", MARKER_COL}
+        deletable = [c for c in st.session_state["analysis_df"].columns if c not in PROTECTED]
+        if deletable:
+            del_col_sel = st.multiselect("選擇要刪除的欄位", deletable, key="del_col_ms")
+            if st.button("確認刪除所選欄位", key="del_col_btn", type="primary"):
+                if del_col_sel:
+                    st.session_state["analysis_df"] = st.session_state["analysis_df"].drop(
+                        columns=del_col_sel, errors="ignore"
+                    )
+                    st.success(f"已刪除欄位：{', '.join(del_col_sel)}")
+                    st.rerun()
+        else:
+            st.info("無可刪除的欄位（核心分析欄位受保護）")
 
     final_df = st.session_state["analysis_df"]
     
@@ -2549,13 +2647,26 @@ def section_4():
     else:
         min_d = df_all[date_col].min().date()
         max_d = df_all[date_col].max().date()
+        st.markdown("**本期：**")
         d_col1, d_col2 = filter_c2.columns(2)
         start_d = d_col1.date_input("開始", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_sd")
         end_d   = d_col2.date_input("結束", value=max_d, min_value=min_d, max_value=max_d, key="s4v3_ed")
+        # 對照期
+        st.markdown("**對照期（可選）：**")
+        cp_col1, cp_col2, cp_col3 = filter_c3.columns(3)
+        use_cmp = cp_col1.checkbox("啟用對照期", key="s4v3_use_cmp")
+        cmp_start = cp_col2.date_input("對照開始", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_csd",
+                                        disabled=not use_cmp)
+        cmp_end   = cp_col3.date_input("對照結束", value=start_d, min_value=min_d, max_value=max_d, key="s4v3_ced",
+                                        disabled=not use_cmp)
         df_cur  = df_all[(df_all[date_col].dt.date >= start_d) & (df_all[date_col].dt.date <= end_d)].copy()
         period_label = f"{start_d} ～ {end_d}"
-        period_prev = None
-        df_prev = pd.DataFrame()
+        if use_cmp:
+            df_prev = df_all[(df_all[date_col].dt.date >= cmp_start) & (df_all[date_col].dt.date <= cmp_end)].copy()
+            period_prev = f"{cmp_start} ～ {cmp_end}"
+        else:
+            period_prev = None
+            df_prev = pd.DataFrame()
 
     # ── 多維篩選 chips（城市/部門/問題類型/機台）──────────────────
     st.markdown("**篩選維度：**")
@@ -2658,59 +2769,81 @@ def section_4():
     with chart_col1:
         if type_col and type_col in df_filt.columns:
             _tc = df_filt[type_col].value_counts()
-            _total = _tc.sum()
+            _total_tc = _tc.sum()
+            _CLRS_PIE = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"]
             fig_pie = px.pie(
                 values=_tc.values, names=_tc.index,
                 title=f"{period_label} 客訴類別分佈",
-                hole=0.35,
-                color_discrete_sequence=["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"],
+                hole=0.32,
+                color_discrete_sequence=_CLRS_PIE,
             )
-            # 小於5%的扇形只顯示在圖例，避免標籤重疊
             fig_pie.update_traces(
-                texttemplate="%{label}<br>%{percent:.1%}",
-                textposition="auto",
-                textfont_size=12,
+                texttemplate="%{percent:.0%}",
+                textposition="inside",
+                textfont_size=13,
+                textfont_color="white",
+                hovertemplate="<b>%{label}</b><br>%{value} 件　%{percent:.1%}<extra></extra>",
+                showlegend=False,
             )
+            # 右側緊湊圖例：■ 類別  XX%（N件）
+            _n_items = len(_tc)
+            _step = min(0.12, 0.85 / max(_n_items, 1))
+            _anns = []
+            for _i, (_k, _v) in enumerate(_tc.items()):
+                _pct = int(_v) / max(_total_tc, 1) * 100
+                _clr = _CLRS_PIE[_i % len(_CLRS_PIE)]
+                _anns.append(dict(
+                    x=1.01, y=0.96 - _i * _step,
+                    xref="paper", yref="paper",
+                    text=f'<span style="color:{_clr};font-size:14px">■</span>'
+                         f' <b>{_k}</b>　{_pct:.0f}%（{int(_v)}件）',
+                    showarrow=False, align="left", font=dict(size=11),
+                    xanchor="left",
+                ))
             fig_pie.update_layout(
-                height=420,
-                showlegend=True,
-                legend=dict(
-                    orientation="v",
-                    yanchor="middle", y=0.5,
-                    xanchor="left", x=1.0,
-                    font=dict(size=12),
-                    itemsizing="constant",
-                ),
-                margin=dict(t=55, b=20, l=20, r=160),
-                title_font_size=15,
-                title_x=0.0,
+                height=420, showlegend=False,
+                annotations=_anns,
+                margin=dict(t=50, b=10, l=10, r=160),
+                title_font_size=14,
             )
             st.plotly_chart(fig_pie, use_container_width=True)
 
     with chart_col2:
         if machine_col and machine_col in df_filt.columns and not df_filt[machine_col].dropna().empty:
             _mc = df_filt[machine_col].value_counts()
+            _total_mc = _mc.sum()
+            _CLRS_MAC = ["#FF5000","#060E9F","#8EB9C9","#FFCE00"]
             fig_mac = px.pie(
                 values=_mc.values, names=_mc.index,
                 title=f"{period_label} 機台客訴佔比",
-                color_discrete_sequence=["#FF5000","#060E9F","#8EB9C9","#FFCE00"],
+                color_discrete_sequence=_CLRS_MAC,
             )
+            _n_mac = len(_mc)
+            _step_mac = min(0.15, 0.85 / max(_n_mac, 1))
+            _anns_mac = []
+            for _i, (_k, _v) in enumerate(_mc.items()):
+                _pct = int(_v) / max(_total_mc, 1) * 100
+                _clr = _CLRS_MAC[_i % len(_CLRS_MAC)]
+                _anns_mac.append(dict(
+                    x=1.01, y=0.92 - _i * _step_mac,
+                    xref="paper", yref="paper",
+                    text=f'<span style="color:{_clr};font-size:14px">■</span>'
+                         f' <b>{_k}</b>　{_pct:.0f}%（{int(_v)}件）',
+                    showarrow=False, align="left", font=dict(size=12),
+                    xanchor="left",
+                ))
             fig_mac.update_traces(
-                texttemplate="%{label}<br>%{percent:.1%}",
-                textposition="auto",
-                textfont_size=13,
+                texttemplate="%{percent:.0%}",
+                textposition="inside",
+                textfont_size=14,
+                textfont_color="white",
+                hovertemplate="<b>%{label}</b><br>%{value} 件　%{percent:.1%}<extra></extra>",
+                showlegend=False,
             )
             fig_mac.update_layout(
-                height=420,
-                showlegend=True,
-                legend=dict(
-                    orientation="v",
-                    yanchor="middle", y=0.5,
-                    xanchor="left", x=1.0,
-                    font=dict(size=12),
-                ),
-                margin=dict(t=55, b=20, l=20, r=160),
-                title_font_size=15,
+                height=420, showlegend=False,
+                annotations=_anns_mac,
+                margin=dict(t=50, b=10, l=10, r=160),
             )
             st.plotly_chart(fig_mac, use_container_width=True)
         elif detail_col and detail_col in df_filt.columns:
@@ -2720,7 +2853,7 @@ def section_4():
                 orientation="h", title=f"{period_label} TOP 8 問題細項",
                 color_discrete_sequence=["#060E9F"],
             )
-            fig_det.update_layout(height=420, xaxis=dict(dtick=1,tickformat="d"),
+            fig_det.update_layout(height=430, xaxis=dict(dtick=1,tickformat="d"),
                                    margin=dict(t=45,b=0,l=0,r=0))
             st.plotly_chart(fig_det, use_container_width=True)
 
@@ -2748,16 +2881,43 @@ def section_4():
         )
         st.plotly_chart(fig_line, use_container_width=True)
     else:
-        # 自訂日期：每日件數
+        # 自訂日期：每日件數，最高值標橘色
         _daily = df_filt.groupby(df_filt[date_col].dt.date).size().reset_index(name="件數")
         _daily.columns = ["日期", "件數"]
         if not _daily.empty:
+            _max_cnt = _daily["件數"].max()
+            _bar_colors = ["#FF5000" if v == _max_cnt else "#060E9F" for v in _daily["件數"]]
             fig_daily = px.bar(
                 _daily, x="日期", y="件數",
-                title="期間內每日件數",
-                color_discrete_sequence=["#060E9F"],
+                title="期間內每日件數（橘色＝最高日）",
+                text="件數",
             )
-            fig_daily.update_layout(height=300, yaxis=dict(dtick=1, tickformat="d"), margin=dict(t=45,b=0))
+            fig_daily.update_traces(
+                marker_color=_bar_colors,
+                texttemplate="%{text}",
+                textposition="outside",
+                textfont_size=10,
+            )
+            fig_daily.update_layout(
+                height=320,
+                yaxis=dict(dtick=1, tickformat="d"),
+                margin=dict(t=50,b=0),
+                showlegend=False,
+            )
+            # 對照期疊加折線
+            if not df_prev.empty and date_col in df_prev.columns:
+                _daily_prev = df_prev.groupby(df_prev[date_col].dt.date).size().reset_index(name="件數")
+                _daily_prev.columns = ["日期", "件數"]
+                if not _daily_prev.empty:
+                    import plotly.graph_objects as go
+                    fig_daily.add_trace(go.Scatter(
+                        x=[str(d) for d in _daily_prev["日期"]],
+                        y=list(_daily_prev["件數"]),
+                        mode="lines+markers",
+                        name=f"對照期（{period_prev}）",
+                        line=dict(color="#FFCE00", width=2, dash="dot"),
+                        marker=dict(size=6),
+                    ))
             st.plotly_chart(fig_daily, use_container_width=True)
 
     # ── 城市展開排行（可折疊）────────────────────────────────────
@@ -3146,45 +3306,95 @@ def section_4():
             for cat, cnt in _cvs.items():
                 prev_cnt = int(_pvs.get(cat, 0))
                 d = int(cnt) - prev_cnt
-                pline = f"（較上期 {d:+d} 件，{pct_change(int(cnt),prev_cnt):+.1f}%）" if prev_cnt else ""
+                pct_share = f"{int(cnt)/max(total_cur,1)*100:.0f}%"
+                pline = f"（占 {pct_share}，較上期 {d:+d} 件，{pct_change(int(cnt),prev_cnt):+.1f}%）" if prev_cnt else f"（占 {pct_share}）"
                 type_summary += f"- {cat}：{int(cnt)} 件{pline}\n"
 
         city_summary = ""
         if city_col and city_col in df_filt.columns:
             _cc = df_filt[city_col].value_counts()
             _pc = df_prev[city_col].value_counts() if not df_prev.empty and city_col in df_prev.columns else pd.Series(dtype=int)
-            for city, cnt in _cc.head(5).items():
-                d = int(cnt) - int(_pc.get(city,0))
-                city_summary += f"- {city}：{int(cnt)} 件（{d:+d}）\n"
+            for city, cnt in _cc.head(8).items():
+                prev_cnt = int(_pc.get(city, 0))
+                d = int(cnt) - prev_cnt
+                pct_share = f"{int(cnt)/max(total_cur,1)*100:.0f}%"
+                pline = f"（占 {pct_share}，較上期 {d:+d} 件）" if prev_cnt else f"（占 {pct_share}）"
+                city_summary += f"- {city}：{int(cnt)} 件{pline}\n"
 
-        top3 = ""
+        detail_summary = ""
         if detail_col and detail_col in df_filt.columns:
-            for _, r in df_filt[detail_col].value_counts().head(3).reset_index().iterrows():
-                top3 += f"- {r[detail_col]}：{r['count']} 件\n"
+            _dv = df_filt[detail_col].value_counts()
+            _dp = df_prev[detail_col].value_counts() if not df_prev.empty and detail_col in df_prev.columns else pd.Series(dtype=int)
+            for det, cnt in _dv.head(8).items():
+                prev_cnt = int(_dp.get(det, 0))
+                d = int(cnt) - prev_cnt
+                pct_share = f"{int(cnt)/max(total_cur,1)*100:.0f}%"
+                pline = f"（占 {pct_share}，較上期 {d:+d} 件）" if prev_cnt else f"（占 {pct_share}）"
+                detail_summary += f"- {det}：{int(cnt)} 件{pline}\n"
 
-        _upper_cmp = (
-            f"\n【上期對比】（{period_prev}，{total_prev} 件，總件數 {pct_chg:+.1f}%）"
-            if pct_chg is not None else ""
-        )
+        station_summary = ""
+        if station_col and station_col in df_filt.columns:
+            for sta, cnt in df_filt[station_col].value_counts().head(5).items():
+                station_summary += f"- {sta}：{int(cnt)} 件\n"
+
+        dept_summary = ""
+        if dept_col and dept_col in df_filt.columns:
+            _dept = df_filt[dept_col].replace("","未分配").value_counts()
+            _dprev = df_prev[dept_col].replace("","未分配").value_counts() if not df_prev.empty and dept_col in df_prev.columns else pd.Series(dtype=int)
+            for dep, cnt in _dept.items():
+                prev_cnt = int(_dprev.get(dep, 0))
+                d = int(cnt) - prev_cnt
+                pline = f"（較上期 {d:+d} 件）" if prev_cnt else ""
+                dept_summary += f"- {dep}：{int(cnt)} 件{pline}\n"
+
+        trend_word = "增加" if (pct_chg or 0) > 0 else ("減少" if (pct_chg or 0) < 0 else "持平")
+        _upper_cmp = ""
+        if pct_chg is not None:
+            _upper_cmp = f"（對照期 {period_prev} 共 {total_prev} 件，本期{trend_word} {abs(pct_chg):.1f}%）"
+
         prompt = (
-            f"你是 ECOCO 宜可可循環經濟客服部的高級分析專員。\n"
-            f"請根據以下數據，產出一份{rep_type}的「口說報告」，適合在會議中對長官簡報。\n\n"
-            f"【語氣】：專業、條理清晰、帶有建議性，如現場口語報告。\n"
-            f"【結構】：\n"
-            f"1. 開場白（點出本期重點）\n"
-            f"2. 總體趨勢概述（數字意義，非只念數字）\n"
-            f"3. 前三大痛點深度解析（原因與影響）\n"
-            f"4. 城市/區域分析亮點\n"
-            f"5. 改善成效追蹤\n"
-            f"6. 下階段行動建議\n\n"
-            f"【本期數據】（{period_label}，共 {total_cur} 件）：\n"
-            f"{type_summary or '（無問題類型資料）'}\n\n"
-            f"【城市分布 TOP5】：\n"
-            f"{city_summary or '（無城市資料）'}\n\n"
-            f"【前三大問題細項】：\n"
-            f"{top3 or '（無細項資料）'}\n"
-            f"{_upper_cmp}\n\n"
-            f"請以繁體中文撰寫，口語自然但不失專業，每段落 2-4 句。"
+            f"你是 ECOCO 宜可可循環經濟客服部門的資深數據分析專員，擁有豐富的循環經濟、設備維運與客服管理知識。\n"
+            f"請根據以下【完整數據摘要】，為本次{rep_type}撰寫一份詳盡的「口說報告」。\n\n"
+            f"═══════════ 數據摘要 ═══════════\n"
+            f"📅 分析區間：{period_label}{_upper_cmp}\n"
+            f"📊 本期總進件：{total_cur} 件\n\n"
+            f"【問題類型分布】：\n{type_summary or '（無資料）'}\n"
+            f"【問題細項排行 TOP8】：\n{detail_summary or '（無資料）'}\n"
+            f"【城市件數排行 TOP8】：\n{city_summary or '（無資料）'}\n"
+            f"【熱門站點 TOP5】：\n{station_summary or '（無資料）'}\n"
+            f"【各部門負責件數】：\n{dept_summary or '（無資料）'}\n"
+            f"═══════════════════════════════\n\n"
+            f"【報告段落結構】—— 嚴格按照以下六段撰寫，每段不少於 4 句，共約 800-1000 字：\n\n"
+            f"━━ 一、開場白與執行摘要 ━━\n"
+            f"• 用一句有力的話點出本期最重要的發現（數字+意義）\n"
+            f"• 點明整體趨勢方向及幅度，說明是否達到預期目標\n"
+            f"• 預告本次報告的三個核心重點\n\n"
+            f"━━ 二、數據概覽與趨勢分析 ━━\n"
+            f"• 詳細說明本期與上期總件數增減的具體數字與可能原因（季節性？活動推廣？設備老化？）\n"
+            f"• 分析各問題類型的比例消長，哪類問題突增、哪類改善\n"
+            f"• 以「每XX件客訴就有X件是...」方式說明佔比的實際意義\n\n"
+            f"━━ 三、前三大痛點深度解析 ━━\n"
+            f"• 針對問題細項排名前三，逐一分析：(1)件數與佔比 (2)主要發生城市/站點 (3)對用戶的實際影響 (4)與上期比較\n"
+            f"• 深入推測問題根本原因（非表面描述），如硬體耗損、韌體問題、清運頻率不足等\n"
+            f"• 說明若不及時處理可能引發的連鎖效應\n\n"
+            f"━━ 四、城市、站點與機台分析 ━━\n"
+            f"• 點出本期件數最高的城市及其熱門站點，分析地理集中原因\n"
+            f"• 有顯著增加的區域要點出並推測原因，有改善的要給予肯定\n"
+            f"• 說明機台類型（收瓶機/電池機）的問題分布是否均衡，有無特定機型問題集中\n\n"
+            f"━━ 五、部門成效與改善追蹤 ━━\n"
+            f"• 各部門（營運部、行銷部、資訊部）本期負責件數及較上期增減\n"
+            f"• 哪些指標已有改善跡象（件數下降、比例縮小），哪些仍需持續關注\n"
+            f"• 若有客訴反覆發生的情況，點名指出並說明影響\n\n"
+            f"━━ 六、下階段行動建議 ━━\n"
+            f"• 提出 4～5 項具體可執行的改善行動，需指定負責部門、執行時程、預期效果\n"
+            f"• 建議本期需重點追蹤的 KPI 指標（例如：瓶蓋桶滿件數週降 20%）\n"
+            f"• 以鼓勵性語氣結語，帶出下一期的期望目標\n\n"
+            f"【撰寫規範】\n"
+            f"✅ 繁體中文，語氣正式自然，如現場向長官口頭簡報\n"
+            f"✅ 數字要說明「意義」：例如「機台問題佔49%，即每兩件客訴就有一件涉及硬體」\n"
+            f"✅ 善用過渡詞：「首先」「值得特別注意的是」「從區域分布來看」「相較上期」「建議優先」\n"
+            f"✅ 避免套語：「如上所述」「綜上所述」「總的來說」請用更具體的描述替代\n"
+            f"✅ 報告總長度：800-1000 字，資訊完整、重點突出\n"
         )
 
         with st.spinner("AI 正在撰寫口說報告..."):
