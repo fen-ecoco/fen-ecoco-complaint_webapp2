@@ -1720,7 +1720,7 @@ def section_1():
         st.session_state["pinned_cols"] = []
 
     with st.expander("⚙️ 欄位設定（隱藏 / 釘選 / 刪除）", expanded=False):
-        all_data_cols = [c for c in show_display.columns if c not in ("選取", MARKER_COL)]
+        all_data_cols = [c for c in show.columns if c not in ("選取", MARKER_COL)]
         col_chunks = [all_data_cols[i:i+5] for i in range(0, len(all_data_cols), 5)]
         for chunk in col_chunks:
             ck_cols = st.columns(len(chunk))
