@@ -2430,9 +2430,9 @@ def section_4():
     .s4-kpi-delta{font-size:11px;margin-top:3px}
     .delta-up{color:#c03000} .delta-dn{color:#0a6e44} .delta-flat{color:#888}
     .s4-rank-table{width:100%;border-collapse:collapse}
-    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 12px;font-size:13px;text-align:center}
-    .s4-rank-table td{padding:10px 12px;text-align:center;border-bottom:1px solid #eee;font-size:13px}
-    .s4-rank-val{color:#FF5000;font-weight:700}
+    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 14px;font-size:14px;text-align:center;font-weight:600}
+    .s4-rank-table td{padding:9px 14px;text-align:center;border-bottom:1px solid #eee;font-size:12px}
+    .s4-rank-val{color:#FF5000;font-weight:700;font-size:14px}
     .filter-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
     .filter-chip{padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
                  border:1.5px solid #060E9F;background:#fff;color:#060E9F}
@@ -2624,7 +2624,8 @@ def section_4():
         rows = ""
         for idx, (k, v) in enumerate(series.head(5).items()):
             m = MEDAL[idx] if idx < len(MEDAL) else str(idx+1)
-            rows += f'<tr><td>{m} {str(k)[:20]}</td><td class="s4-rank-val">{int(v)}</td></tr>'
+            rows += (f'<tr><td style="text-align:left;font-size:12px">{m} {str(k)[:24]}</td>'
+                     f'<td class="s4-rank-val">{int(v)}</td></tr>')
         return f'''<table class="s4-rank-table">
           <thead><tr><th>{header1}</th><th>{header2}</th></tr></thead>
           <tbody>{rows}</tbody>
@@ -2659,30 +2660,40 @@ def section_4():
         if type_col and type_col in df_filt.columns:
             _tc = df_filt[type_col].value_counts()
             _total = _tc.sum()
+            COLORS_PIE = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"]
             fig_pie = px.pie(
                 values=_tc.values, names=_tc.index,
                 title=f"{period_label} 客訴類別分佈",
-                hole=0.35,
-                color_discrete_sequence=["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"],
+                hole=0.38,
+                color_discrete_sequence=COLORS_PIE,
             )
-            # 小於5%的扇形只顯示在圖例，避免標籤重疊
             fig_pie.update_traces(
-                texttemplate="%{label}<br>%{percent:.1%}",
-                textposition="auto",
-                textfont_size=12,
+                texttemplate="%{percent:.0%}",   # 只在扇形內顯示 %
+                textposition="inside",
+                textfont=dict(size=13, color="white"),
+                hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
+                showlegend=True,
             )
+            # 圖例：類別名 + % + 件數（對齊截圖格式）
+            _leg_labels = {
+                k: f"{k}  {int(v)/_total*100:.0f}%（{int(v)}件）"
+                for k, v in _tc.items()
+            }
+            fig_pie.for_each_trace(lambda t: t.update(name=_leg_labels.get(t.name, t.name)))
             fig_pie.update_layout(
-                height=420,
+                height=380,
                 showlegend=True,
                 legend=dict(
                     orientation="v",
                     yanchor="middle", y=0.5,
-                    xanchor="left", x=1.0,
+                    xanchor="left", x=1.02,
                     font=dict(size=12),
                     itemsizing="constant",
+                    bgcolor="rgba(0,0,0,0)",
+                    borderwidth=0,
                 ),
-                margin=dict(t=55, b=20, l=20, r=160),
-                title_font_size=15,
+                margin=dict(t=50, b=10, l=10, r=220),
+                title_font_size=14,
                 title_x=0.0,
             )
             st.plotly_chart(fig_pie, use_container_width=True)
@@ -2690,27 +2701,37 @@ def section_4():
     with chart_col2:
         if machine_col and machine_col in df_filt.columns and not df_filt[machine_col].dropna().empty:
             _mc = df_filt[machine_col].value_counts()
+            _mc_total = _mc.sum()
+            COLORS_MAC = ["#FF5000","#060E9F","#8EB9C9","#FFCE00"]
             fig_mac = px.pie(
                 values=_mc.values, names=_mc.index,
                 title=f"{period_label} 機台客訴佔比",
-                color_discrete_sequence=["#FF5000","#060E9F","#8EB9C9","#FFCE00"],
+                color_discrete_sequence=COLORS_MAC,
             )
             fig_mac.update_traces(
-                texttemplate="%{label}<br>%{percent:.1%}",
-                textposition="auto",
-                textfont_size=13,
+                texttemplate="%{percent:.0%}",
+                textposition="inside",
+                textfont=dict(size=14, color="white"),
+                hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
             )
+            _leg_labels_mac = {
+                k: f"{k}  {int(v)/_mc_total*100:.0f}%（{int(v)}件）"
+                for k, v in _mc.items()
+            }
+            fig_mac.for_each_trace(lambda t: t.update(name=_leg_labels_mac.get(t.name, t.name)))
             fig_mac.update_layout(
-                height=420,
+                height=380,
                 showlegend=True,
                 legend=dict(
                     orientation="v",
                     yanchor="middle", y=0.5,
-                    xanchor="left", x=1.0,
+                    xanchor="left", x=1.02,
                     font=dict(size=12),
+                    bgcolor="rgba(0,0,0,0)",
+                    borderwidth=0,
                 ),
-                margin=dict(t=55, b=20, l=20, r=160),
-                title_font_size=15,
+                margin=dict(t=50, b=10, l=10, r=200),
+                title_font_size=14,
             )
             st.plotly_chart(fig_mac, use_container_width=True)
         elif detail_col and detail_col in df_filt.columns:
