@@ -2501,7 +2501,33 @@ def section_4():
         st.info("尚無資料，請先在功能一完成分析儲存，或填入 Google Sheets 網址。")
         return
 
-    df_all = pd.concat(all_dfs, ignore_index=True).drop_duplicates()
+    # 合併前確保每份 df 欄位名稱唯一（避免重複欄位造成 InvalidIndexError）
+    clean_dfs = []
+    for _d in all_dfs:
+        try:
+            _d = _d.copy()
+            # 若有重複欄位名稱，加後綴區分
+            _seen = {}
+            _new_cols = []
+            for c in _d.columns:
+                if c in _seen:
+                    _seen[c] += 1
+                    _new_cols.append(f"{c}_{_seen[c]}")
+                else:
+                    _seen[c] = 0
+                    _new_cols.append(c)
+            _d.columns = _new_cols
+            clean_dfs.append(_d)
+        except Exception:
+            clean_dfs.append(_d)
+
+    df_all = pd.concat(clean_dfs, ignore_index=True)
+    # drop_duplicates 要求 index 唯一，先 reset_index
+    try:
+        df_all = df_all.loc[:, ~df_all.columns.duplicated()]  # 移除重複欄位
+        df_all = df_all.drop_duplicates().reset_index(drop=True)
+    except Exception:
+        df_all = df_all.reset_index(drop=True)
 
     # ── 欄位自動偵測 ──────────────────────────────────────────────
     date_col   = next((c for c in df_all.columns if "日期" in c or "date" in c.lower()), None)
