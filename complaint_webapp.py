@@ -244,7 +244,13 @@ def apply_brand_theme() -> None:
             padding: 14px 18px; border-radius: 12px;
             background: linear-gradient(90deg, var(--ecoco-orange), var(--ecoco-blue));
             color:white; font-weight:500; margin-bottom: 12px;
-            font-size: 20px !important;
+            font-size: 16px !important;
+          }
+          .feature-title {
+            color: #333333 !important;
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            margin: 0 0 10px 0;
           }
           .ecoco-card{
             border:1px solid #e7e7e7; border-left:6px solid var(--ecoco-orange);
@@ -268,11 +274,11 @@ def apply_brand_theme() -> None:
           /* Sidebar Text Overrides */
           .side-title {
             color: #ffffff !important;
-            font-weight: 500; font-size: 1.05rem; margin-bottom: 8px;
+            font-weight: 500; font-size: 16px !important; margin-bottom: 8px;
           }
           .side-sub {
             color: #ffffff !important;
-            font-size: 0.78rem; opacity: 0.85; margin-bottom: 14px;
+            font-size: 16px !important; opacity: 0.85; margin-bottom: 14px;
           }
           
           /* Sidebar Buttons — default = lightblue */
@@ -292,11 +298,20 @@ def apply_brand_theme() -> None:
           /* Hover = white immediately */
           section[data-testid="stSidebar"] .stButton > button:hover,
           section[data-testid="stSidebar"] .stButton > button:focus,
+          section[data-testid="stSidebar"] .stButton > button:focus-visible,
           section[data-testid="stSidebar"] .stButton > button:active,
           section[data-testid="stSidebar"] .stButton > button[kind="primary"],
           section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
             background-color: #FFFFFF !important;
             border-color: #FFFFFF !important;
+            color: #333333 !important;
+          }
+          section[data-testid="stSidebar"] .stButton > button:hover *,
+          section[data-testid="stSidebar"] .stButton > button:focus *,
+          section[data-testid="stSidebar"] .stButton > button:focus-visible *,
+          section[data-testid="stSidebar"] .stButton > button:active *,
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"] *,
+          section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] * {
             color: #333333 !important;
           }
           
@@ -1590,7 +1605,7 @@ def upload_to_google_sheet(df: pd.DataFrame, credentials_json: dict, spreadsheet
 
 
 def section_1():
-    st.subheader("功能一：檔案上傳與分析區")
+    st.markdown('<div class="feature-title">功能一：檔案上傳與分析區</div>', unsafe_allow_html=True)
     st.markdown("<div class='ecoco-card'>支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。</div>", unsafe_allow_html=True)
 
     # File info badge — no long text, just a compact pill with truncated name
@@ -2081,7 +2096,7 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
 
 
 def section_2():
-    st.subheader("功能二：圖表化與 AI 重點分析")
+    st.markdown('<div class="feature-title">功能二：圖表化與 AI 重點分析</div>', unsafe_allow_html=True)
     if "analysis_df" not in st.session_state:
         st.info("請先在功能一完成分析。")
         return
@@ -2240,7 +2255,7 @@ def section_2():
 
 
 def section_3():
-    st.subheader("功能三：歷史分析紀錄")
+    st.markdown('<div class="feature-title">功能三：歷史分析紀錄</div>', unsafe_allow_html=True)
 
     # ── Google Sheets 連線狀態 ──
     import os
@@ -2431,7 +2446,7 @@ def section_4():
     st.markdown("""<style>
     .s4-header{background:#060E9F;color:#fff;padding:22px 26px;border-radius:12px;
                border-bottom:6px solid #FF5000;margin-bottom:18px}
-    .s4-header h2{margin:0;font-size:20px;font-weight:700;letter-spacing:.3px}
+    .s4-header h2{margin:0;font-size:14px;font-weight:700;letter-spacing:.3px}
     .s4-header p{margin:4px 0 0;opacity:.85;font-size:13px}
     .s4-section{border-left:6px solid #FF5000;padding-left:14px;
                 color:#060E9F;font-size:17px;font-weight:700;margin:22px 0 14px}
