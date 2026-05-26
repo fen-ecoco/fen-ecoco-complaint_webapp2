@@ -189,6 +189,7 @@ def _ensure_cjk_font() -> str:
 HISTORY_DIR = Path("history_reports")
 HISTORY_DIR.mkdir(exist_ok=True)
 META_FILE = HISTORY_DIR / "history.json"
+DEFAULT_HISTORY_SHEET_ID = "1Sqh_8bXtFw7jvmCPufTpStKxfIafDzwYJRlgc0HFBSs"
 
 # 範本路徑：優先使用與程式同目錄的 簡報範本.pptx（已隨程式一起部署）
 TEMPLATE_PATH = Path(__file__).parent / "簡報範本.pptx"
@@ -609,6 +610,8 @@ def _history_sheet(log_error: bool = False):
             except Exception:
                 sid = ""
         if not sid:
+            sid = DEFAULT_HISTORY_SHEET_ID
+        if not sid:
             if log_error:
                 st.session_state["_gsheet_error"] = "未設定 HISTORY_SHEET_ID 環境變數"
             return None
@@ -637,7 +640,7 @@ def _history_sheet(log_error: bool = False):
         return None
 
 
-def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> tuple[Path, str]:
+def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> tuple[Path, str, str]:
     import base64
     today = datetime.now().strftime("%Y%m%d")
     ts = existing_id if existing_id else datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -657,8 +660,8 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
     st.session_state["_history_cache"][ts] = {"meta": meta, "excel_bytes": excel_bytes}
 
     # 2. Google Sheets（永久）
-    ws = _history_sheet()
-    if ws:
+    ws = _history_sheet(log_error=True)
+    if ws is not None:
         try:
             if existing_id:
                 rows = ws.get_all_values()
@@ -666,8 +669,9 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
                     if row and row[0] == existing_id:
                         ws.delete_rows(i); break
             ws.append_row([ts, meta["created_at"], source_name, str(len(df)), excel_b64])
-        except Exception:
-            pass
+            st.session_state.pop("_gsheet_error", None)
+        except Exception as e:
+            st.session_state["_gsheet_error"] = f"歷史紀錄寫入 Google Sheets 失敗：{str(e)[:300]}"
 
     # 3. 本機磁碟（輔助）
     output_path = HISTORY_DIR / f"{ts}_{output_name}"
@@ -682,7 +686,7 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
         META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         pass
-    return output_path, output_name
+    return output_path, output_name, ts
 
 
 def load_history() -> list[dict]:
@@ -1600,13 +1604,17 @@ def section_1():
             unsafe_allow_html=True
         )
         if col_clear.button("x 清除", help="清除目前檔案，重新上傳"):
-            for key in ["_uploaded_bytes", "_uploaded_name", "_uploaded_type", "analysis_df", "source_name"]:
+            for key in ["_uploaded_bytes", "_uploaded_name", "_uploaded_type", "analysis_df", "source_name",
+                        "_editing_history_id", "_saved_history_id"]:
                 st.session_state.pop(key, None)
             st.rerun()
 
     uploaded = st.file_uploader("上傳新檔案", type=["xlsx", "xls", "csv", "pdf"], key="uploader")
     # Persist file bytes across menu switches
     if uploaded is not None:
+        if uploaded.name != st.session_state.get("_uploaded_name"):
+            st.session_state.pop("_editing_history_id", None)
+            st.session_state.pop("_saved_history_id", None)
         st.session_state["_uploaded_bytes"] = uploaded.read()
         st.session_state["_uploaded_name"] = uploaded.name
         st.session_state["_uploaded_type"] = uploaded.type
@@ -1774,7 +1782,13 @@ def section_1():
             for d in st.session_state["_draft_list"]:
                 if d["name"] == src_name:
                     d["df"] = full_df.copy()
-        st.success(f"已儲存「{src_name}」")
+        existing_id = st.session_state.get("_editing_history_id") or st.session_state.get("_saved_history_id", "")
+        _, _, history_id = save_history(full_df, src_name, existing_id=existing_id)
+        st.session_state["_saved_history_id"] = history_id
+        if st.session_state.get("_gsheet_error"):
+            st.warning(st.session_state["_gsheet_error"])
+        else:
+            st.success(f"已儲存「{src_name}」，並已加入歷史紀錄")
 
     # 已儲存草稿列表
     if st.session_state.get("_draft_list"):
@@ -1844,8 +1858,9 @@ def section_1():
     dl_format = st.radio("選擇下載格式", ["Excel", "CSV", "PDF"], horizontal=True)
     
     def on_download():
-        existing_id = st.session_state.pop("_editing_history_id", "")
-        save_history(final_df, st.session_state.get("source_name", "unknown"), existing_id=existing_id)
+        existing_id = st.session_state.pop("_editing_history_id", "") or st.session_state.get("_saved_history_id", "")
+        _, _, history_id = save_history(final_df, st.session_state.get("source_name", "unknown"), existing_id=existing_id)
+        st.session_state["_saved_history_id"] = history_id
         st.session_state["history_saved_msg"] = True
 
     if dl_format == "Excel":
