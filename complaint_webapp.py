@@ -190,6 +190,7 @@ HISTORY_DIR = Path("history_reports")
 HISTORY_DIR.mkdir(exist_ok=True)
 META_FILE = HISTORY_DIR / "history.json"
 DEFAULT_HISTORY_SHEET_ID = "1Sqh_8bXtFw7jvmCPufTpStKxfIafDzwYJRlgc0HFBSs"
+SHEET_CELL_CHAR_LIMIT = 49000
 
 # 範本路徑：優先使用與程式同目錄的 簡報範本.pptx（已隨程式一起部署）
 TEMPLATE_PATH = Path(__file__).parent / "簡報範本.pptx"
@@ -633,11 +634,17 @@ def _history_sheet(log_error: bool = False):
         ss = client.open_by_key(sid)
         try:
             ws = ss.worksheet("歷史紀錄")
+            try:
+                header = ws.row_values(1)
+                if header[:5] != ["id", "created_at", "source_name", "rows", "data_ref"]:
+                    ws.update(values=[["id", "created_at", "source_name", "rows", "data_ref"]], range_name="A1:E1")
+            except Exception:
+                pass
             st.session_state.pop("_gsheet_error", None)
             return ws
         except Exception:
             ws = ss.add_worksheet("歷史紀錄", rows=500, cols=6)
-            ws.append_row(["id", "created_at", "source_name", "rows", "excel_b64"])
+            ws.append_row(["id", "created_at", "source_name", "rows", "data_ref"])
             st.session_state.pop("_gsheet_error", None)
             return ws
     except Exception as e:
@@ -655,13 +662,60 @@ def _history_sheet(log_error: bool = False):
         return None
 
 
+def _sanitize_sheet_value(value, max_chars: int = SHEET_CELL_CHAR_LIMIT) -> str:
+    if pd.isna(value):
+        return ""
+    text = str(value)
+    if text.lower() in {"nan", "inf", "-inf", "infinity", "-infinity"}:
+        return ""
+    return text[:max_chars]
+
+
+def _sanitize_df_for_sheet(df: pd.DataFrame, max_chars: int = SHEET_CELL_CHAR_LIMIT) -> pd.DataFrame:
+    out = df.copy()
+    out = out.replace([float("inf"), float("-inf")], pd.NA)
+    out = out.astype(object).where(pd.notna(out), "")
+    return out.applymap(lambda v: _sanitize_sheet_value(v, max_chars=max_chars))
+
+
+def _history_data_sheet_name(item_id: str) -> str:
+    safe_id = re.sub(r"[^0-9A-Za-z_\\-]+", "_", str(item_id))[:80]
+    return f"history_{safe_id}"
+
+
+def _write_history_data_sheet(spreadsheet, worksheet_name: str, df: pd.DataFrame):
+    clean_df = _sanitize_df_for_sheet(df)
+    values = [clean_df.columns.tolist()] + clean_df.values.tolist()
+    rows = max(len(values), 1)
+    cols = max(len(clean_df.columns), 1)
+    try:
+        ws_data = spreadsheet.worksheet(worksheet_name)
+        ws_data.clear()
+        ws_data.resize(rows=max(rows, 100), cols=max(cols, 10))
+    except Exception:
+        ws_data = spreadsheet.add_worksheet(title=worksheet_name, rows=max(rows, 100), cols=max(cols, 10))
+    if values:
+        ws_data.update(values=values, range_name="A1")
+    return ws_data
+
+
+def _worksheet_to_dataframe(ws) -> pd.DataFrame:
+    values = ws.get_all_values()
+    if not values:
+        return pd.DataFrame()
+    header = values[0]
+    rows = values[1:]
+    width = len(header)
+    normalized = [(row + [""] * width)[:width] for row in rows]
+    return pd.DataFrame(normalized, columns=header)
+
+
 def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> tuple[Path, str, str]:
-    import base64
     today = datetime.now().strftime("%Y%m%d")
     ts = existing_id if existing_id else datetime.now().strftime("%Y%m%d_%H%M%S")
     output_name = f"{today}_分析.xlsx"
     excel_bytes = to_excel_bytes(df)
-    excel_b64 = base64.b64encode(excel_bytes).decode()
+    data_sheet_name = _history_data_sheet_name(ts)
 
     meta = {
         "id": ts, "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -678,12 +732,13 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
     ws = _history_sheet(log_error=True)
     if ws is not None:
         try:
+            _write_history_data_sheet(ws.spreadsheet, data_sheet_name, df)
             if existing_id:
                 rows = ws.get_all_values()
                 for i, row in enumerate(rows[1:], start=2):
                     if row and row[0] == existing_id:
                         ws.delete_rows(i); break
-            ws.append_row([ts, meta["created_at"], source_name, str(len(df)), excel_b64])
+            ws.append_row([ts, meta["created_at"], source_name, str(len(df)), f"sheet:{data_sheet_name}"])
             st.session_state.pop("_gsheet_error", None)
         except Exception as e:
             st.session_state["_gsheet_error"] = f"歷史紀錄寫入 Google Sheets 失敗：{str(e)[:300]}"
@@ -727,7 +782,7 @@ def load_history() -> list[dict]:
                 created_at = row[1] if len(row) > 1 else ""
                 sname = row[2] if len(row) > 2 else ""
                 rows_str = row[3] if len(row) > 3 else "0"
-                excel_b64 = row[4] if len(row) > 4 else ""
+                data_ref = row[4] if len(row) > 4 else ""
                 meta = {
                     "id": rid, "created_at": created_at,
                     "source_name": sname,
@@ -737,11 +792,17 @@ def load_history() -> list[dict]:
                 merged[rid] = meta
                 if "_history_cache" not in st.session_state:
                     st.session_state["_history_cache"] = {}
-                if rid not in st.session_state["_history_cache"] and excel_b64:
+                if rid not in st.session_state["_history_cache"] and data_ref:
                     try:
+                        if data_ref.startswith("sheet:"):
+                            data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
+                            hist_df = _worksheet_to_dataframe(data_ws)
+                            excel_bytes = to_excel_bytes(hist_df)
+                        else:
+                            excel_bytes = base64.b64decode(data_ref)
                         st.session_state["_history_cache"][rid] = {
                             "meta": meta,
-                            "excel_bytes": base64.b64decode(excel_b64),
+                            "excel_bytes": excel_bytes,
                         }
                     except Exception:
                         pass
@@ -1594,13 +1655,20 @@ def upload_to_google_sheet(df: pd.DataFrame, credentials_json: dict, spreadsheet
             f"請確認已將試算表共用給：{credentials_json.get('client_email', '?')}\n"
             f"原始錯誤：{e}"
         )
+    clean_df = _sanitize_df_for_sheet(df)
+    values = [clean_df.columns.tolist()] + clean_df.values.tolist()
     try:
         ws = sh.worksheet(worksheet_name)
         ws.clear()
+        ws.resize(rows=max(len(values), 100), cols=max(len(clean_df.columns), 10))
     except Exception:
-        ws = sh.add_worksheet(title=worksheet_name, rows=1000, cols=30)
-    values = [df.columns.tolist()] + df.fillna("").astype(str).values.tolist()
-    ws.update(values)
+        ws = sh.add_worksheet(
+            title=worksheet_name,
+            rows=max(len(values), 100),
+            cols=max(len(clean_df.columns), 10),
+        )
+    if values:
+        ws.update(values=values, range_name="A1")
     return ws.url if hasattr(ws, 'url') else ""
 
 
@@ -1905,7 +1973,10 @@ def section_1():
     )
     
     if st.session_state.get("history_saved_msg"):
-        st.success("檔案已下載，並自動保存至歷史紀錄。")
+        if st.session_state.get("_gsheet_error"):
+            st.warning(st.session_state["_gsheet_error"])
+        else:
+            st.success("檔案已下載，並自動保存至歷史紀錄。")
         st.session_state["history_saved_msg"] = False
 
     st.markdown("#### 分析文字產出")
@@ -2487,9 +2558,14 @@ def section_4():
             try:
                 for grow in ws.get_all_values()[1:]:
                     if not grow or not grow[0]: continue
-                    excel_b64 = grow[4] if len(grow) > 4 else ""
-                    if excel_b64:
-                        try: all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(excel_b64))))
+                    data_ref = grow[4] if len(grow) > 4 else ""
+                    if data_ref:
+                        try:
+                            if data_ref.startswith("sheet:"):
+                                data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
+                                all_dfs.append(_worksheet_to_dataframe(data_ws))
+                            else:
+                                all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(data_ref))))
                         except Exception: pass
             except Exception: pass
         for v in st.session_state.get("_history_cache", {}).values():
