@@ -329,6 +329,16 @@ def apply_brand_theme() -> None:
             font-size:0.82rem; color:#333; white-space:nowrap;
             overflow:hidden; text-overflow:ellipsis; vertical-align:middle;
           }
+          .editor-toolbar-title {
+            font-size: 12px !important;
+            color: #333333 !important;
+            margin: 6px 0 4px;
+          }
+          [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+            border: 1.5px solid #555555 !important;
+            border-radius: 6px !important;
+            overflow-x: auto !important;
+          }
           
           /* 移除 arrow_down 及內建圖示，避免異常顯示純文字 */
           [data-testid="stExpanderToggleIcon"], .material-symbols-rounded {
@@ -675,7 +685,10 @@ def _sanitize_df_for_sheet(df: pd.DataFrame, max_chars: int = SHEET_CELL_CHAR_LI
     out = df.copy()
     out = out.replace([float("inf"), float("-inf")], pd.NA)
     out = out.astype(object).where(pd.notna(out), "")
-    return out.applymap(lambda v: _sanitize_sheet_value(v, max_chars=max_chars))
+    mapper = lambda v: _sanitize_sheet_value(v, max_chars=max_chars)
+    if hasattr(out, "map"):
+        return out.map(mapper)
+    return out.apply(lambda col: col.map(mapper))
 
 
 def _history_data_sheet_name(item_id: str) -> str:
@@ -723,12 +736,8 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
         "output_path": "", "rows": int(len(df)),
     }
 
-    # 1. session_state 快取
-    if "_history_cache" not in st.session_state:
-        st.session_state["_history_cache"] = {}
-    st.session_state["_history_cache"][ts] = {"meta": meta, "excel_bytes": excel_bytes}
-
-    # 2. Google Sheets（永久）
+    saved_to_gsheet = False
+    # 1. Google Sheets（永久）
     ws = _history_sheet(log_error=True)
     if ws is not None:
         try:
@@ -740,20 +749,19 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
                         ws.delete_rows(i); break
             ws.append_row([ts, meta["created_at"], source_name, str(len(df)), f"sheet:{data_sheet_name}"])
             st.session_state.pop("_gsheet_error", None)
+            saved_to_gsheet = True
         except Exception as e:
             st.session_state["_gsheet_error"] = f"歷史紀錄寫入 Google Sheets 失敗：{str(e)[:300]}"
 
-    # 3. 本機磁碟（輔助）
+    if saved_to_gsheet:
+        if "_history_cache" not in st.session_state:
+            st.session_state["_history_cache"] = {}
+        st.session_state["_history_cache"][ts] = {"meta": meta, "excel_bytes": excel_bytes}
+
+    # 2. 本機磁碟（只保存檔案，不作為歷史紀錄來源）
     output_path = HISTORY_DIR / f"{ts}_{output_name}"
     try:
         output_path.write_bytes(excel_bytes)
-        history = []
-        if META_FILE.exists():
-            try: history = json.loads(META_FILE.read_text(encoding="utf-8"))
-            except: pass
-        history = [i for i in history if i["id"] != ts]
-        history.insert(0, meta)
-        META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         pass
     return output_path, output_name, ts
@@ -763,56 +771,46 @@ def load_history() -> list[dict]:
     import base64
     merged: dict[str, dict] = {}
 
-    # 本機 JSON
-    if META_FILE.exists():
-        try:
-            for item in json.loads(META_FILE.read_text(encoding="utf-8")):
-                merged[item["id"]] = item
-        except Exception:
-            pass
-
-    # Google Sheets（覆蓋本機，最可靠）
+    # 只從 Google Sheets 讀取歷史紀錄，避免雲端無紀錄但網頁殘留。
     ws = _history_sheet()
-    if ws:
-        try:
-            for row in ws.get_all_values()[1:]:
-                if not row or not row[0]:
-                    continue
-                rid = row[0]
-                created_at = row[1] if len(row) > 1 else ""
-                sname = row[2] if len(row) > 2 else ""
-                rows_str = row[3] if len(row) > 3 else "0"
-                data_ref = row[4] if len(row) > 4 else ""
-                meta = {
-                    "id": rid, "created_at": created_at,
-                    "source_name": sname,
-                    "rows": int(rows_str) if rows_str.isdigit() else 0,
-                    "output_name": f"{rid}_分析.xlsx", "output_path": "",
-                }
-                merged[rid] = meta
-                if "_history_cache" not in st.session_state:
-                    st.session_state["_history_cache"] = {}
-                if rid not in st.session_state["_history_cache"] and data_ref:
-                    try:
-                        if data_ref.startswith("sheet:"):
-                            data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
-                            hist_df = _worksheet_to_dataframe(data_ws)
-                            excel_bytes = to_excel_bytes(hist_df)
-                        else:
-                            excel_bytes = base64.b64decode(data_ref)
-                        st.session_state["_history_cache"][rid] = {
-                            "meta": meta,
-                            "excel_bytes": excel_bytes,
-                        }
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-    # session_state 補充當次新增
-    for rid, v in st.session_state.get("_history_cache", {}).items():
-        if rid not in merged:
-            merged[rid] = v["meta"]
+    if ws is None:
+        st.session_state["_history_cache"] = {}
+        return []
+    try:
+        for row in ws.get_all_values()[1:]:
+            if not row or not row[0]:
+                continue
+            rid = row[0]
+            created_at = row[1] if len(row) > 1 else ""
+            sname = row[2] if len(row) > 2 else ""
+            rows_str = row[3] if len(row) > 3 else "0"
+            data_ref = row[4] if len(row) > 4 else ""
+            meta = {
+                "id": rid, "created_at": created_at,
+                "source_name": sname,
+                "rows": int(rows_str) if rows_str.isdigit() else 0,
+                "output_name": f"{rid}_分析.xlsx", "output_path": "",
+            }
+            merged[rid] = meta
+            if "_history_cache" not in st.session_state:
+                st.session_state["_history_cache"] = {}
+            if rid not in st.session_state["_history_cache"] and data_ref:
+                try:
+                    if data_ref.startswith("sheet:"):
+                        data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
+                        hist_df = _worksheet_to_dataframe(data_ws)
+                        excel_bytes = to_excel_bytes(hist_df)
+                    else:
+                        excel_bytes = base64.b64decode(data_ref)
+                    st.session_state["_history_cache"][rid] = {
+                        "meta": meta,
+                        "excel_bytes": excel_bytes,
+                    }
+                except Exception:
+                    pass
+    except Exception:
+        st.session_state["_history_cache"] = {}
+        return []
 
     return sorted(merged.values(), key=lambda x: x.get("created_at", ""), reverse=True)
 
@@ -853,10 +851,20 @@ def generate_ai_summary(df: pd.DataFrame) -> str:
     top_type_count = int(type_count.iloc[0])
     top_detail = detail_count.index[0]
     top_detail_count = int(detail_count.iloc[0])
+    dept_text = ""
+    if "部門" in df.columns and not df["部門"].dropna().empty:
+        dept_top = df["部門"].replace("", "未分配").value_counts().head(3)
+        dept_text = "；".join([f"{k} {int(v)} 件" for k, v in dept_top.items()])
+    detail_lines = []
+    for name, count in detail_count.head(5).items():
+        detail_lines.append(f"{name} {int(count)} 件")
+    detail_text = "；".join(detail_lines)
     return (
-        f"1) 目前主力問題為「{top_type}」，共 {top_type_count} 件，占比 {top_type_count/total:.1%}。\n"
-        f"2) 最常見細項是「{top_detail}」，共 {top_detail_count} 件，建議列為優先改善。\n"
-        "3) 建議以 TOP3 問題建立跨部門改善任務，並每週追蹤件數變化與結案率。"
+        f"1) 自動摘要：本次共 {total} 件，主力問題為「{top_type}」{top_type_count} 件，占比 {top_type_count/total:.1%}。\n"
+        f"2) 細項說明：最高頻細項為「{top_detail}」{top_detail_count} 件；TOP5 為 {detail_text}。\n"
+        f"3) 部門觀察：{dept_text or '目前無明確部門欄位可判讀'}。\n"
+        "4) 初步判讀：請優先檢查高頻細項是否集中於特定站點、設備型態或操作流程，並比對近期是否有維修、活動或系統異動。\n"
+        "5) 建議行動：以 TOP3 問題建立改善任務，指定負責部門、預計完成日與每週追蹤指標。"
     )
 
 
@@ -904,7 +912,7 @@ def to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode("utf-8-sig")
 
 
-def to_pdf_bytes(df: pd.DataFrame) -> bytes:
+def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 1) -> bytes:
     """Generate PDF using fpdf2 + Noto CJK for Traditional Chinese support."""
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
@@ -974,6 +982,16 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
                 return fs
         return min_size
 
+    def draw_page_label():
+        label = f"{source_name or '分析檔案'}  {datetime.now().strftime('%Y/%m/%d')}  第 {download_count} 次"
+        pdf.set_xy(8, 4)
+        pdf.set_text_color(80, 80, 80)
+        pdf.set_font(FONT, size=7)
+        pdf.cell(0, 5, safe_text(label), align="L")
+        pdf.set_xy(10, 10)
+
+    draw_page_label()
+
     # 表頭（自動縮小以適應欄寬）
     pdf.set_fill_color(0x06, 0x0E, 0x9F)
     pdf.set_text_color(255, 255, 255)
@@ -1032,6 +1050,7 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
         # ── 換頁檢查 ──
         if pdf.get_y() + row_h > pdf.page_break_trigger:
             pdf.add_page()
+            draw_page_label()
             pdf.set_fill_color(0x06, 0x0E, 0x9F)
             pdf.set_text_color(255, 255, 255)
             for col in col_list:
@@ -1681,16 +1700,10 @@ def section_1():
         fname_short = st.session_state['_uploaded_name']
         if len(fname_short) > 30:
             fname_short = fname_short[:14] + "..." + fname_short[-12:]
-        col_badge, col_clear = st.columns([9, 1])
-        col_badge.markdown(
+        st.markdown(
             f"<span class='file-badge'>&#128196; {fname_short}</span>",
             unsafe_allow_html=True
         )
-        if col_clear.button("x 清除", help="清除目前檔案，重新上傳"):
-            for key in ["_uploaded_bytes", "_uploaded_name", "_uploaded_type", "analysis_df", "source_name",
-                        "_editing_history_id", "_saved_history_id"]:
-                st.session_state.pop(key, None)
-            st.rerun()
 
     uploaded = st.file_uploader("上傳新檔案", type=["xlsx", "xls", "csv", "pdf"], key="uploader")
     # Persist file bytes across menu switches
@@ -1779,7 +1792,7 @@ def section_1():
     if filter_detail:
         show = show[show["問題細項"].isin(filter_detail)]
 
-    st.markdown("#### 可編輯標記表（支援下拉 + 手動編輯）")
+    st.markdown('<div class="editor-toolbar-title">可編輯標記表（支援下拉 + 手動編輯）</div>', unsafe_allow_html=True)
 
     # ---- AI填入標示 ---
     ai_col = "_ai_filled"
@@ -1803,6 +1816,27 @@ def section_1():
         )
 
     st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
+
+    tool_add, tool_add_btn, tool_del, tool_del_btn = st.columns([3, 1, 3, 1])
+    new_col_name = tool_add.text_input("新增直立欄位", value="", key="editor_new_col", placeholder="輸入欄位名稱")
+    if tool_add_btn.button("新增欄位", key="editor_add_col", use_container_width=True):
+        col_name = new_col_name.strip()
+        if not col_name:
+            st.warning("請輸入欄位名稱。")
+        elif col_name in st.session_state["analysis_df"].columns:
+            st.warning("欄位已存在。")
+        else:
+            st.session_state["analysis_df"][col_name] = ""
+            st.session_state.pop("editor_table", None)
+            st.rerun()
+    protected_cols = {"選取", MARKER_COL, ai_col}
+    deletable_cols = [c for c in st.session_state["analysis_df"].columns if c not in protected_cols]
+    del_col_name = tool_del.selectbox("選取欄位", options=deletable_cols, key="editor_delete_col")
+    if tool_del_btn.button("刪除整欄", key="editor_del_col", use_container_width=True):
+        if del_col_name:
+            st.session_state["analysis_df"] = st.session_state["analysis_df"].drop(columns=[del_col_name], errors="ignore")
+            st.session_state.pop("editor_table", None)
+            st.rerun()
 
     # 重新處理要顯示的欄位，確保原本隱藏的 MARKER_COL 正確加入
     display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
@@ -1921,6 +1955,7 @@ def section_1():
                 axis=1,
             )
             st.session_state["analysis_df"] = edited.copy()
+            st.session_state.pop("editor_table", None)
             st.session_state["_batch_applied"] = True
             st.rerun()
             
@@ -1932,6 +1967,7 @@ def section_1():
             st.warning("請先在表格內勾選要刪除的資料列！")
         else:
             st.session_state["analysis_df"] = edited[edited["選取"] != True].copy()
+            st.session_state.pop("editor_table", None)
             st.success("已刪除勾選列。")
             st.rerun()
 
@@ -1957,7 +1993,9 @@ def section_1():
     else:
         out_name = f"{datetime.now().strftime('%Y%m%d')}_分析單.pdf"
         try:
-            data_bytes = to_pdf_bytes(final_df)
+            dl_key = f"_pdf_download_count_{st.session_state.get('source_name', 'unknown')}"
+            st.session_state[dl_key] = int(st.session_state.get(dl_key, 0)) + 1
+            data_bytes = to_pdf_bytes(final_df, st.session_state.get("source_name", "unknown"), st.session_state[dl_key])
             mime = "application/pdf"
         except Exception as e:
             st.error(f"PDF 產生錯誤: {e}")
@@ -2059,7 +2097,7 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
                       color="歸屬部門", text="百分比", title="問題類型分布",
                       color_discrete_map=DEPT_COLOR_MAP)
     fig1.update_traces(texttemplate="%{text}%", textposition="outside")
-    fig1.update_layout(height=420, yaxis=dict(dtick=1, tickformat="d"),
+    fig1.update_layout(height=420, yaxis=dict(tickformat="d", nticks=6),
                        margin=dict(t=45, b=0))
     c1.plotly_chart(fig1, use_container_width=True, key=f"{kp}_fig1")
 
@@ -2082,7 +2120,7 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
                   color_discrete_sequence=[custom_hbar])
     fig3.update_traces(marker_color=custom_hbar)
     fig3.update_layout(height=420, yaxis={"categoryorder": "total ascending"},
-                       xaxis=dict(dtick=1, tickformat="d"),
+                       xaxis=dict(tickformat="d", nticks=6),
                        margin=dict(t=45, b=0, l=0, r=0))
     c3.plotly_chart(fig3, use_container_width=True, key=f"{kp}_fig3")
 
@@ -2160,7 +2198,7 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
     fig3.update_layout(
         height=400,
         yaxis={"categoryorder": "total ascending"},
-        xaxis=dict(dtick=1, tickformat="d"),
+        xaxis=dict(tickformat="d", nticks=6),
         margin=dict(t=40, b=0, l=0, r=0),
     )
     c3.plotly_chart(fig3, use_container_width=True, key=f"{key_prefix}_fig3" if key_prefix else None)
@@ -2568,9 +2606,6 @@ def section_4():
                                 all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(data_ref))))
                         except Exception: pass
             except Exception: pass
-        for v in st.session_state.get("_history_cache", {}).values():
-            try: all_dfs.append(pd.read_excel(io.BytesIO(v["excel_bytes"])))
-            except Exception: pass
         st.caption(f"已載入 {len(all_dfs)} 份歷史紀錄" if all_dfs else "尚無歷史資料")
 
     with src_tab2:
@@ -2686,8 +2721,16 @@ def section_4():
         end_d   = d_col2.date_input("結束", value=max_d, min_value=min_d, max_value=max_d, key="s4v3_ed")
         df_cur  = df_all[(df_all[date_col].dt.date >= start_d) & (df_all[date_col].dt.date <= end_d)].copy()
         period_label = f"{start_d} ～ {end_d}"
-        period_prev = None
-        df_prev = pd.DataFrame()
+        enable_compare = filter_c3.checkbox("啟用對照期", value=False, key="s4v3_compare_on")
+        if enable_compare:
+            cmp_c1, cmp_c2 = filter_c3.columns(2)
+            cmp_start = cmp_c1.date_input("對照開始", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_cmp_sd")
+            cmp_end = cmp_c2.date_input("對照結束", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_cmp_ed")
+            df_prev = df_all[(df_all[date_col].dt.date >= cmp_start) & (df_all[date_col].dt.date <= cmp_end)].copy()
+            period_prev = f"{cmp_start} ～ {cmp_end}"
+        else:
+            period_prev = None
+            df_prev = pd.DataFrame()
 
     # ── 多維篩選 chips（城市/部門/問題類型/機台）──────────────────
     st.markdown("**篩選維度：**")
@@ -2873,7 +2916,7 @@ def section_4():
                 orientation="h", title=f"{period_label} TOP 8 問題細項",
                 color_discrete_sequence=["#060E9F"],
             )
-            fig_det.update_layout(height=420, xaxis=dict(dtick=1,tickformat="d"),
+            fig_det.update_layout(height=420, xaxis=dict(tickformat="d", nticks=6),
                                    margin=dict(t=45,b=0,l=0,r=0))
             st.plotly_chart(fig_det, use_container_width=True)
 
@@ -2895,7 +2938,7 @@ def section_4():
                                    annotation_text="本期", annotation_font_color="#060E9F")
         fig_line.update_layout(
             height=320, xaxis_title="期間",
-            yaxis=dict(dtick=1, tickformat="d"),
+            yaxis=dict(tickformat="d", nticks=6),
             paper_bgcolor="white", plot_bgcolor="rgba(250,224,184,0.15)",
             margin=dict(t=45,b=0),
         )
@@ -2910,7 +2953,7 @@ def section_4():
                 title="期間內每日件數",
                 color_discrete_sequence=["#060E9F"],
             )
-            fig_daily.update_layout(height=300, yaxis=dict(dtick=1, tickformat="d"), margin=dict(t=45,b=0))
+            fig_daily.update_layout(height=300, yaxis=dict(tickformat="d", nticks=6), margin=dict(t=45,b=0))
             st.plotly_chart(fig_daily, use_container_width=True)
 
     # ── 城市展開排行（可折疊）────────────────────────────────────
@@ -2966,7 +3009,7 @@ def section_4():
             color=dept_col,
             color_discrete_map=DEPT_COLOR,
         )
-        fig_dept.update_layout(height=300, yaxis=dict(dtick=1,tickformat="d"),
+        fig_dept.update_layout(height=300, yaxis=dict(tickformat="d", nticks=6),
                                 showlegend=False, margin=dict(t=45,b=0))
         st.plotly_chart(fig_dept, use_container_width=True)
 
@@ -3460,31 +3503,39 @@ def main():
     else:
         section_3()
         
-    # Use a fixed-position div to stay at the absolute bottom of the viewport
+    # Footer stays in normal document flow so it does not cover content.
     st.markdown(
         """
         <style>
             .fixed-footer {
-                position: fixed;
-                bottom: 15px;
-                left: 0;
+                position: relative;
                 width: 100%;
                 text-align: center;
                 color: #888888;
                 font-size: 14px;
-                z-index: 99;
-                pointer-events: none; /* Don't block clicks to elements behind it */
+                margin: 36px 0 12px;
+                padding: 12px 0;
+                pointer-events: none;
             }
-            /* Adjust for sidebar visibility if needed */
-            @media (min-width: 768px) {
-                .fixed-footer {
-                    padding-left: 5rem; /* Offset slightly to be visually centered in the main area */
-                }
+            .scroll-top-btn {
+                position: fixed;
+                right: 18px;
+                bottom: 18px;
+                z-index: 1000;
+                border: 1px solid #8EB9C9;
+                background: #FFFFFF;
+                color: #060E9F;
+                border-radius: 999px;
+                padding: 8px 12px;
+                font-size: 13px;
+                cursor: pointer;
+                box-shadow: 0 2px 8px rgba(0,0,0,.12);
             }
         </style>
         <div class="fixed-footer">
             202603© ECOCO宜可可循環經濟 客服課 ※ 請尊重智慧財產權 ※
         </div>
+        <button class="scroll-top-btn" onclick="window.parent.scrollTo({top:0, behavior:'smooth'});">置頂</button>
         """,
         unsafe_allow_html=True
     )
