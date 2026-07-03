@@ -208,7 +208,7 @@ def apply_brand_theme() -> None:
         """
         <style>
           html, body, [data-testid="stAppViewContainer"] {
-            font-size: 18px !important;
+            font-size: 16px !important;
           }
           @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap');
           
@@ -223,13 +223,19 @@ def apply_brand_theme() -> None:
           [data-testid="stAppViewContainer"] label,
           [data-testid="stAppViewContainer"] div {
             font-weight: 500;
-            font-size: 18px !important;
+            font-size: 16px !important;
           }
           
           /* Use Noto Sans TC Medium (500) for everything — no bold allowed */
           h1, h2, h3, h4, h5, h6, .ecoco-banner, strong, b, .side-title, section[data-testid="stSidebar"] .stButton > button {
             font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
             font-weight: 500 !important;
+          }
+          h1 { font-size: 36px !important; }
+          h2 { font-size: 26px !important; }
+          h3 { font-size: 21px !important; }
+          .stDateInput input, .stTextInput input, .stSelectbox div, .stMultiSelect div {
+            font-size: 16px !important;
           }
 
           :root{
@@ -243,13 +249,16 @@ def apply_brand_theme() -> None:
           .stApp {background: linear-gradient(135deg, #fff 0%, #f8fbff 40%, #fff8f1 100%);}
           .ecoco-banner {
             padding: 14px 18px; border-radius: 12px;
-            background: linear-gradient(90deg, var(--ecoco-orange), var(--ecoco-blue));
-            color:white; font-weight:500; margin-bottom: 12px;
-            font-size: 16px !important;
+            background: #ffce00;
+            color:#333333; font-weight:500; margin-bottom: 12px;
+            font-size: 36px !important;
           }
           .feature-title {
             color: #333333 !important;
-            font-size: 14px !important;
+            background: #fae0b8 !important;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 21px !important;
             font-weight: 500 !important;
             margin: 0 0 10px 0;
           }
@@ -269,23 +278,25 @@ def apply_brand_theme() -> None:
           
           /* Sidebar background */
           section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #0b3f78 0%, #083668 100%);
+            background: #fae0b8;
+            min-width: 19rem !important;
           }
+          section[data-testid="stSidebar"] > div { width: 19rem !important; }
           
           /* Sidebar Text Overrides */
           .side-title {
-            color: #ffffff !important;
-            font-weight: 500; font-size: 16px !important; margin-bottom: 8px;
+            color: #333333 !important;
+            font-weight: 500; font-size: 36px !important; margin-bottom: 8px;
           }
           .side-sub {
-            color: #ffffff !important;
-            font-size: 16px !important; opacity: 0.85; margin-bottom: 14px;
+            color: #333333 !important;
+            font-size: 26px !important; opacity: 0.9; margin-bottom: 14px;
           }
           
           /* Sidebar Buttons — default = lightblue */
           section[data-testid="stSidebar"] .stButton > button {
-            background-color: var(--ecoco-lightblue) !important;
-            border-color: var(--ecoco-lightblue) !important;
+            background-color: #fae0b8 !important;
+            border-color: #e9cda4 !important;
             color: #333333 !important;
             border-radius: 12px;
             min-height: 46px;
@@ -318,6 +329,7 @@ def apply_brand_theme() -> None:
           
           /* Thicker scrollbar */
           ::-webkit-scrollbar { width: 10px; height: 10px; }
+          ::-webkit-scrollbar { width: 0.5cm; height: 0.5cm; }
           ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
           ::-webkit-scrollbar-thumb { background: #8EB9C9; border-radius: 6px; }
           ::-webkit-scrollbar-thumb:hover { background: #060E9F; }
@@ -511,6 +523,42 @@ def make_unique_columns(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _normalize_english_runs(text: str, mode: str) -> str:
+    if not isinstance(text, str):
+        return text
+    repl = (lambda m: m.group(0).upper()) if mode == "upper" else (lambda m: m.group(0).lower())
+    return re.sub(r"[A-Za-z]+", repl, text)
+
+
+def normalize_problem_labels(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if "問題類型" in out.columns:
+        out["問題類型"] = out["問題類型"].map(lambda v: _normalize_english_runs(v, "upper"))
+    if "問題細項" in out.columns:
+        out["問題細項"] = out["問題細項"].map(lambda v: _normalize_english_runs(v, "lower"))
+    return out
+
+
+def mask_sensitive_text(value):
+    if not isinstance(value, str):
+        return value
+    text = re.sub(r"([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})", r"\1***\2", value)
+    text = re.sub(r"\b(09\d{2})\d{3}(\d{3})\b", r"\1***\2", text)
+    text = re.sub(r"\b(0\d{1,2}-?\d{2,4})\d{3,4}(\d{2,4})\b", r"\1***\2", text)
+    return text
+
+
+def mask_sensitive_df(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    text_cols = [
+        c for c in out.columns
+        if any(k in str(c).lower() for k in ["內容", "主旨", "姓名", "email", "mail", "電話", "手機", "聯絡"])
+    ]
+    for col in text_cols:
+        out[col] = out[col].map(mask_sensitive_text)
+    return out
+
+
 # ---- valid type set for fast lookup (all keys + known variant spellings from template) ----
 _VALID_TYPES = set(TOPIC_DETAIL_MAP.keys())
 
@@ -533,7 +581,7 @@ def _is_valid_pair(t: str, d: str) -> bool:
 
 
 def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
-    out = make_unique_columns(df.copy())
+    out = make_unique_columns(mask_sensitive_df(df.copy()))
 
     # ------ Preserve existing valid 問題類型 + 問題細項 from source file ------
     existing_type   = out["問題類型"].copy()   if "問題類型" in out.columns else pd.Series([""] * len(out))
@@ -579,7 +627,7 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
     out["部門"] = out["問題類型"].map(DEPT_MAP).fillna("")
     if cfg.date_col and cfg.date_col in out.columns:
         out["日期"] = pd.to_datetime(out[cfg.date_col], errors="coerce")
-    return out
+    return normalize_problem_labels(out)
 
 
 # ── Google Sheets 歷史紀錄持久化 ────────────────────────────────────────────
@@ -1209,7 +1257,7 @@ def build_chart_pack(df: pd.DataFrame,
     ax1.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
     ax1.tick_params(axis="x", rotation=20)
     for i, r in stats.iterrows():
-        ax1.text(i, r["件數"], f'{int(r["百分比"])}%', ha="center", va="bottom", fontsize=9)
+        ax1.text(i, r["件數"], f'{float(r["百分比"]):.1f}%', ha="center", va="bottom", fontsize=9)
     fig1.tight_layout()
     b1 = io.BytesIO(); fig1.savefig(b1, format="png", dpi=180); plt.close(fig1)
 
@@ -1242,7 +1290,8 @@ def build_chart_pack(df: pd.DataFrame,
     _hbar = _hbar_color if _hbar_color else "#060E9F"
     ax3.barh(d["問題細項"], d["件數"], color=_hbar)
     ax3.set_title("十大問題細項分布")
-    ax3.set_xlabel("件數")
+    ax3.set_xlabel("數量(件)")
+    ax3.set_ylabel("項目")
     # 強制整數刻度（件數必為整數）
     from matplotlib.ticker import MultipleLocator
     ax3.xaxis.set_major_locator(MultipleLocator(1))
@@ -1498,7 +1547,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                             run.font.size  = Pt(13)
                             run.font.name  = FONT
                 for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), 1):
-                    try:   pct = f'{int(float(r["百分比"]))}%'
+                    try:   pct = f'{float(r["百分比"]):.1f}%'
                     except: pct = f'{r["百分比"]}%'
                     dept = str(r.get("歸屬部門", ""))
                     vals = [str(r["問題類型"]), str(int(r["件數"])), pct, dept]
@@ -1585,7 +1634,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                     run.font.bold = True; run.font.color.rgb = WHITE
                     run.font.size = Pt(12); run.font.name = FONT
         for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), 1):
-            try:   pct = f'{int(float(r["百分比"]))}%'
+            try:   pct = f'{float(r["百分比"]):.1f}%'
             except: pct = f'{r["百分比"]}%'
             vals = [str(r["問題類型"]), str(r["件數"]), pct,
                     str(r.get("歸屬部門", ""))]
@@ -1749,24 +1798,22 @@ def section_1():
         content_col = st.selectbox("用戶內容欄位", options=cols, index=min(1, len(cols) - 1))
         date_opt = ["(無)"] + cols
         date_col = st.selectbox("日期欄位（選填）", options=date_opt, index=0)
-        pre_keyword = st.text_input("分析前篩選關鍵字（主題/內容，選填）")
         cfg = AnalysisConfig(subject_col=subject_col, content_col=content_col,
                              date_col=None if date_col == "(無)" else date_col)
 
         if st.button("開始分析", type="primary"):
-            work = df_raw.copy()
-            if pre_keyword:
-                work = work[
-                    work[subject_col].astype(str).str.contains(pre_keyword, case=False, na=False)
-                    | work[content_col].astype(str).str.contains(pre_keyword, case=False, na=False)
-                ]
-            st.session_state["analysis_df"] = analyze_dataframe(work, cfg)
+            st.session_state["analysis_subject_col"] = subject_col
+            st.session_state["analysis_content_col"] = content_col
+            with st.spinner("正在分析資料，資料量較大時請稍候..."):
+                st.session_state["analysis_df"] = analyze_dataframe(df_raw.copy(), cfg)
             st.session_state["source_name"] = uploaded_name
 
     if "analysis_df" not in st.session_state:
         return
     df = st.session_state["analysis_df"]
-    c1, c2, c3 = st.columns([2, 2, 1])
+    subject_col = st.session_state.get("analysis_subject_col", "主旨")
+    content_col = st.session_state.get("analysis_content_col", "用戶內容")
+    c1, c2, c3 = st.columns([2, 2, 2])
     keyword = c1.text_input("篩選：關鍵字（主題/內容）")
     filter_type = c2.multiselect("篩選：問題類型", options=TYPE_OPTIONS, default=[])
     
@@ -1817,7 +1864,7 @@ def section_1():
 
     st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
 
-    tool_add, tool_add_btn, tool_del, tool_del_btn = st.columns([3, 1, 3, 1])
+    tool_add, tool_add_btn, tool_del, tool_del_btn, tool_toggle = st.columns([2.5, 1, 2.5, 1, 1.2])
     new_col_name = tool_add.text_input("新增直立欄位", value="", key="editor_new_col", placeholder="輸入欄位名稱")
     if tool_add_btn.button("新增欄位", key="editor_add_col", use_container_width=True):
         col_name = new_col_name.strip()
@@ -1837,9 +1884,23 @@ def section_1():
             st.session_state["analysis_df"] = st.session_state["analysis_df"].drop(columns=[del_col_name], errors="ignore")
             st.session_state.pop("editor_table", None)
             st.rerun()
+    if tool_toggle.button("選取/取消", key="toggle_all_btn", help="全選或取消全選", use_container_width=True):
+        all_sel = bool(df["選取"].all()) if "選取" in df.columns and not df.empty else False
+        st.session_state["analysis_df"]["選取"] = not all_sel
+        st.session_state.pop("editor_table", None)
+        st.rerun()
+
+    batch_c1, batch_c2, batch_c3, batch_c4 = st.columns([2, 2, 1.5, 1.2])
+    batch_type = batch_c1.selectbox("批次問題類型", ["(不變更)"] + TYPE_OPTIONS, key="batch_type_sel")
+    valid_batch_det = ["(不變更)"]
+    if batch_type != "(不變更)":
+        valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
+    batch_detail = batch_c2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel")
 
     # 重新處理要顯示的欄位，確保原本隱藏的 MARKER_COL 正確加入
     display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
+    if "選取" in display_cols:
+        display_cols = ["選取"] + [c for c in display_cols if c != "選取"]
     show_display = show[display_cols].reset_index(drop=True)
 
     # 新增一欄字號標記給 AI 填入的資料
@@ -1849,17 +1910,8 @@ def section_1():
     else:
         marker_vals = [""] * len(show_display)
         
-    insert_idx = 1
-    if "選取" in show_display.columns:
-        insert_idx = show_display.columns.get_loc("選取") + 1
+    insert_idx = 1 if "選取" in show_display.columns else 0
     show_display.insert(insert_idx, MARKER_COL, marker_vals)
-
-    # --- Select All Trigger ---
-    cols_h = st.columns([13, 2])
-    if cols_h[1].button("⬓ 選取 / 取消", key="toggle_all_btn", help="全選或取消全選"):
-        all_sel = bool(df["選取"].all()) if "選取" in df.columns and not df.empty else False
-        st.session_state["analysis_df"]["選取"] = not all_sel
-        st.rerun()
 
     edited = st.data_editor(
         show_display,
@@ -1930,16 +1982,7 @@ def section_1():
                 st.session_state["_draft_list"].pop(idx)
                 st.rerun()
 
-    st.markdown("##### 批次處理與儲存")
-    
-    b1, b2, b3, b4 = st.columns([2, 2, 2, 2])
-    batch_type = b1.selectbox("批次問題類型", ["(不變更)"] + TYPE_OPTIONS, key="batch_type_sel")
-    valid_batch_det = ["(不變更)"]
-    if batch_type != "(不變更)":
-        valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
-    batch_detail = b2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel")
-
-    if b3.button("將上方設定套用到所有勾選列", type="primary"):
+    if batch_c3.button("套用勾選列", type="primary", use_container_width=True):
         if "選取" not in edited.columns or not edited["選取"].any():
             st.warning("請先在表格內勾選要處理的資料列！")
         else:
@@ -1962,7 +2005,7 @@ def section_1():
     if st.session_state.pop("_batch_applied", False):
         st.success("已套用批次編輯。")
         
-    if b4.button("刪除勾選列"):
+    if batch_c4.button("刪除勾選列", use_container_width=True):
         if "選取" not in edited.columns or not edited["選取"].any():
             st.warning("請先在表格內勾選要刪除的資料列！")
         else:
@@ -2096,8 +2139,9 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
         fig1 = px.bar(stats, x="問題類型", y="件數",
                       color="歸屬部門", text="百分比", title="問題類型分布",
                       color_discrete_map=DEPT_COLOR_MAP)
-    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
+    fig1.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
     fig1.update_layout(height=420, yaxis=dict(tickformat="d", nticks=6),
+                       xaxis_title="項目", yaxis_title="數量(件)",
                        margin=dict(t=45, b=0))
     c1.plotly_chart(fig1, use_container_width=True, key=f"{kp}_fig1")
 
@@ -2121,6 +2165,7 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
     fig3.update_traces(marker_color=custom_hbar)
     fig3.update_layout(height=420, yaxis={"categoryorder": "total ascending"},
                        xaxis=dict(tickformat="d", nticks=6),
+                       xaxis_title="數量(件)", yaxis_title="項目",
                        margin=dict(t=45, b=0, l=0, r=0))
     c3.plotly_chart(fig3, use_container_width=True, key=f"{kp}_fig3")
 
@@ -2151,7 +2196,7 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
             pass
 
     stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
-    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int)
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(1)
     stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("未分配")
 
     c1, c2, c3 = st.columns(3)
@@ -2160,8 +2205,9 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         stats, x="問題類型", y="件數", color="歸屬部門", text="百分比", title="問題類型分布",
         color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
     )
-    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
-    fig1.update_layout(height=400)
+    fig1.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+    fig1.update_layout(height=400, xaxis_title="項目", yaxis_title="數量(件)",
+                       yaxis=dict(tickformat="d", nticks=6))
     c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
 
     df_machine = df[df["問題類型"] == "機台問題類型"].copy()
@@ -2199,6 +2245,8 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         height=400,
         yaxis={"categoryorder": "total ascending"},
         xaxis=dict(tickformat="d", nticks=6),
+        xaxis_title="數量(件)",
+        yaxis_title="項目",
         margin=dict(t=40, b=0, l=0, r=0),
     )
     c3.plotly_chart(fig3, use_container_width=True, key=f"{key_prefix}_fig3" if key_prefix else None)
@@ -2242,7 +2290,7 @@ def section_2():
         ppt_source = st.session_state.get("source_name", "unknown")
 
     stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
-    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int)
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(1)
     stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("")
 
     # Build totals row
@@ -2252,7 +2300,7 @@ def section_2():
     totals_row = pd.DataFrame([{
         "問題類型": "[ 合計 ]",
         "件數": total_count,
-        "百分比": 100,
+        "百分比": 100.0,
         "歸屬部門": dept_summary,
     }])
     stats_with_total = pd.concat([stats, totals_row], ignore_index=True)
@@ -2264,7 +2312,7 @@ def section_2():
         hide_index=True,
         column_config={
             "歸屬部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS + [dept_summary]),
-            "百分比": st.column_config.NumberColumn(format="%d %%")
+            "百分比": st.column_config.NumberColumn(format="%.1f %%")
         },
         key="stats_editor",
         num_rows="fixed",
@@ -2504,7 +2552,7 @@ def section_3():
                     render_charts(df_hist, key_prefix=f"hist_{item['id']}")
                     cdl1, cdl2 = st.columns(2)
                     hist_stats = df_hist["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
-                    hist_stats["百分比"] = (hist_stats["件數"] / max(hist_stats["件數"].sum(), 1) * 100).round(0).astype(int)
+                    hist_stats["百分比"] = (hist_stats["件數"] / max(hist_stats["件數"].sum(), 1) * 100).round(1)
                     hist_stats["歸屬部門"] = hist_stats["問題類型"].map(DEPT_MAP).fillna("")
                     hist_ai = generate_ai_summary(df_hist)
                     hist_chart_pack = build_chart_pack(df_hist)
@@ -2569,9 +2617,9 @@ def section_4():
     .s4-kpi-delta{font-size:11px;margin-top:3px}
     .delta-up{color:#c03000} .delta-dn{color:#0a6e44} .delta-flat{color:#888}
     .s4-rank-table{width:100%;border-collapse:collapse}
-    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 14px;font-size:14px;text-align:center;font-weight:600}
-    .s4-rank-table td{padding:9px 14px;text-align:center;border-bottom:1px solid #eee;font-size:12px}
-    .s4-rank-val{color:#FF5000;font-weight:700;font-size:14px}
+    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 12px;font-size:13px;text-align:center}
+    .s4-rank-table td{padding:10px 12px;text-align:center;border-bottom:1px solid #eee;font-size:13px}
+    .s4-rank-val{color:#FF5000;font-weight:700}
     .filter-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
     .filter-chip{padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
                  border:1.5px solid #060E9F;background:#fff;color:#060E9F}
@@ -2642,33 +2690,7 @@ def section_4():
         st.info("尚無資料，請先在功能一完成分析儲存，或填入 Google Sheets 網址。")
         return
 
-    # 合併前確保每份 df 欄位名稱唯一（避免重複欄位造成 InvalidIndexError）
-    clean_dfs = []
-    for _d in all_dfs:
-        try:
-            _d = _d.copy()
-            # 若有重複欄位名稱，加後綴區分
-            _seen = {}
-            _new_cols = []
-            for c in _d.columns:
-                if c in _seen:
-                    _seen[c] += 1
-                    _new_cols.append(f"{c}_{_seen[c]}")
-                else:
-                    _seen[c] = 0
-                    _new_cols.append(c)
-            _d.columns = _new_cols
-            clean_dfs.append(_d)
-        except Exception:
-            clean_dfs.append(_d)
-
-    df_all = pd.concat(clean_dfs, ignore_index=True)
-    # drop_duplicates 要求 index 唯一，先 reset_index
-    try:
-        df_all = df_all.loc[:, ~df_all.columns.duplicated()]  # 移除重複欄位
-        df_all = df_all.drop_duplicates().reset_index(drop=True)
-    except Exception:
-        df_all = df_all.reset_index(drop=True)
+    df_all = pd.concat(all_dfs, ignore_index=True).drop_duplicates()
 
     # ── 欄位自動偵測 ──────────────────────────────────────────────
     date_col   = next((c for c in df_all.columns if "日期" in c or "date" in c.lower()), None)
@@ -2799,8 +2821,7 @@ def section_4():
         rows = ""
         for idx, (k, v) in enumerate(series.head(5).items()):
             m = MEDAL[idx] if idx < len(MEDAL) else str(idx+1)
-            rows += (f'<tr><td style="text-align:left;font-size:12px">{m} {str(k)[:24]}</td>'
-                     f'<td class="s4-rank-val">{int(v)}</td></tr>')
+            rows += f'<tr><td>{m} {str(k)[:20]}</td><td class="s4-rank-val">{int(v)}</td></tr>'
         return f'''<table class="s4-rank-table">
           <thead><tr><th>{header1}</th><th>{header2}</th></tr></thead>
           <tbody>{rows}</tbody>
@@ -2835,40 +2856,30 @@ def section_4():
         if type_col and type_col in df_filt.columns:
             _tc = df_filt[type_col].value_counts()
             _total = _tc.sum()
-            COLORS_PIE = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"]
             fig_pie = px.pie(
                 values=_tc.values, names=_tc.index,
                 title=f"{period_label} 客訴類別分佈",
-                hole=0.38,
-                color_discrete_sequence=COLORS_PIE,
+                hole=0.35,
+                color_discrete_sequence=["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"],
             )
+            # 小於5%的扇形只顯示在圖例，避免標籤重疊
             fig_pie.update_traces(
-                texttemplate="%{percent:.0%}",   # 只在扇形內顯示 %
-                textposition="inside",
-                textfont=dict(size=13, color="white"),
-                hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
-                showlegend=True,
+                texttemplate="%{label}<br>%{percent:.1%}",
+                textposition="auto",
+                textfont_size=12,
             )
-            # 圖例：類別名 + % + 件數（對齊截圖格式）
-            _leg_labels = {
-                k: f"{k}  {int(v)/_total*100:.0f}%（{int(v)}件）"
-                for k, v in _tc.items()
-            }
-            fig_pie.for_each_trace(lambda t: t.update(name=_leg_labels.get(t.name, t.name)))
             fig_pie.update_layout(
-                height=380,
+                height=420,
                 showlegend=True,
                 legend=dict(
                     orientation="v",
                     yanchor="middle", y=0.5,
-                    xanchor="left", x=1.02,
+                    xanchor="left", x=1.0,
                     font=dict(size=12),
                     itemsizing="constant",
-                    bgcolor="rgba(0,0,0,0)",
-                    borderwidth=0,
                 ),
-                margin=dict(t=50, b=10, l=10, r=220),
-                title_font_size=14,
+                margin=dict(t=55, b=20, l=20, r=160),
+                title_font_size=15,
                 title_x=0.0,
             )
             st.plotly_chart(fig_pie, use_container_width=True)
@@ -2876,37 +2887,27 @@ def section_4():
     with chart_col2:
         if machine_col and machine_col in df_filt.columns and not df_filt[machine_col].dropna().empty:
             _mc = df_filt[machine_col].value_counts()
-            _mc_total = _mc.sum()
-            COLORS_MAC = ["#FF5000","#060E9F","#8EB9C9","#FFCE00"]
             fig_mac = px.pie(
                 values=_mc.values, names=_mc.index,
                 title=f"{period_label} 機台客訴佔比",
-                color_discrete_sequence=COLORS_MAC,
+                color_discrete_sequence=["#FF5000","#060E9F","#8EB9C9","#FFCE00"],
             )
             fig_mac.update_traces(
-                texttemplate="%{percent:.0%}",
-                textposition="inside",
-                textfont=dict(size=14, color="white"),
-                hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
+                texttemplate="%{label}<br>%{percent:.1%}",
+                textposition="auto",
+                textfont_size=13,
             )
-            _leg_labels_mac = {
-                k: f"{k}  {int(v)/_mc_total*100:.0f}%（{int(v)}件）"
-                for k, v in _mc.items()
-            }
-            fig_mac.for_each_trace(lambda t: t.update(name=_leg_labels_mac.get(t.name, t.name)))
             fig_mac.update_layout(
-                height=380,
+                height=420,
                 showlegend=True,
                 legend=dict(
                     orientation="v",
                     yanchor="middle", y=0.5,
-                    xanchor="left", x=1.02,
+                    xanchor="left", x=1.0,
                     font=dict(size=12),
-                    bgcolor="rgba(0,0,0,0)",
-                    borderwidth=0,
                 ),
-                margin=dict(t=50, b=10, l=10, r=200),
-                title_font_size=14,
+                margin=dict(t=55, b=20, l=20, r=160),
+                title_font_size=15,
             )
             st.plotly_chart(fig_mac, use_container_width=True)
         elif detail_col and detail_col in df_filt.columns:
@@ -3508,26 +3509,28 @@ def main():
         """
         <style>
             .fixed-footer {
-                position: relative;
+                position: sticky;
+                bottom: 0;
                 width: 100%;
                 text-align: center;
-                color: #888888;
-                font-size: 14px;
+                color: #d9d9d9;
+                font-size: 12px;
                 margin: 36px 0 12px;
                 padding: 12px 0;
                 pointer-events: none;
+                z-index: 0;
             }
             .scroll-top-btn {
                 position: fixed;
-                right: 18px;
-                bottom: 18px;
+                right: 24px;
+                bottom: 24px;
                 z-index: 1000;
                 border: 1px solid #8EB9C9;
                 background: #FFFFFF;
                 color: #060E9F;
                 border-radius: 999px;
-                padding: 8px 12px;
-                font-size: 13px;
+                padding: 14px 18px;
+                font-size: 18px;
                 cursor: pointer;
                 box-shadow: 0 2px 8px rgba(0,0,0,.12);
             }
