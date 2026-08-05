@@ -36,68 +36,68 @@ except Exception:
 st.set_page_config(page_title="ECOCO 摰Ｚ迄??撟喳", page_icon="??", layout="wide")
 
 TOPIC_DETAIL_MAP = {
-    "APP雿輻??憿?": [
-        "APP?恍憿舐內???啁???蝚?,
-        "APP?振?蝛箇",
-        "APP暺憿舐內?啣虜",
-        "APP憭??啣虜?瘜?,
-        "app?恍憿舐內???啁???蝚?,
-        "app憭??啣虜?瘜?,
-        "app暺憿舐內?啣虜",
-        "app?振?蝛箇",
+    "APP使用問題類型": [
+        "APP畫面顯示與機台狀態不符",
+        "APP商家頁面空白",
+        "APP點數顯示異常",
+        "APP多重異常狀況",
+        "app畫面顯示與機台狀態不符",
+        "app多重異常狀況",
+        "app點數顯示異常",
+        "app商家頁面空白",
     ],
-    "APP撣唾?閮剖???憿?": [
-        "敹?撖Ⅳ/?⊥??身撖Ⅳ",
-        "撣唾?鞈?靽格/閮剖?",
-        "?⊥??交蝪∟?撽?蝣?,
-        "APP?⊥??餃",
-        "app?⊥??餃",
+    "APP帳號設定問題類型": [
+        "忘記密碼/無法重設密碼",
+        "帳號資訊修改/設定",
+        "無法接收簡訊驗證碼",
+        "APP無法登入",
+        "app無法登入",
     ],
-    "APP撣喳??餃??": [
-        "APP?⊥??餃",
-        "app?⊥??餃",
-        "敹?撖Ⅳ/?⊥??身撖Ⅳ",
+    "APP帳密登入問題": [
+        "APP無法登入",
+        "app無法登入",
+        "忘記密碼/無法重設密碼",
     ],
-    "?芣??詨?憿???: [
-        "??憭望?/憿舐內?航炊",
-        "?⊥??脰?????",
-        "雿輻閬?/?璇辣隤芣?",
-        "?亥岷?芣??詨?????,
+    "優惠券問題類型": [
+        "兌換失敗/顯示錯誤",
+        "無法進行兌換操作",
+        "使用規則/限制條件說明",
+        "查詢優惠券序號紀錄",
     ],
-    "?暺??憿?": [
-        "暺???仿?",
-        "暺?芸撣唾?",
-        "?敺?脤???暺?芾???,
+    "回收點數問題類型": [
+        "點數重複入點",
+        "點數未入帳號",
+        "投入後未獲點數/點數未記錄",
     ],
-    "璈??憿?": [
-        "璈??銝剜/??",
-        "暺???啣虜??嗅憛?,
-        "???菜葫?啣虜",
-        "??瘚??啣虜/?⊥?甇?虜??",
-        "?Ｗ??啣虜憿舐內/?恍?啣虜",
-        "撅亙葆?芯????啣虜??",
-        "璈?嗆?/?∪???,
-        "璈?蝬剛風/????",
-        "璈蝬脰楝???憭望?",
-        "璈擃情/?閬?瞏?,
-        "蝬脰楝銝剜??蝛拙?",
-        "璈??/?⊥???",
-        "?蝬??摰孵",
-        "??拙雿?嗥?/?餅?",
-        "颲刻?憭望??啣虜?隤?,
-        "璈???恍?⊥??餃",
-        "?敺?脤???暺?芾???,
-        "?Ｗ?镼踵撠暺?????,
-        "?嗉?獢嗅歇皛?,
-        "?????",
+    "機台問題類型": [
+        "機台運作中斷/重啟",
+        "黑色分選門異常或卡瓶堵塞",
+        "重量偵測異常",
+        "操作流程異常/無法正常操作",
+        "螢幕異常顯示/畫面異常",
+        "履帶未作動或異常抖動",
+        "機台當機/無回應",
+        "機台需維護/故障提醒",
+        "機台網路連線失敗",
+        "機台髒污/需要清潔",
+        "網路中斷或不穩定",
+        "機台關閉/無法啟動",
+        "投口綠燈拒收容器",
+        "投入物卡住_瓶罐/電池",
+        "辨識失敗異常或錯誤",
+        "機台操作畫面無法登入",
+        "投入後未獲點數/點數未記錄",
+        "螢幕西曬導致黑屏或反光",
+        "瓶蓋桶已滿",
+        "回收艙門開啟",
     ],
-    "憿批恥??憿?": [
-        "閮梢??啣?蝡?/閮剔?撱箄降",
-        "?唾??芷撣唾?",
-        "?湔?撣唾?",
-        "?嗡?撱箄降",
-        "??拐蝙?刻???,
-        "?賊?瘣餃?閬???",
+    "顧客關係類型": [
+        "許願新增站點/設站建議",
+        "申請刪除帳號",
+        "更換帳號",
+        "其他建議",
+        "回收物使用規則",
+        "相關活動規則疑問",
     ],
 }
 
@@ -105,19 +105,19 @@ TYPE_OPTIONS = list(TOPIC_DETAIL_MAP.keys())
 DETAIL_OPTIONS = [d for lst in TOPIC_DETAIL_MAP.values() for d in lst]
 
 DEPT_OPTIONS = [
-    "????, "???, "撱???, "鈭箄???, "銵??, 
-    "鞈???, "隡???, "鞎∪???, "???, "蝮賜??恕"
+    "營運部", "研發部", "廠務部", "人資部", "行銷部",
+    "資訊部", "企劃部", "財務部", "開發部", "總經理室"
 ]
 
 DEPT_MAP = {
-    "璈??憿?": "????,
-    "璈?賊???": "????,
-    "APP撣唾?閮剖???憿?": "鞈???,
-    "APP雿輻??憿?": "鞈???,
-    "APP撣喳??餃??": "鞈???,
-    "?暺??憿?": "",
-    "?芣??詨?憿???: "銵??,
-    "憿批恥??憿?": "????,
+    "機台問題類型": "營運部",
+    "機台相關問題": "營運部",
+    "APP帳號設定問題類型": "資訊部",
+    "APP使用問題類型": "資訊部",
+    "APP帳密登入問題": "資訊部",
+    "回收點數問題類型": "",
+    "優惠券問題類型": "行銷部",
+    "顧客關係類型": "營運部",
 }
 
 # ?? ECOCO ???莎?Pantone 撠?嚗??????????????????????????????
@@ -131,17 +131,17 @@ BRAND_WHITE   = "#FFFFFF"   # Pantone White C
 
 # ?券??箏??莎?Plotly color_discrete_map ?剁?
 DEPT_COLOR_MAP: dict[str, str] = {
-    "????: BRAND_ORANGE,
-    "銵??: BRAND_YELLOW,
-    "鞈???: BRAND_BLUE,
-    "???: BRAND_TEAL,
-    "撱???: BRAND_LBLUE,
-    "鈭箄???: BRAND_BEIGE,
-    "隡???: "#A0C878",
-    "鞎∪???: "#C8A0E0",
-    "???: "#E0C8A0",
-    "蝮賜??恕": "#A0E0C8",
-    "?芸???:  "#CCCCCC",
+    "營運部": BRAND_ORANGE,
+    "行銷部": BRAND_YELLOW,
+    "資訊部": BRAND_BLUE,
+    "研發部": BRAND_TEAL,
+    "廠務部": BRAND_LBLUE,
+    "人資部": BRAND_BEIGE,
+    "企劃部": "#A0C878",
+    "財務部": "#C8A0E0",
+    "開發部": "#E0C8A0",
+    "總經理室": "#A0E0C8",
+    "未分配": "#CCCCCC",
     "":        "#CCCCCC",
 }
 
@@ -190,7 +190,6 @@ HISTORY_DIR = Path("history_reports")
 HISTORY_DIR.mkdir(exist_ok=True)
 META_FILE = HISTORY_DIR / "history.json"
 DEFAULT_HISTORY_SHEET_ID = "1Sqh_8bXtFw7jvmCPufTpStKxfIafDzwYJRlgc0HFBSs"
-SHEET_CELL_CHAR_LIMIT = 49000
 
 # 蝭頝臬?嚗?蝙?刻?蝔???? 蝪∪蝭.pptx嚗歇?函?撘?韏琿蝵莎?
 TEMPLATE_PATH = Path(__file__).parent / "蝪∪蝭.pptx"
@@ -208,7 +207,7 @@ def apply_brand_theme() -> None:
         """
         <style>
           html, body, [data-testid="stAppViewContainer"] {
-            font-size: 16px !important;
+            font-size: 18px !important;
           }
           @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap');
           
@@ -223,19 +222,13 @@ def apply_brand_theme() -> None:
           [data-testid="stAppViewContainer"] label,
           [data-testid="stAppViewContainer"] div {
             font-weight: 500;
-            font-size: 16px !important;
+            font-size: 18px !important;
           }
           
           /* Use Noto Sans TC Medium (500) for everything ??no bold allowed */
           h1, h2, h3, h4, h5, h6, .ecoco-banner, strong, b, .side-title, section[data-testid="stSidebar"] .stButton > button {
             font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
             font-weight: 500 !important;
-          }
-          h1 { font-size: 36px !important; }
-          h2 { font-size: 26px !important; }
-          h3 { font-size: 21px !important; }
-          .stDateInput input, .stTextInput input, .stSelectbox div, .stMultiSelect div {
-            font-size: 16px !important;
           }
 
           :root{
@@ -249,18 +242,9 @@ def apply_brand_theme() -> None:
           .stApp {background: linear-gradient(135deg, #fff 0%, #f8fbff 40%, #fff8f1 100%);}
           .ecoco-banner {
             padding: 14px 18px; border-radius: 12px;
-            background: #ffce00;
-            color:#333333; font-weight:500; margin-bottom: 12px;
-            font-size: 36px !important;
-          }
-          .feature-title {
-            color: #333333 !important;
-            background: #fae0b8 !important;
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 21px !important;
-            font-weight: 500 !important;
-            margin: 0 0 10px 0;
+            background: linear-gradient(90deg, var(--ecoco-orange), var(--ecoco-blue));
+            color:white; font-weight:500; margin-bottom: 12px;
+            font-size: 20px !important;
           }
           .ecoco-card{
             border:1px solid #e7e7e7; border-left:6px solid var(--ecoco-orange);
@@ -278,25 +262,23 @@ def apply_brand_theme() -> None:
           
           /* Sidebar background */
           section[data-testid="stSidebar"] {
-            background: #fae0b8;
-            min-width: 19rem !important;
+            background: linear-gradient(180deg, #0b3f78 0%, #083668 100%);
           }
-          section[data-testid="stSidebar"] > div { width: 19rem !important; }
           
           /* Sidebar Text Overrides */
           .side-title {
-            color: #333333 !important;
-            font-weight: 500; font-size: 36px !important; margin-bottom: 8px;
+            color: #ffffff !important;
+            font-weight: 500; font-size: 1.05rem; margin-bottom: 8px;
           }
           .side-sub {
-            color: #333333 !important;
-            font-size: 26px !important; opacity: 0.9; margin-bottom: 14px;
+            color: #ffffff !important;
+            font-size: 0.78rem; opacity: 0.85; margin-bottom: 14px;
           }
           
           /* Sidebar Buttons ??default = lightblue */
           section[data-testid="stSidebar"] .stButton > button {
-            background-color: #fae0b8 !important;
-            border-color: #e9cda4 !important;
+            background-color: var(--ecoco-lightblue) !important;
+            border-color: var(--ecoco-lightblue) !important;
             color: #333333 !important;
             border-radius: 12px;
             min-height: 46px;
@@ -310,7 +292,6 @@ def apply_brand_theme() -> None:
           /* Hover = white immediately */
           section[data-testid="stSidebar"] .stButton > button:hover,
           section[data-testid="stSidebar"] .stButton > button:focus,
-          section[data-testid="stSidebar"] .stButton > button:focus-visible,
           section[data-testid="stSidebar"] .stButton > button:active,
           section[data-testid="stSidebar"] .stButton > button[kind="primary"],
           section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
@@ -318,18 +299,9 @@ def apply_brand_theme() -> None:
             border-color: #FFFFFF !important;
             color: #333333 !important;
           }
-          section[data-testid="stSidebar"] .stButton > button:hover *,
-          section[data-testid="stSidebar"] .stButton > button:focus *,
-          section[data-testid="stSidebar"] .stButton > button:focus-visible *,
-          section[data-testid="stSidebar"] .stButton > button:active *,
-          section[data-testid="stSidebar"] .stButton > button[kind="primary"] *,
-          section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] * {
-            color: #333333 !important;
-          }
           
           /* Thicker scrollbar */
           ::-webkit-scrollbar { width: 10px; height: 10px; }
-          ::-webkit-scrollbar { width: 0.5cm; height: 0.5cm; }
           ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
           ::-webkit-scrollbar-thumb { background: #8EB9C9; border-radius: 6px; }
           ::-webkit-scrollbar-thumb:hover { background: #060E9F; }
@@ -340,16 +312,6 @@ def apply_brand_theme() -> None:
             background:#eaf4fb; border:1px solid #8EB9C9; border-radius:20px;
             font-size:0.82rem; color:#333; white-space:nowrap;
             overflow:hidden; text-overflow:ellipsis; vertical-align:middle;
-          }
-          .editor-toolbar-title {
-            font-size: 12px !important;
-            color: #333333 !important;
-            margin: 6px 0 4px;
-          }
-          [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
-            border: 1.5px solid #555555 !important;
-            border-radius: 6px !important;
-            overflow-x: auto !important;
           }
           
           /* 蝘駁 arrow_down ?撱箏?蝷綽??踹??啣虜憿舐內蝝?摮?*/
@@ -366,116 +328,26 @@ def apply_brand_theme() -> None:
 def analyze_complaint(subject: str, content: str) -> tuple[str, str]:
     s = subject if isinstance(subject, str) else ""
     c = content if isinstance(content, str) else ""
-    t = (s + " " + c).lower()
+    t = f"{s} {c}".lower()
 
-    # 憿批恥??憿?
-    if "閮餃?" in t and "?⊥?" in t:
-        return "憿批恥??憿?", "?嗡?撱箄降"
-    if any(k in t for k in ["銝???, "?漲", "??暻?, "銝???]):
-        return "憿批恥??憿?", "?嗡?撱箄降"
-    if any(k in t for k in ["?芷撣唾?", "閮駁"]):
-        return "憿批恥??憿?", "?唾??芷撣唾?"
-    if any(k in t for k in ["???Ⅳ", "?董??]) and any(k in t for k in ["霈", "?湔", "靽格"]):
-        return "憿批恥??憿?", "?湔?撣唾?"
-    if any(k in t for k in ["?湔?撣唾?", "?董??]):
-        return "憿批恥??憿?", "?湔?撣唾?"
-    if any(k in t for k in ["?啣?蝡?", "閮剔?", "撱箄降", "閮梢?"]):
-        return "憿批恥??憿?", "閮梢??啣?蝡?/閮剔?撱箄降"
-    if any(k in t for k in ["?閬?", "?釭", "?臬???]):
-        return "憿批恥??憿?", "??拐蝙?刻???
-
-    # APP撣唾?閮剖?
-    if any(k in t for k in ["撽?蝣?, "隤?蝣?, "otp", "蝪∟?"]):
-        if "敹?撖Ⅳ" in t:
-            return "APP撣唾?閮剖???憿?", "敹?撖Ⅳ/?⊥??身撖Ⅳ"
-        return "APP撣唾?閮剖???憿?", "?⊥??交蝪∟?撽?蝣?
-    if any(k in t for k in ["靽格", "?湔", "?湔?"]) and any(k in t for k in ["撣唾?", "??", "?餉店", "?Ⅳ"]):
-        return "APP撣唾?閮剖???憿?", "撣唾?鞈?靽格/閮剖?"
-
-    # ?餃??
-    if any(k in t for k in ["?餃", "?颱??脣"]) and any(k in t for k in ["?Ｗ?", "璈", "暺?"]) and any(k in t for k in ["?⊥?", "銝", "憭望?", "銝?"]):
-        return "璈??憿?", "璈???恍?⊥??餃"
-    if any(k in t for k in ["?⊥??餃", "銝?餃", "?颱??脣", "?餃憭望?", "?餃銝?"]):
-        return "APP撣唾?閮剖???憿?", "APP?⊥??餃"
-
-    # APP雿輻
-    if "?舀??賊?" in t or ("app" in t and "憿舐內" in t and "0" not in t):
-        return "APP雿輻??憿?", "APP?恍憿舐內???啁???蝚?
-    if "憿舐內" in t and "銝泵" in t:
-        return "APP雿輻??憿?", "APP?恍憿舐內???啁???蝚?
-    if any(k in t for k in ["app?啣虜", "?", "頧?", "?湔"]):
-        return "APP雿輻??憿?", "APP憭??啣虜?瘜?
-
-    # 暺
-    if "暺" in t and any(k in t for k in ["?芰敞蝛?, "?芸???, "瘝??亙董", "?芸撣?]):
-        return "?暺??憿?", "暺?芸撣唾?"
-    if ("暺" in t or "瘝暺? in t or "閮?" in t) and any(k in t for k in ["?芸", "瘝", "銝?", "瘝?", "瘝??]):
-        return "?暺??憿?", "暺?芸撣唾?"
-    if "暺" in t and any(k in t for k in ["??", "憭策", "憭"]):
-        return "?暺??憿?", "暺???仿?"
-
-    # ?芣???
-    if any(k in t for k in ["?芣???, "????, "?", "摨?", "?萇", "撠???, "蟡典", "蟡典冗", "璇Ⅳ", "??]):
-        if any(k in t for k in ["????", "???航炊", "蝟餌絞???湔", "撌脫??, "?", "??", "閬?"]):
-            return "?芣??詨?憿???, "雿輻閬?/?璇辣隤芣?"
-        if any(k in t for k in ["??", "??", "暺", "瘝??箸?蝣?]):
-            return "?芣??詨?憿???, "?⊥??脰?????"
-        if any(k in t for k in ["撌脖蝙??, "憭望?", "?航炊", "銝??, "?瑚???, "瘝?頝璇Ⅳ", "?獐銝??"]):
-            return "?芣??詨?憿???, "??憭望?/憿舐內?航炊"
-        if any(k in t for k in ["?亥岷", "蝝??, "?曆???, "?典"]):
-            return "?芣??詨?憿???, "?亥岷?芣??詨?????
-        return "?芣??詨?憿???, "?⊥??脰?????"
-
-    # 璈??
-    if any(k in t for k in ["??銝?, "?∩?"]) and "?怠?銝?" in t:
-        return "璈??憿?", "璈?嗆?/?∪???
-    if "撖嗥?嗅雿? in t or "?∪" in t or ("暺?" in t and "?∩?" in t) or "?∠" in t:
-        return "璈??憿?", "??拙雿?嗥?/?餅?"
-    if any(k in t for k in ["??憭活", "?⊥?颲刻?", "銝?湧＊蝷?, "銝＊蝷箇???, "颲刻?憭望?", "颲刻??啣虜"]):
-        return "璈??憿?", "颲刻?憭望??啣虜?隤?
-    if any(k in t for k in ["憿舐內0?賣????, "?蝬凋耨"]):
-        return "璈??憿?", "璈?蝬剛風/????"
-    if any(k in t for k in ["??", "閮剖?銝?", "銝雿輻", "?斗?", "??敹?, "瘝?", "?芷???, "??"]):
-        return "璈??憿?", "璈??/?⊥???"
-    if any(k in t for k in ["擃情銝", "皜?", "擃情"]):
-        return "璈??憿?", "璈擃情/?閬?瞏?
-    if any(k in t for k in ["?嗆?", "??閮", "瘝???, "lag", "璈?啣虜"]):
-        return "璈??憿?", "璈?嗆?/?∪???
-    if any(k in t for k in ["皛踹?, "?嗆遛", "皛踹"]):
-        return "璈??憿?", "?嗉?獢嗅歇皛?
-    if "??銝??迫" in t:
-        return "璈??憿?", "??瘚??啣虜/?⊥?甇?虜??"
-
-    # ?嗡???璈??
-    if any(k in t for k in ["撅亙葆", "頛賊葆", "?喲葆"]) and any(k in t for k in ["銝?", "銝?", "?啣虜"]):
-        return "璈??憿?", "撅亙葆?芯????啣虜??"
-    if any(k in t for k in ["暺?", "暺??, "?Ｗ??啣虜", "?恍?啣虜", "??", "暺?"]):
-        return "璈??憿?", "?Ｗ??啣虜憿舐內/?恍?啣虜"
-    if any(k in t for k in ["蝬剛風", "蝬凋耨", "?蝬凋耨", "????"]):
-        return "璈??憿?", "璈?蝬剛風/????"
-    if any(k in t for k in ["蝬脰楝???憭望?", "???銝?, "???憭望?"]) and "璈" in t:
-        return "璈??憿?", "璈蝬脰楝???憭望?"
-    if any(k in t for k in ["蝬脰楝銝帘", "蝬脰楝銝剜"]):
-        return "璈??憿?", "蝬脰楝銝剜??蝛拙?"
-    if any(k in t for k in ["??", "蝘日?", "?菜葫??"]):
-        return "璈??憿?", "???菜葫?啣虜"
-    if any(k in t for k in ["?⊥???", "瘚??啣虜", "銝??"]):
-        return "璈??憿?", "??瘚??啣虜/?⊥?甇?虜??"
-    if any(k in t for k in ["?敺?暺?, "?芰暺", "?芾???]):
-        return "璈??憿?", "?敺?脤???暺?芾???
-    if any(k in t for k in ["銝剜", "??", "??璈?]):
-        return "璈??憿?", "璈??銝剜/??"
-    if any(k in t for k in ["??", "?瘝?", "???"]):
-        return "璈??憿?", "?????"
-    if "蝬?" in t and "銝" in t:
-        return "璈??憿?", "?蝬??摰孵"
-
-    return "憿批恥??憿?", "?嗡?撱箄降"
+    if any(k in t for k in ["error", "exception", "失敗", "錯誤", "無法"]):
+        return "顧客關係類型", "其他建議"
+    if any(k in t for k in ["登入", "密碼", "帳號", "password", "login"]):
+        return "APP帳號設定問題類型", "APP無法登入"
+    if any(k in t for k in ["優惠券", "coupon", "折價券", "兌換"]):
+        return "優惠券問題類型", "兌換失敗/顯示錯誤"
+    if any(k in t for k in ["點數", "回饋", "積點", "point"]):
+        return "回收點數問題類型", "投入後未獲點數/點數未記錄"
+    if any(k in t for k in ["app", "手機", "畫面", "頁面"]):
+        return "APP使用問題類型", "APP畫面顯示與機台狀態不符"
+    if any(k in t for k in ["機台", "machine", "設備", "硬體"]):
+        return "機台問題類型", "機台運作中斷/重啟"
+    return "顧客關係類型", "其他建議"
 
 
 def parse_pdf_to_df(file_obj) -> pd.DataFrame:
     if pdfplumber is None:
-        raise RuntimeError("?芸?鋆?pdfplumber嚗瘜圾??PDF??)
+        raise RuntimeError("需要 pdfplumber 才能解析 PDF")
     rows: list[dict] = []
     with pdfplumber.open(file_obj) as pdf:
         for p_idx, page in enumerate(pdf.pages, start=1):
@@ -523,42 +395,6 @@ def make_unique_columns(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _normalize_english_runs(text: str, mode: str) -> str:
-    if not isinstance(text, str):
-        return text
-    repl = (lambda m: m.group(0).upper()) if mode == "upper" else (lambda m: m.group(0).lower())
-    return re.sub(r"[A-Za-z]+", repl, text)
-
-
-def normalize_problem_labels(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    if "??憿?" in out.columns:
-        out["??憿?"] = out["??憿?"].map(lambda v: _normalize_english_runs(v, "upper"))
-    if "??蝝圈?" in out.columns:
-        out["??蝝圈?"] = out["??蝝圈?"].map(lambda v: _normalize_english_runs(v, "lower"))
-    return out
-
-
-def mask_sensitive_text(value):
-    if not isinstance(value, str):
-        return value
-    text = re.sub(r"([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})", r"\1***\2", value)
-    text = re.sub(r"\b(09\d{2})\d{3}(\d{3})\b", r"\1***\2", text)
-    text = re.sub(r"\b(0\d{1,2}-?\d{2,4})\d{3,4}(\d{2,4})\b", r"\1***\2", text)
-    return text
-
-
-def mask_sensitive_df(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    text_cols = [
-        c for c in out.columns
-        if any(k in str(c).lower() for k in ["?批捆", "銝餅", "憪?", "email", "mail", "?餉店", "??", "?舐窗"])
-    ]
-    for col in text_cols:
-        out[col] = out[col].map(mask_sensitive_text)
-    return out
-
-
 # ---- valid type set for fast lookup (all keys + known variant spellings from template) ----
 _VALID_TYPES = set(TOPIC_DETAIL_MAP.keys())
 
@@ -581,7 +417,7 @@ def _is_valid_pair(t: str, d: str) -> bool:
 
 
 def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
-    out = make_unique_columns(mask_sensitive_df(df.copy()))
+    out = make_unique_columns(df.copy())
 
     # ------ Preserve existing valid ??憿? + ??蝝圈? from source file ------
     existing_type   = out["??憿?"].copy()   if "??憿?" in out.columns else pd.Series([""] * len(out))
@@ -627,7 +463,7 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
     out["?券?"] = out["??憿?"].map(DEPT_MAP).fillna("")
     if cfg.date_col and cfg.date_col in out.columns:
         out["?交?"] = pd.to_datetime(out[cfg.date_col], errors="coerce")
-    return normalize_problem_labels(out)
+    return out
 
 
 # ?? Google Sheets 甇瑕蝝??銋? ????????????????????????????????????????????
@@ -692,17 +528,11 @@ def _history_sheet(log_error: bool = False):
         ss = client.open_by_key(sid)
         try:
             ws = ss.worksheet("甇瑕蝝??)
-            try:
-                header = ws.row_values(1)
-                if header[:5] != ["id", "created_at", "source_name", "rows", "data_ref"]:
-                    ws.update(values=[["id", "created_at", "source_name", "rows", "data_ref"]], range_name="A1:E1")
-            except Exception:
-                pass
             st.session_state.pop("_gsheet_error", None)
             return ws
         except Exception:
             ws = ss.add_worksheet("甇瑕蝝??, rows=500, cols=6)
-            ws.append_row(["id", "created_at", "source_name", "rows", "data_ref"])
+            ws.append_row(["id", "created_at", "source_name", "rows", "excel_b64"])
             st.session_state.pop("_gsheet_error", None)
             return ws
     except Exception as e:
@@ -720,63 +550,13 @@ def _history_sheet(log_error: bool = False):
         return None
 
 
-def _sanitize_sheet_value(value, max_chars: int = SHEET_CELL_CHAR_LIMIT) -> str:
-    if pd.isna(value):
-        return ""
-    text = str(value)
-    if text.lower() in {"nan", "inf", "-inf", "infinity", "-infinity"}:
-        return ""
-    return text[:max_chars]
-
-
-def _sanitize_df_for_sheet(df: pd.DataFrame, max_chars: int = SHEET_CELL_CHAR_LIMIT) -> pd.DataFrame:
-    out = df.copy()
-    out = out.replace([float("inf"), float("-inf")], pd.NA)
-    out = out.astype(object).where(pd.notna(out), "")
-    mapper = lambda v: _sanitize_sheet_value(v, max_chars=max_chars)
-    if hasattr(out, "map"):
-        return out.map(mapper)
-    return out.apply(lambda col: col.map(mapper))
-
-
-def _history_data_sheet_name(item_id: str) -> str:
-    safe_id = re.sub(r"[^0-9A-Za-z_\\-]+", "_", str(item_id))[:80]
-    return f"history_{safe_id}"
-
-
-def _write_history_data_sheet(spreadsheet, worksheet_name: str, df: pd.DataFrame):
-    clean_df = _sanitize_df_for_sheet(df)
-    values = [clean_df.columns.tolist()] + clean_df.values.tolist()
-    rows = max(len(values), 1)
-    cols = max(len(clean_df.columns), 1)
-    try:
-        ws_data = spreadsheet.worksheet(worksheet_name)
-        ws_data.clear()
-        ws_data.resize(rows=max(rows, 100), cols=max(cols, 10))
-    except Exception:
-        ws_data = spreadsheet.add_worksheet(title=worksheet_name, rows=max(rows, 100), cols=max(cols, 10))
-    if values:
-        ws_data.update(values=values, range_name="A1")
-    return ws_data
-
-
-def _worksheet_to_dataframe(ws) -> pd.DataFrame:
-    values = ws.get_all_values()
-    if not values:
-        return pd.DataFrame()
-    header = values[0]
-    rows = values[1:]
-    width = len(header)
-    normalized = [(row + [""] * width)[:width] for row in rows]
-    return pd.DataFrame(normalized, columns=header)
-
-
 def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> tuple[Path, str, str]:
+    import base64
     today = datetime.now().strftime("%Y%m%d")
     ts = existing_id if existing_id else datetime.now().strftime("%Y%m%d_%H%M%S")
     output_name = f"{today}_??.xlsx"
     excel_bytes = to_excel_bytes(df)
-    data_sheet_name = _history_data_sheet_name(ts)
+    excel_b64 = base64.b64encode(excel_bytes).decode()
 
     meta = {
         "id": ts, "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -784,32 +564,36 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
         "output_path": "", "rows": int(len(df)),
     }
 
-    saved_to_gsheet = False
-    # 1. Google Sheets嚗偶銋?
+    # 1. session_state 敹怠?
+    if "_history_cache" not in st.session_state:
+        st.session_state["_history_cache"] = {}
+    st.session_state["_history_cache"][ts] = {"meta": meta, "excel_bytes": excel_bytes}
+
+    # 2. Google Sheets嚗偶銋?
     ws = _history_sheet(log_error=True)
     if ws is not None:
         try:
-            _write_history_data_sheet(ws.spreadsheet, data_sheet_name, df)
             if existing_id:
                 rows = ws.get_all_values()
                 for i, row in enumerate(rows[1:], start=2):
                     if row and row[0] == existing_id:
                         ws.delete_rows(i); break
-            ws.append_row([ts, meta["created_at"], source_name, str(len(df)), f"sheet:{data_sheet_name}"])
+            ws.append_row([ts, meta["created_at"], source_name, str(len(df)), excel_b64])
             st.session_state.pop("_gsheet_error", None)
-            saved_to_gsheet = True
         except Exception as e:
             st.session_state["_gsheet_error"] = f"甇瑕蝝?神??Google Sheets 憭望?嚗str(e)[:300]}"
 
-    if saved_to_gsheet:
-        if "_history_cache" not in st.session_state:
-            st.session_state["_history_cache"] = {}
-        st.session_state["_history_cache"][ts] = {"meta": meta, "excel_bytes": excel_bytes}
-
-    # 2. ?祆?蝤?嚗靽?瑼?嚗?雿甇瑕蝝??皞?
+    # 3. ?祆?蝤?嚗??抬?
     output_path = HISTORY_DIR / f"{ts}_{output_name}"
     try:
         output_path.write_bytes(excel_bytes)
+        history = []
+        if META_FILE.exists():
+            try: history = json.loads(META_FILE.read_text(encoding="utf-8"))
+            except: pass
+        history = [i for i in history if i["id"] != ts]
+        history.insert(0, meta)
+        META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         pass
     return output_path, output_name, ts
@@ -819,46 +603,50 @@ def load_history() -> list[dict]:
     import base64
     merged: dict[str, dict] = {}
 
-    # ?芸? Google Sheets 霈?風?脩????踹??脩垢?∠???蝬脤?畾???
+    # ?祆? JSON
+    if META_FILE.exists():
+        try:
+            for item in json.loads(META_FILE.read_text(encoding="utf-8")):
+                merged[item["id"]] = item
+        except Exception:
+            pass
+
+    # Google Sheets嚗??璈???舫?嚗?
     ws = _history_sheet()
-    if ws is None:
-        st.session_state["_history_cache"] = {}
-        return []
-    try:
-        for row in ws.get_all_values()[1:]:
-            if not row or not row[0]:
-                continue
-            rid = row[0]
-            created_at = row[1] if len(row) > 1 else ""
-            sname = row[2] if len(row) > 2 else ""
-            rows_str = row[3] if len(row) > 3 else "0"
-            data_ref = row[4] if len(row) > 4 else ""
-            meta = {
-                "id": rid, "created_at": created_at,
-                "source_name": sname,
-                "rows": int(rows_str) if rows_str.isdigit() else 0,
-                "output_name": f"{rid}_??.xlsx", "output_path": "",
-            }
-            merged[rid] = meta
-            if "_history_cache" not in st.session_state:
-                st.session_state["_history_cache"] = {}
-            if rid not in st.session_state["_history_cache"] and data_ref:
-                try:
-                    if data_ref.startswith("sheet:"):
-                        data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
-                        hist_df = _worksheet_to_dataframe(data_ws)
-                        excel_bytes = to_excel_bytes(hist_df)
-                    else:
-                        excel_bytes = base64.b64decode(data_ref)
-                    st.session_state["_history_cache"][rid] = {
-                        "meta": meta,
-                        "excel_bytes": excel_bytes,
-                    }
-                except Exception:
-                    pass
-    except Exception:
-        st.session_state["_history_cache"] = {}
-        return []
+    if ws:
+        try:
+            for row in ws.get_all_values()[1:]:
+                if not row or not row[0]:
+                    continue
+                rid = row[0]
+                created_at = row[1] if len(row) > 1 else ""
+                sname = row[2] if len(row) > 2 else ""
+                rows_str = row[3] if len(row) > 3 else "0"
+                excel_b64 = row[4] if len(row) > 4 else ""
+                meta = {
+                    "id": rid, "created_at": created_at,
+                    "source_name": sname,
+                    "rows": int(rows_str) if rows_str.isdigit() else 0,
+                    "output_name": f"{rid}_??.xlsx", "output_path": "",
+                }
+                merged[rid] = meta
+                if "_history_cache" not in st.session_state:
+                    st.session_state["_history_cache"] = {}
+                if rid not in st.session_state["_history_cache"] and excel_b64:
+                    try:
+                        st.session_state["_history_cache"][rid] = {
+                            "meta": meta,
+                            "excel_bytes": base64.b64decode(excel_b64),
+                        }
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # session_state 鋆??嗆活?啣?
+    for rid, v in st.session_state.get("_history_cache", {}).items():
+        if rid not in merged:
+            merged[rid] = v["meta"]
 
     return sorted(merged.values(), key=lambda x: x.get("created_at", ""), reverse=True)
 
@@ -899,20 +687,10 @@ def generate_ai_summary(df: pd.DataFrame) -> str:
     top_type_count = int(type_count.iloc[0])
     top_detail = detail_count.index[0]
     top_detail_count = int(detail_count.iloc[0])
-    dept_text = ""
-    if "?券?" in df.columns and not df["?券?"].dropna().empty:
-        dept_top = df["?券?"].replace("", "?芸???).value_counts().head(3)
-        dept_text = "嚗?.join([f"{k} {int(v)} 隞? for k, v in dept_top.items()])
-    detail_lines = []
-    for name, count in detail_count.head(5).items():
-        detail_lines.append(f"{name} {int(count)} 隞?)
-    detail_text = "嚗?.join(detail_lines)
     return (
-        f"1) ?芸???嚗甈∪ {total} 隞塚?銝餃????箝top_type}?top_type_count} 隞塚??? {top_type_count/total:.1%}?n"
-        f"2) 蝝圈?隤芣?嚗?擃蝝圈??箝top_detail}?top_detail_count} 隞塚?TOP5 ??{detail_text}?n"
-        f"3) ?券?閫撖?{dept_text or '?桀??⊥?蝣粹?甈??臬霈'}?n"
-        "4) ?郊?方?嚗??芸?瑼Ｘ擃蝝圈??臬?葉?潛摰?暺身??????瘚?嚗蒂瘥?餈??臬?雁靽柴暑??蝟餌絞?啣??n"
-        "5) 撱箄降銵?嚗誑 TOP3 ??撱箇??孵?隞餃?嚗?摰?鞎祇???閮?????梯蕭頩斗?璅?
+        f"1) ?桀?銝餃????箝top_type}????{top_type_count} 隞塚??? {top_type_count/total:.1%}?n"
+        f"2) ?撣貉?蝝圈??胯top_detail}????{top_detail_count} 隞塚?撱箄降??芸??孵??n"
+        "3) 撱箄降隞?TOP3 ??撱箇?頝券??孵?隞餃?嚗蒂瘥梯蕭頩支辣?貉???蝯???
     )
 
 
@@ -960,7 +738,7 @@ def to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode("utf-8-sig")
 
 
-def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 1) -> bytes:
+def to_pdf_bytes(df: pd.DataFrame) -> bytes:
     """Generate PDF using fpdf2 + Noto CJK for Traditional Chinese support."""
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
@@ -1030,16 +808,6 @@ def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 
                 return fs
         return min_size
 
-    def draw_page_label():
-        label = f"{source_name or '??瑼?'}  {datetime.now().strftime('%Y/%m/%d')}  蝚?{download_count} 甈?
-        pdf.set_xy(8, 4)
-        pdf.set_text_color(80, 80, 80)
-        pdf.set_font(FONT, size=7)
-        pdf.cell(0, 5, safe_text(label), align="L")
-        pdf.set_xy(10, 10)
-
-    draw_page_label()
-
     # 銵券嚗?葬撠誑?拇?甈祝嚗?
     pdf.set_fill_color(0x06, 0x0E, 0x9F)
     pdf.set_text_color(255, 255, 255)
@@ -1098,7 +866,6 @@ def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 
         # ?? ??瑼Ｘ ??
         if pdf.get_y() + row_h > pdf.page_break_trigger:
             pdf.add_page()
-            draw_page_label()
             pdf.set_fill_color(0x06, 0x0E, 0x9F)
             pdf.set_text_color(255, 255, 255)
             for col in col_list:
@@ -1257,7 +1024,7 @@ def build_chart_pack(df: pd.DataFrame,
     ax1.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
     ax1.tick_params(axis="x", rotation=20)
     for i, r in stats.iterrows():
-        ax1.text(i, r["隞嗆"], f'{float(r["?曉?瘥?]):.1f}%', ha="center", va="bottom", fontsize=9)
+        ax1.text(i, r["隞嗆"], f'{int(r["?曉?瘥?])}%', ha="center", va="bottom", fontsize=9)
     fig1.tight_layout()
     b1 = io.BytesIO(); fig1.savefig(b1, format="png", dpi=180); plt.close(fig1)
 
@@ -1290,8 +1057,7 @@ def build_chart_pack(df: pd.DataFrame,
     _hbar = _hbar_color if _hbar_color else "#060E9F"
     ax3.barh(d["??蝝圈?"], d["隞嗆"], color=_hbar)
     ax3.set_title("?之??蝝圈???")
-    ax3.set_xlabel("?賊?(隞?")
-    ax3.set_ylabel("?")
+    ax3.set_xlabel("隞嗆")
     # 撘瑕?湔?餃漲嚗辣?詨??箸?賂?
     from matplotlib.ticker import MultipleLocator
     ax3.xaxis.set_major_locator(MultipleLocator(1))
@@ -1547,7 +1313,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                             run.font.size  = Pt(13)
                             run.font.name  = FONT
                 for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), 1):
-                    try:   pct = f'{float(r["?曉?瘥?]):.1f}%'
+                    try:   pct = f'{int(float(r["?曉?瘥?]))}%'
                     except: pct = f'{r["?曉?瘥?]}%'
                     dept = str(r.get("甇詨惇?券?", ""))
                     vals = [str(r["??憿?"]), str(int(r["隞嗆"])), pct, dept]
@@ -1634,7 +1400,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                     run.font.bold = True; run.font.color.rgb = WHITE
                     run.font.size = Pt(12); run.font.name = FONT
         for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), 1):
-            try:   pct = f'{float(r["?曉?瘥?]):.1f}%'
+            try:   pct = f'{int(float(r["?曉?瘥?]))}%'
             except: pct = f'{r["?曉?瘥?]}%'
             vals = [str(r["??憿?"]), str(r["隞嗆"]), pct,
                     str(r.get("甇詨惇?券?", ""))]
@@ -1723,25 +1489,18 @@ def upload_to_google_sheet(df: pd.DataFrame, credentials_json: dict, spreadsheet
             f"隢Ⅱ隤歇撠岫蝞”?梁蝯佗?{credentials_json.get('client_email', '?')}\n"
             f"???航炊嚗e}"
         )
-    clean_df = _sanitize_df_for_sheet(df)
-    values = [clean_df.columns.tolist()] + clean_df.values.tolist()
     try:
         ws = sh.worksheet(worksheet_name)
         ws.clear()
-        ws.resize(rows=max(len(values), 100), cols=max(len(clean_df.columns), 10))
     except Exception:
-        ws = sh.add_worksheet(
-            title=worksheet_name,
-            rows=max(len(values), 100),
-            cols=max(len(clean_df.columns), 10),
-        )
-    if values:
-        ws.update(values=values, range_name="A1")
+        ws = sh.add_worksheet(title=worksheet_name, rows=1000, cols=30)
+    values = [df.columns.tolist()] + df.fillna("").astype(str).values.tolist()
+    ws.update(values)
     return ws.url if hasattr(ws, 'url') else ""
 
 
 def section_1():
-    st.markdown('<div class="feature-title">?銝嚗?獢??唾????</div>', unsafe_allow_html=True)
+    st.subheader("?銝嚗?獢??唾????")
     st.markdown("<div class='ecoco-card'>?舀銝 excel / csv / pdf嚗??蒂?Ｗ??憿???憿敦??/div>", unsafe_allow_html=True)
 
     # File info badge ??no long text, just a compact pill with truncated name
@@ -1749,10 +1508,16 @@ def section_1():
         fname_short = st.session_state['_uploaded_name']
         if len(fname_short) > 30:
             fname_short = fname_short[:14] + "..." + fname_short[-12:]
-        st.markdown(
+        col_badge, col_clear = st.columns([9, 1])
+        col_badge.markdown(
             f"<span class='file-badge'>&#128196; {fname_short}</span>",
             unsafe_allow_html=True
         )
+        if col_clear.button("x 皜", help="皜?桀?瑼?嚗??唬???):
+            for key in ["_uploaded_bytes", "_uploaded_name", "_uploaded_type", "analysis_df", "source_name",
+                        "_editing_history_id", "_saved_history_id"]:
+                st.session_state.pop(key, None)
+            st.rerun()
 
     uploaded = st.file_uploader("銝?唳?獢?, type=["xlsx", "xls", "csv", "pdf"], key="uploader")
     # Persist file bytes across menu switches
@@ -1798,22 +1563,24 @@ def section_1():
         content_col = st.selectbox("?冽?批捆甈?", options=cols, index=min(1, len(cols) - 1))
         date_opt = ["(??"] + cols
         date_col = st.selectbox("?交?甈?嚗憛恬?", options=date_opt, index=0)
+        pre_keyword = st.text_input("???祟?賊??萄?嚗蜓憿??批捆嚗憛恬?")
         cfg = AnalysisConfig(subject_col=subject_col, content_col=content_col,
                              date_col=None if date_col == "(??" else date_col)
 
         if st.button("????", type="primary"):
-            st.session_state["analysis_subject_col"] = subject_col
-            st.session_state["analysis_content_col"] = content_col
-            with st.spinner("甇???鞈?嚗???頛之??蝔?.."):
-                st.session_state["analysis_df"] = analyze_dataframe(df_raw.copy(), cfg)
+            work = df_raw.copy()
+            if pre_keyword:
+                work = work[
+                    work[subject_col].astype(str).str.contains(pre_keyword, case=False, na=False)
+                    | work[content_col].astype(str).str.contains(pre_keyword, case=False, na=False)
+                ]
+            st.session_state["analysis_df"] = analyze_dataframe(work, cfg)
             st.session_state["source_name"] = uploaded_name
 
     if "analysis_df" not in st.session_state:
         return
     df = st.session_state["analysis_df"]
-    subject_col = st.session_state.get("analysis_subject_col", "銝餅")
-    content_col = st.session_state.get("analysis_content_col", "?冽?批捆")
-    c1, c2, c3 = st.columns([2, 2, 2])
+    c1, c2, c3 = st.columns([2, 2, 1])
     keyword = c1.text_input("蝭拚嚗??萄?嚗蜓憿??批捆嚗?)
     filter_type = c2.multiselect("蝭拚嚗?憿???, options=TYPE_OPTIONS, default=[])
     
@@ -1839,7 +1606,7 @@ def section_1():
     if filter_detail:
         show = show[show["??蝝圈?"].isin(filter_detail)]
 
-    st.markdown('<div class="editor-toolbar-title">?舐楊頛舀?閮”嚗?港???+ ??蝺刻摩嚗?/div>', unsafe_allow_html=True)
+    st.markdown("#### ?舐楊頛舀?閮”嚗?港???+ ??蝺刻摩嚗?)
 
     # ---- AI憛怠璅內 ---
     ai_col = "_ai_filled"
@@ -1864,43 +1631,8 @@ def section_1():
 
     st.caption("? ?湔?刻”?潔葉銝??豢???憿? / ??蝝圈?嚗矽?游???暺?????脣?靽格??)
 
-    tool_add, tool_add_btn, tool_del, tool_del_btn, tool_toggle = st.columns([2.5, 1, 2.5, 1, 1.2])
-    new_col_name = tool_add.text_input("?啣??渡?甈?", value="", key="editor_new_col", placeholder="頛詨甈??迂")
-    if tool_add_btn.button("?啣?甈?", key="editor_add_col", use_container_width=True):
-        col_name = new_col_name.strip()
-        if not col_name:
-            st.warning("隢撓?交?雿?蝔晞?)
-        elif col_name in st.session_state["analysis_df"].columns:
-            st.warning("甈?撌脣??具?)
-        else:
-            st.session_state["analysis_df"][col_name] = ""
-            st.session_state.pop("editor_table", None)
-            st.rerun()
-    protected_cols = {"?詨?", MARKER_COL, ai_col}
-    deletable_cols = [c for c in st.session_state["analysis_df"].columns if c not in protected_cols]
-    del_col_name = tool_del.selectbox("?詨?甈?", options=deletable_cols, key="editor_delete_col")
-    if tool_del_btn.button("?芷?湔?", key="editor_del_col", use_container_width=True):
-        if del_col_name:
-            st.session_state["analysis_df"] = st.session_state["analysis_df"].drop(columns=[del_col_name], errors="ignore")
-            st.session_state.pop("editor_table", None)
-            st.rerun()
-    if tool_toggle.button("?詨?/??", key="toggle_all_btn", help="?券??瘨??, use_container_width=True):
-        all_sel = bool(df["?詨?"].all()) if "?詨?" in df.columns and not df.empty else False
-        st.session_state["analysis_df"]["?詨?"] = not all_sel
-        st.session_state.pop("editor_table", None)
-        st.rerun()
-
-    batch_c1, batch_c2, batch_c3, batch_c4 = st.columns([2, 2, 1.5, 1.2])
-    batch_type = batch_c1.selectbox("?寞活??憿?", ["(銝???"] + TYPE_OPTIONS, key="batch_type_sel")
-    valid_batch_det = ["(銝???"]
-    if batch_type != "(銝???":
-        valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
-    batch_detail = batch_c2.selectbox("?寞活??蝝圈?", valid_batch_det, key="batch_cat_sel")
-
     # ???閬＊蝷箇?甈?嚗Ⅱ靽??祇?? MARKER_COL 甇?Ⅱ?
     display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
-    if "?詨?" in display_cols:
-        display_cols = ["?詨?"] + [c for c in display_cols if c != "?詨?"]
     show_display = show[display_cols].reset_index(drop=True)
 
     # ?啣?銝甈???閮策 AI 憛怠????
@@ -1910,8 +1642,17 @@ def section_1():
     else:
         marker_vals = [""] * len(show_display)
         
-    insert_idx = 1 if "?詨?" in show_display.columns else 0
+    insert_idx = 1
+    if "?詨?" in show_display.columns:
+        insert_idx = show_display.columns.get_loc("?詨?") + 1
     show_display.insert(insert_idx, MARKER_COL, marker_vals)
+
+    # --- Select All Trigger ---
+    cols_h = st.columns([13, 2])
+    if cols_h[1].button("漎??詨? / ??", key="toggle_all_btn", help="?券??瘨??):
+        all_sel = bool(df["?詨?"].all()) if "?詨?" in df.columns and not df.empty else False
+        st.session_state["analysis_df"]["?詨?"] = not all_sel
+        st.rerun()
 
     edited = st.data_editor(
         show_display,
@@ -1982,7 +1723,16 @@ def section_1():
                 st.session_state["_draft_list"].pop(idx)
                 st.rerun()
 
-    if batch_c3.button("憟?暸??, type="primary", use_container_width=True):
+    st.markdown("##### ?寞活???摮?)
+    
+    b1, b2, b3, b4 = st.columns([2, 2, 2, 2])
+    batch_type = b1.selectbox("?寞活??憿?", ["(銝???"] + TYPE_OPTIONS, key="batch_type_sel")
+    valid_batch_det = ["(銝???"]
+    if batch_type != "(銝???":
+        valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
+    batch_detail = b2.selectbox("?寞活??蝝圈?", valid_batch_det, key="batch_cat_sel")
+
+    if b3.button("撠??寡身摰??典???詨?", type="primary"):
         if "?詨?" not in edited.columns or not edited["?詨?"].any():
             st.warning("隢??刻”?澆?暸閬???鞈???")
         else:
@@ -1998,19 +1748,17 @@ def section_1():
                 axis=1,
             )
             st.session_state["analysis_df"] = edited.copy()
-            st.session_state.pop("editor_table", None)
             st.session_state["_batch_applied"] = True
             st.rerun()
             
     if st.session_state.pop("_batch_applied", False):
         st.success("撌脣??冽甈∠楊頛胯?)
         
-    if batch_c4.button("?芷?暸??, use_container_width=True):
+    if b4.button("?芷?暸??):
         if "?詨?" not in edited.columns or not edited["?詨?"].any():
             st.warning("隢??刻”?澆?暸閬?斤?鞈???")
         else:
             st.session_state["analysis_df"] = edited[edited["?詨?"] != True].copy()
-            st.session_state.pop("editor_table", None)
             st.success("撌脣?文?詨???)
             st.rerun()
 
@@ -2036,9 +1784,7 @@ def section_1():
     else:
         out_name = f"{datetime.now().strftime('%Y%m%d')}_????pdf"
         try:
-            dl_key = f"_pdf_download_count_{st.session_state.get('source_name', 'unknown')}"
-            st.session_state[dl_key] = int(st.session_state.get(dl_key, 0)) + 1
-            data_bytes = to_pdf_bytes(final_df, st.session_state.get("source_name", "unknown"), st.session_state[dl_key])
+            data_bytes = to_pdf_bytes(final_df)
             mime = "application/pdf"
         except Exception as e:
             st.error(f"PDF ?Ｙ??航炊: {e}")
@@ -2054,10 +1800,7 @@ def section_1():
     )
     
     if st.session_state.get("history_saved_msg"):
-        if st.session_state.get("_gsheet_error"):
-            st.warning(st.session_state["_gsheet_error"])
-        else:
-            st.success("瑼?撌脖?頛?銝西??摮甇瑕蝝??)
+        st.success("瑼?撌脖?頛?銝西??摮甇瑕蝝??)
         st.session_state["history_saved_msg"] = False
 
     st.markdown("#### ?????Ｗ")
@@ -2139,9 +1882,8 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
         fig1 = px.bar(stats, x="??憿?", y="隞嗆",
                       color="甇詨惇?券?", text="?曉?瘥?, title="??憿???",
                       color_discrete_map=DEPT_COLOR_MAP)
-    fig1.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-    fig1.update_layout(height=420, yaxis=dict(tickformat="d", nticks=6),
-                       xaxis_title="?", yaxis_title="?賊?(隞?",
+    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
+    fig1.update_layout(height=420, yaxis=dict(dtick=1, tickformat="d"),
                        margin=dict(t=45, b=0))
     c1.plotly_chart(fig1, use_container_width=True, key=f"{kp}_fig1")
 
@@ -2164,8 +1906,7 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
                   color_discrete_sequence=[custom_hbar])
     fig3.update_traces(marker_color=custom_hbar)
     fig3.update_layout(height=420, yaxis={"categoryorder": "total ascending"},
-                       xaxis=dict(tickformat="d", nticks=6),
-                       xaxis_title="?賊?(隞?", yaxis_title="?",
+                       xaxis=dict(dtick=1, tickformat="d"),
                        margin=dict(t=45, b=0, l=0, r=0))
     c3.plotly_chart(fig3, use_container_width=True, key=f"{kp}_fig3")
 
@@ -2178,9 +1919,6 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
 
 
 def render_charts(df: pd.DataFrame, key_prefix: str = ""):
-    if df.empty:
-        st.info("沒有資料紀錄")
-        return
     date_cols = [c for c in df.columns if "?交?" in c or "date" in c.lower()]
     if date_cols:
         dcol = date_cols[0]
@@ -2198,15 +1936,8 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         except Exception:
             pass
 
-    if "??憿?" not in df.columns or "??蝝圈?" not in df.columns:
-        st.info("沒有資料紀錄")
-        return
-
     stats = df["??憿?"].value_counts().rename_axis("??憿?").reset_index(name="隞嗆")
-    if stats.empty:
-        st.info("沒有資料紀錄")
-        return
-    stats["?曉?瘥?] = (stats["隞嗆"] / max(stats["隞嗆"].sum(), 1) * 100).round(1)
+    stats["?曉?瘥?] = (stats["隞嗆"] / max(stats["隞嗆"].sum(), 1) * 100).round(0).astype(int)
     stats["甇詨惇?券?"] = stats["??憿?"].map(DEPT_MAP).fillna("?芸???)
 
     c1, c2, c3 = st.columns(3)
@@ -2215,9 +1946,8 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         stats, x="??憿?", y="隞嗆", color="甇詨惇?券?", text="?曉?瘥?, title="??憿???",
         color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
     )
-    fig1.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-    fig1.update_layout(height=400, xaxis_title="?", yaxis_title="?賊?(隞?",
-                       yaxis=dict(tickformat="d", nticks=6))
+    fig1.update_traces(texttemplate="%{text}%", textposition="outside")
+    fig1.update_layout(height=400)
     c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
 
     df_machine = df[df["??憿?"] == "璈??憿?"].copy()
@@ -2254,16 +1984,14 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
     fig3.update_layout(
         height=400,
         yaxis={"categoryorder": "total ascending"},
-        xaxis=dict(tickformat="d", nticks=6),
-        xaxis_title="?賊?(隞?",
-        yaxis_title="?",
+        xaxis=dict(dtick=1, tickformat="d"),
         margin=dict(t=40, b=0, l=0, r=0),
     )
     c3.plotly_chart(fig3, use_container_width=True, key=f"{key_prefix}_fig3" if key_prefix else None)
 
 
 def section_2():
-    st.markdown('<div class="feature-title">?鈭??”?? AI ????</div>', unsafe_allow_html=True)
+    st.subheader("?鈭??”?? AI ????")
     if "analysis_df" not in st.session_state:
         st.info("隢??典??賭?摰?????)
         return
@@ -2300,7 +2028,7 @@ def section_2():
         ppt_source = st.session_state.get("source_name", "unknown")
 
     stats = df["??憿?"].value_counts().rename_axis("??憿?").reset_index(name="隞嗆")
-    stats["?曉?瘥?] = (stats["隞嗆"] / max(stats["隞嗆"].sum(), 1) * 100).round(1)
+    stats["?曉?瘥?] = (stats["隞嗆"] / max(stats["隞嗆"].sum(), 1) * 100).round(0).astype(int)
     stats["甇詨惇?券?"] = stats["??憿?"].map(DEPT_MAP).fillna("")
 
     # Build totals row
@@ -2310,7 +2038,7 @@ def section_2():
     totals_row = pd.DataFrame([{
         "??憿?": "[ ?? ]",
         "隞嗆": total_count,
-        "?曉?瘥?: 100.0,
+        "?曉?瘥?: 100,
         "甇詨惇?券?": dept_summary,
     }])
     stats_with_total = pd.concat([stats, totals_row], ignore_index=True)
@@ -2322,7 +2050,7 @@ def section_2():
         hide_index=True,
         column_config={
             "甇詨惇?券?": st.column_config.SelectboxColumn(options=DEPT_OPTIONS + [dept_summary]),
-            "?曉?瘥?: st.column_config.NumberColumn(format="%.1f %%")
+            "?曉?瘥?: st.column_config.NumberColumn(format="%d %%")
         },
         key="stats_editor",
         num_rows="fixed",
@@ -2422,7 +2150,7 @@ def section_2():
 
 
 def section_3():
-    st.markdown('<div class="feature-title">?銝?甇瑕??蝝??/div>', unsafe_allow_html=True)
+    st.subheader("?銝?甇瑕??蝝??)
 
     # ?? Google Sheets ????????
     import os
@@ -2562,7 +2290,7 @@ def section_3():
                     render_charts(df_hist, key_prefix=f"hist_{item['id']}")
                     cdl1, cdl2 = st.columns(2)
                     hist_stats = df_hist["??憿?"].value_counts().rename_axis("??憿?").reset_index(name="隞嗆")
-                    hist_stats["?曉?瘥?] = (hist_stats["隞嗆"] / max(hist_stats["隞嗆"].sum(), 1) * 100).round(1)
+                    hist_stats["?曉?瘥?] = (hist_stats["隞嗆"] / max(hist_stats["隞嗆"].sum(), 1) * 100).round(0).astype(int)
                     hist_stats["甇詨惇?券?"] = hist_stats["??憿?"].map(DEPT_MAP).fillna("")
                     hist_ai = generate_ai_summary(df_hist)
                     hist_chart_pack = build_chart_pack(df_hist)
@@ -2613,7 +2341,7 @@ def section_4():
     st.markdown("""<style>
     .s4-header{background:#060E9F;color:#fff;padding:22px 26px;border-radius:12px;
                border-bottom:6px solid #FF5000;margin-bottom:18px}
-    .s4-header h2{margin:0;font-size:14px;font-weight:700;letter-spacing:.3px}
+    .s4-header h2{margin:0;font-size:20px;font-weight:700;letter-spacing:.3px}
     .s4-header p{margin:4px 0 0;opacity:.85;font-size:13px}
     .s4-section{border-left:6px solid #FF5000;padding-left:14px;
                 color:#060E9F;font-size:17px;font-weight:700;margin:22px 0 14px}
@@ -2627,9 +2355,9 @@ def section_4():
     .s4-kpi-delta{font-size:11px;margin-top:3px}
     .delta-up{color:#c03000} .delta-dn{color:#0a6e44} .delta-flat{color:#888}
     .s4-rank-table{width:100%;border-collapse:collapse}
-    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 12px;font-size:13px;text-align:center}
-    .s4-rank-table td{padding:10px 12px;text-align:center;border-bottom:1px solid #eee;font-size:13px}
-    .s4-rank-val{color:#FF5000;font-weight:700}
+    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 14px;font-size:14px;text-align:center;font-weight:600}
+    .s4-rank-table td{padding:9px 14px;text-align:center;border-bottom:1px solid #eee;font-size:12px}
+    .s4-rank-val{color:#FF5000;font-weight:700;font-size:14px}
     .filter-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
     .filter-chip{padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
                  border:1.5px solid #060E9F;background:#fff;color:#060E9F}
@@ -2654,15 +2382,13 @@ def section_4():
             try:
                 for grow in ws.get_all_values()[1:]:
                     if not grow or not grow[0]: continue
-                    data_ref = grow[4] if len(grow) > 4 else ""
-                    if data_ref:
-                        try:
-                            if data_ref.startswith("sheet:"):
-                                data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
-                                all_dfs.append(_worksheet_to_dataframe(data_ws))
-                            else:
-                                all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(data_ref))))
+                    excel_b64 = grow[4] if len(grow) > 4 else ""
+                    if excel_b64:
+                        try: all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(excel_b64))))
                         except Exception: pass
+            except Exception: pass
+        for v in st.session_state.get("_history_cache", {}).values():
+            try: all_dfs.append(pd.read_excel(io.BytesIO(v["excel_bytes"])))
             except Exception: pass
         st.caption(f"撌脰???{len(all_dfs)} 隞賣風?脩??? if all_dfs else "撠甇瑕鞈?")
 
@@ -2700,7 +2426,33 @@ def section_4():
         st.info("撠鞈?嚗???銝摰????脣?嚗?憛怠 Google Sheets 蝬脣???)
         return
 
-    df_all = pd.concat(all_dfs, ignore_index=True).drop_duplicates()
+    # ?蔥?Ⅱ靽?隞?df 甈??迂?臭?嚗??銴?雿? InvalidIndexError嚗?
+    clean_dfs = []
+    for _d in all_dfs:
+        try:
+            _d = _d.copy()
+            # ?交???甈??迂嚗?敺韌???
+            _seen = {}
+            _new_cols = []
+            for c in _d.columns:
+                if c in _seen:
+                    _seen[c] += 1
+                    _new_cols.append(f"{c}_{_seen[c]}")
+                else:
+                    _seen[c] = 0
+                    _new_cols.append(c)
+            _d.columns = _new_cols
+            clean_dfs.append(_d)
+        except Exception:
+            clean_dfs.append(_d)
+
+    df_all = pd.concat(clean_dfs, ignore_index=True)
+    # drop_duplicates 閬? index ?臭?嚗? reset_index
+    try:
+        df_all = df_all.loc[:, ~df_all.columns.duplicated()]  # 蝘駁??甈?
+        df_all = df_all.drop_duplicates().reset_index(drop=True)
+    except Exception:
+        df_all = df_all.reset_index(drop=True)
 
     # ?? 甈??芸??菜葫 ??????????????????????????????????????????????
     date_col   = next((c for c in df_all.columns if "?交?" in c or "date" in c.lower()), None)
@@ -2753,16 +2505,8 @@ def section_4():
         end_d   = d_col2.date_input("蝯?", value=max_d, min_value=min_d, max_value=max_d, key="s4v3_ed")
         df_cur  = df_all[(df_all[date_col].dt.date >= start_d) & (df_all[date_col].dt.date <= end_d)].copy()
         period_label = f"{start_d} 嚚?{end_d}"
-        enable_compare = filter_c3.checkbox("?撠??, value=False, key="s4v3_compare_on")
-        if enable_compare:
-            cmp_c1, cmp_c2 = filter_c3.columns(2)
-            cmp_start = cmp_c1.date_input("撠??", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_cmp_sd")
-            cmp_end = cmp_c2.date_input("撠蝯?", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_cmp_ed")
-            df_prev = df_all[(df_all[date_col].dt.date >= cmp_start) & (df_all[date_col].dt.date <= cmp_end)].copy()
-            period_prev = f"{cmp_start} 嚚?{cmp_end}"
-        else:
-            period_prev = None
-            df_prev = pd.DataFrame()
+        period_prev = None
+        df_prev = pd.DataFrame()
 
     # ?? 憭雁蝭拚 chips嚗?撣??券?/??憿?/璈嚗??????????????????
     st.markdown("**蝭拚蝬剖漲嚗?*")
@@ -2831,7 +2575,8 @@ def section_4():
         rows = ""
         for idx, (k, v) in enumerate(series.head(5).items()):
             m = MEDAL[idx] if idx < len(MEDAL) else str(idx+1)
-            rows += f'<tr><td>{m} {str(k)[:20]}</td><td class="s4-rank-val">{int(v)}</td></tr>'
+            rows += (f'<tr><td style="text-align:left;font-size:12px">{m} {str(k)[:24]}</td>'
+                     f'<td class="s4-rank-val">{int(v)}</td></tr>')
         return f'''<table class="s4-rank-table">
           <thead><tr><th>{header1}</th><th>{header2}</th></tr></thead>
           <tbody>{rows}</tbody>
@@ -2866,30 +2611,40 @@ def section_4():
         if type_col and type_col in df_filt.columns:
             _tc = df_filt[type_col].value_counts()
             _total = _tc.sum()
+            COLORS_PIE = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"]
             fig_pie = px.pie(
                 values=_tc.values, names=_tc.index,
                 title=f"{period_label} 摰Ｚ迄憿??",
-                hole=0.35,
-                color_discrete_sequence=["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"],
+                hole=0.38,
+                color_discrete_sequence=COLORS_PIE,
             )
-            # 撠5%??敶Ｗ憿舐內?典?靘??踹?璅惜??
             fig_pie.update_traces(
-                texttemplate="%{label}<br>%{percent:.1%}",
-                textposition="auto",
-                textfont_size=12,
+                texttemplate="%{percent:.0%}",   # ?芸?耦?折＊蝷?%
+                textposition="inside",
+                textfont=dict(size=13, color="white"),
+                hovertemplate="<b>%{label}</b><br>%{value}隞?/ %{percent:.1%}<extra></extra>",
+                showlegend=True,
             )
+            # ??嚗??亙? + % + 隞嗆嚗?朣?撘?
+            _leg_labels = {
+                k: f"{k}  {int(v)/_total*100:.0f}%嚗int(v)}隞塚?"
+                for k, v in _tc.items()
+            }
+            fig_pie.for_each_trace(lambda t: t.update(name=_leg_labels.get(t.name, t.name)))
             fig_pie.update_layout(
-                height=420,
+                height=380,
                 showlegend=True,
                 legend=dict(
                     orientation="v",
                     yanchor="middle", y=0.5,
-                    xanchor="left", x=1.0,
+                    xanchor="left", x=1.02,
                     font=dict(size=12),
                     itemsizing="constant",
+                    bgcolor="rgba(0,0,0,0)",
+                    borderwidth=0,
                 ),
-                margin=dict(t=55, b=20, l=20, r=160),
-                title_font_size=15,
+                margin=dict(t=50, b=10, l=10, r=220),
+                title_font_size=14,
                 title_x=0.0,
             )
             st.plotly_chart(fig_pie, use_container_width=True)
@@ -2897,27 +2652,37 @@ def section_4():
     with chart_col2:
         if machine_col and machine_col in df_filt.columns and not df_filt[machine_col].dropna().empty:
             _mc = df_filt[machine_col].value_counts()
+            _mc_total = _mc.sum()
+            COLORS_MAC = ["#FF5000","#060E9F","#8EB9C9","#FFCE00"]
             fig_mac = px.pie(
                 values=_mc.values, names=_mc.index,
                 title=f"{period_label} 璈摰Ｚ迄雿?",
-                color_discrete_sequence=["#FF5000","#060E9F","#8EB9C9","#FFCE00"],
+                color_discrete_sequence=COLORS_MAC,
             )
             fig_mac.update_traces(
-                texttemplate="%{label}<br>%{percent:.1%}",
-                textposition="auto",
-                textfont_size=13,
+                texttemplate="%{percent:.0%}",
+                textposition="inside",
+                textfont=dict(size=14, color="white"),
+                hovertemplate="<b>%{label}</b><br>%{value}隞?/ %{percent:.1%}<extra></extra>",
             )
+            _leg_labels_mac = {
+                k: f"{k}  {int(v)/_mc_total*100:.0f}%嚗int(v)}隞塚?"
+                for k, v in _mc.items()
+            }
+            fig_mac.for_each_trace(lambda t: t.update(name=_leg_labels_mac.get(t.name, t.name)))
             fig_mac.update_layout(
-                height=420,
+                height=380,
                 showlegend=True,
                 legend=dict(
                     orientation="v",
                     yanchor="middle", y=0.5,
-                    xanchor="left", x=1.0,
+                    xanchor="left", x=1.02,
                     font=dict(size=12),
+                    bgcolor="rgba(0,0,0,0)",
+                    borderwidth=0,
                 ),
-                margin=dict(t=55, b=20, l=20, r=160),
-                title_font_size=15,
+                margin=dict(t=50, b=10, l=10, r=200),
+                title_font_size=14,
             )
             st.plotly_chart(fig_mac, use_container_width=True)
         elif detail_col and detail_col in df_filt.columns:
@@ -2927,7 +2692,7 @@ def section_4():
                 orientation="h", title=f"{period_label} TOP 8 ??蝝圈?",
                 color_discrete_sequence=["#060E9F"],
             )
-            fig_det.update_layout(height=420, xaxis=dict(tickformat="d", nticks=6),
+            fig_det.update_layout(height=420, xaxis=dict(dtick=1,tickformat="d"),
                                    margin=dict(t=45,b=0,l=0,r=0))
             st.plotly_chart(fig_det, use_container_width=True)
 
@@ -2949,7 +2714,7 @@ def section_4():
                                    annotation_text="?祆?", annotation_font_color="#060E9F")
         fig_line.update_layout(
             height=320, xaxis_title="??",
-            yaxis=dict(tickformat="d", nticks=6),
+            yaxis=dict(dtick=1, tickformat="d"),
             paper_bgcolor="white", plot_bgcolor="rgba(250,224,184,0.15)",
             margin=dict(t=45,b=0),
         )
@@ -2964,7 +2729,7 @@ def section_4():
                 title="???扳??乩辣??,
                 color_discrete_sequence=["#060E9F"],
             )
-            fig_daily.update_layout(height=300, yaxis=dict(tickformat="d", nticks=6), margin=dict(t=45,b=0))
+            fig_daily.update_layout(height=300, yaxis=dict(dtick=1, tickformat="d"), margin=dict(t=45,b=0))
             st.plotly_chart(fig_daily, use_container_width=True)
 
     # ?? ??撅???嚗??嚗????????????????????????????????????
@@ -3020,7 +2785,7 @@ def section_4():
             color=dept_col,
             color_discrete_map=DEPT_COLOR,
         )
-        fig_dept.update_layout(height=300, yaxis=dict(tickformat="d", nticks=6),
+        fig_dept.update_layout(height=300, yaxis=dict(dtick=1,tickformat="d"),
                                 showlegend=False, margin=dict(t=45,b=0))
         st.plotly_chart(fig_dept, use_container_width=True)
 
@@ -3469,47 +3234,76 @@ def section_4():
 
 def main():
     apply_brand_theme()
-    st.markdown("<div class='ecoco-banner'>ECOCO 客訴智能分析平台</div>", unsafe_allow_html=True)
-    st.session_state.setdefault("menu", "首頁")
+    st.markdown("<div class='ecoco-banner'>ECOCO 摰Ｚ迄?箄??撟喳</div>", unsafe_allow_html=True)
+    with st.sidebar:
+        st.markdown("<div class='side-title'>ECOCO AI</div>", unsafe_allow_html=True)
+        st.markdown("<div class='side-sub'>摰Ｚ迄????摰?/div>", unsafe_allow_html=True)
+        if "menu" not in st.session_state:
+            st.session_state["menu"] = "??”?"
+        if st.button("?妝 ??”?", use_container_width=True, type="primary" if st.session_state["menu"] == "??”?" else "secondary"):
+            st.session_state["menu"] = "??”?"
+        if st.button("? 銝瑼??嚗???嚗?, use_container_width=True, type="primary" if st.session_state["menu"] == "銝瑼??嚗???嚗? else "secondary"):
+            st.session_state["menu"] = "銝瑼??嚗???嚗?
+        if st.button("?? ?”??AI ??", use_container_width=True, type="primary" if st.session_state["menu"] == "?”??AI ??" else "secondary"):
+            st.session_state["menu"] = "?”??AI ??"
+        if st.button("??儭?甇瑕蝝??, use_container_width=True, type="primary" if st.session_state["menu"] == "甇瑕蝝?? else "secondary"):
+            st.session_state["menu"] = "甇瑕蝝??
+        if st.button("?? ????摮?撟游漲??", use_container_width=True, type="primary" if st.session_state["menu"] == "頞典??" else "secondary"):
+            st.session_state["menu"] = "頞典??"
+        menu = st.session_state["menu"]
 
-    nav_labels = ["首頁", "功能一", "功能二", "功能三", "功能四"]
-    nav_map = {
-        "首頁": "首頁",
-        "功能一": "上傳檔案區（分析區）",
-        "功能二": "圖表與 AI 分析",
-        "功能三": "歷史分析紀錄",
-        "功能四": "趨勢分析",
-    }
-    nav_cols = st.columns(len(nav_labels))
-    for idx, label in enumerate(nav_labels):
-        with nav_cols[idx]:
-            active = st.session_state["menu"] == nav_map[label]
-            if st.button(label, key=f"nav_{idx}", use_container_width=True, type="primary" if active else "secondary"):
-                st.session_state["menu"] = nav_map[label]
-
-    menu = st.session_state["menu"]
-    if menu == "首頁":
-        st.markdown("<div class='ecoco-card'><b>功能 1</b>：檔案上傳與分析。</div>", unsafe_allow_html=True)
-        st.markdown("<div class='ecoco-card'><b>功能 2</b>：圖表化與 AI 重點分析。</div>", unsafe_allow_html=True)
-        st.markdown("<div class='ecoco-card'><b>功能 3</b>：歷史分析紀錄。</div>", unsafe_allow_html=True)
-        st.markdown("<div class='ecoco-card'><b>功能 4</b>：ECOCO 客訴趨勢分析儀表板。</div>", unsafe_allow_html=True)
-    elif menu == "上傳檔案區（分析區）":
+    if menu == "??”?":
+        st.markdown(
+            """
+            <div class="ecoco-card">
+              <b>? 1</b>嚗???excel/csv/pdf嚗??蒂璅???憿???憿敦???舀銝??詨‵?楊頛胯祟?詻甈∪?貊楊頛??芷??頛?Excel????Google Sheet??
+            </div>
+            <div class="ecoco-card">
+              <b>? 2</b>嚗???蝯??”??憿舐內???辣?貉??曉?瘥?銝行?蝷箸飛撅祇?嚗?汗??頛?AI ??????
+            </div>
+            <div class="ecoco-card">
+              <b>? 3</b>嚗風?脣????恣????啁蔭??嚗?汗??頛?
+            </div>
+            <div class="ecoco-card">
+              <b>? 4</b>嚗???摮?撟游漲頞典????甇瑕蝝????隅?Ｗ?瘥I ??牧?勗??Ｙ??具?
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    elif menu == "銝瑼??嚗???嚗?:
         section_1()
-    elif menu == "圖表與 AI 分析":
+    elif menu == "?”??AI ??":
         section_2()
-    elif menu == "趨勢分析":
+    elif menu == "頞典??":
         section_4()
     else:
         section_3()
-
+        
+    # Use a fixed-position div to stay at the absolute bottom of the viewport
     st.markdown(
         """
         <style>
-            .fixed-footer { position: sticky; bottom: 0; width: 100%; text-align: center; color: #d9d9d9; font-size: 12px; margin: 36px 0 12px; padding: 12px 0; pointer-events: none; z-index: 0; }
-            .scroll-top-btn { position: fixed; right: 24px; bottom: 24px; z-index: 1000; border: 1px solid #8EB9C9; background: #FFFFFF; color: #060E9F; border-radius: 999px; padding: 18px 22px; font-size: 22px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+            .fixed-footer {
+                position: fixed;
+                bottom: 15px;
+                left: 0;
+                width: 100%;
+                text-align: center;
+                color: #888888;
+                font-size: 14px;
+                z-index: 99;
+                pointer-events: none; /* Don't block clicks to elements behind it */
+            }
+            /* Adjust for sidebar visibility if needed */
+            @media (min-width: 768px) {
+                .fixed-footer {
+                    padding-left: 5rem; /* Offset slightly to be visually centered in the main area */
+                }
+            }
         </style>
-        <div class="fixed-footer">202603© ECOCO宜可可循環經濟 客服課 ※ 請尊重智慧財產權 ※</div>
-        <button class="scroll-top-btn" onclick="window.parent.scrollTo({top:0, behavior:\"smooth\"});">置頂</button>
+        <div class="fixed-footer">
+            202603穢 ECOCO摰?臬儐?啁?瞈?摰Ｘ?隤???隢???扯瓷?Ｘ? ??
+        </div>
         """,
         unsafe_allow_html=True
     )
