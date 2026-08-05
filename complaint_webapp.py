@@ -1,4 +1,4 @@
-﻿import io
+import io
 import json
 import re
 import zipfile
@@ -33,7 +33,7 @@ except Exception:
     OpenAI = None
 
 
-st.set_page_config(page_title="ECOCO 摰Ｚ迄??撟喳", page_icon="??", layout="wide")
+st.set_page_config(page_title="ECOCO 客訴分析平台", page_icon="📊", layout="wide")
 
 TOPIC_DETAIL_MAP = {
     "APP使用問題類型": [
@@ -105,7 +105,7 @@ TYPE_OPTIONS = list(TOPIC_DETAIL_MAP.keys())
 DETAIL_OPTIONS = [d for lst in TOPIC_DETAIL_MAP.values() for d in lst]
 
 DEPT_OPTIONS = [
-    "營運部", "研發部", "廠務部", "人資部", "行銷部",
+    "營運部", "研發部", "廠務部", "人資部", "行銷部", 
     "資訊部", "企劃部", "財務部", "開發部", "總經理室"
 ]
 
@@ -120,16 +120,16 @@ DEPT_MAP = {
     "顧客關係類型": "營運部",
 }
 
-# ?? ECOCO ???莎?Pantone 撠?嚗??????????????????????????????
-BRAND_ORANGE  = "#FF5000"   # Pantone Orange 021 C  ??????
-BRAND_BLUE    = "#060E9F"   # Pantone Blue 072 C    ??鞈???/ 銝餃???
-BRAND_YELLOW  = "#FFCE00"   # Pantone 116 C         ??銵??
+# ── ECOCO 品牌色（Pantone 對應）──────────────────────────────
+BRAND_ORANGE  = "#FF5000"   # Pantone Orange 021 C  → 營運部
+BRAND_BLUE    = "#060E9F"   # Pantone Blue 072 C    → 資訊部 / 主圖色
+BRAND_YELLOW  = "#FFCE00"   # Pantone 116 C         → 行銷部
 BRAND_LBLUE   = "#8EB9C9"   # Pantone 550 C
 BRAND_BEIGE   = "#FAE0B8"   # Pantone P17-2 C
 BRAND_TEAL    = "#0076A9"   # Pantone 7690 C
 BRAND_WHITE   = "#FFFFFF"   # Pantone White C
 
-# ?券??箏??莎?Plotly color_discrete_map ?剁?
+# 部門固定色（Plotly color_discrete_map 用）
 DEPT_COLOR_MAP: dict[str, str] = {
     "營運部": BRAND_ORANGE,
     "行銷部": BRAND_YELLOW,
@@ -141,21 +141,21 @@ DEPT_COLOR_MAP: dict[str, str] = {
     "財務部": "#C8A0E0",
     "開發部": "#E0C8A0",
     "總經理室": "#A0E0C8",
-    "未分配": "#CCCCCC",
+    "未分配":  "#CCCCCC",
     "":        "#CCCCCC",
 }
 
-# ????/ 璈急???脫?摨?
+# 圓餅圖 / 橫條圖單色排序
 BRAND_PALETTE = [
     BRAND_BLUE, BRAND_ORANGE, BRAND_YELLOW,
     BRAND_LBLUE, BRAND_BEIGE, BRAND_TEAL,
 ]
 
 
-# ?? ???Ⅱ靽?CJK 摮??舐嚗?頛??湛???????????????????????????
+# ── 啟動時確保 CJK 字型可用（下載備援）──────────────────────────
 @st.cache_resource(show_spinner=False)
 def _ensure_cjk_font() -> str:
-    """??舐??CJK 摮?頝臬?嚗蝟餌絞瘝???頛 /tmp??"""
+    """回傳可用的 CJK 字型路徑；若系統沒有則下載到 /tmp。"""
     import os, glob
     CANDIDATES = [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
@@ -170,7 +170,7 @@ def _ensure_cjk_font() -> str:
     found = next((p for p in CANDIDATES if os.path.exists(p)), None)
     if found:
         return found
-    # 銝???/tmp
+    # 下載到 /tmp
     _dl = "/tmp/NotoSansCJK.ttc"
     URLS = [
         "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc",
@@ -190,9 +190,10 @@ HISTORY_DIR = Path("history_reports")
 HISTORY_DIR.mkdir(exist_ok=True)
 META_FILE = HISTORY_DIR / "history.json"
 DEFAULT_HISTORY_SHEET_ID = "1Sqh_8bXtFw7jvmCPufTpStKxfIafDzwYJRlgc0HFBSs"
+SHEET_CELL_CHAR_LIMIT = 49000
 
-# 蝭頝臬?嚗?蝙?刻?蝔???? 蝪∪蝭.pptx嚗歇?函?撘?韏琿蝵莎?
-TEMPLATE_PATH = Path(__file__).parent / "蝪∪蝭.pptx"
+# 範本路徑：優先使用與程式同目錄的 簡報範本.pptx（已隨程式一起部署）
+TEMPLATE_PATH = Path(__file__).parent / "簡報範本.pptx"
 
 
 @dataclass
@@ -225,7 +226,7 @@ def apply_brand_theme() -> None:
             font-size: 18px !important;
           }
           
-          /* Use Noto Sans TC Medium (500) for everything ??no bold allowed */
+          /* Use Noto Sans TC Medium (500) for everything — no bold allowed */
           h1, h2, h3, h4, h5, h6, .ecoco-banner, strong, b, .side-title, section[data-testid="stSidebar"] .stButton > button {
             font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
             font-weight: 500 !important;
@@ -244,7 +245,13 @@ def apply_brand_theme() -> None:
             padding: 14px 18px; border-radius: 12px;
             background: linear-gradient(90deg, var(--ecoco-orange), var(--ecoco-blue));
             color:white; font-weight:500; margin-bottom: 12px;
-            font-size: 20px !important;
+            font-size: 16px !important;
+          }
+          .feature-title {
+            color: #333333 !important;
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            margin: 0 0 10px 0;
           }
           .ecoco-card{
             border:1px solid #e7e7e7; border-left:6px solid var(--ecoco-orange);
@@ -268,14 +275,14 @@ def apply_brand_theme() -> None:
           /* Sidebar Text Overrides */
           .side-title {
             color: #ffffff !important;
-            font-weight: 500; font-size: 1.05rem; margin-bottom: 8px;
+            font-weight: 500; font-size: 16px !important; margin-bottom: 8px;
           }
           .side-sub {
             color: #ffffff !important;
-            font-size: 0.78rem; opacity: 0.85; margin-bottom: 14px;
+            font-size: 16px !important; opacity: 0.85; margin-bottom: 14px;
           }
           
-          /* Sidebar Buttons ??default = lightblue */
+          /* Sidebar Buttons — default = lightblue */
           section[data-testid="stSidebar"] .stButton > button {
             background-color: var(--ecoco-lightblue) !important;
             border-color: var(--ecoco-lightblue) !important;
@@ -292,11 +299,20 @@ def apply_brand_theme() -> None:
           /* Hover = white immediately */
           section[data-testid="stSidebar"] .stButton > button:hover,
           section[data-testid="stSidebar"] .stButton > button:focus,
+          section[data-testid="stSidebar"] .stButton > button:focus-visible,
           section[data-testid="stSidebar"] .stButton > button:active,
           section[data-testid="stSidebar"] .stButton > button[kind="primary"],
           section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
             background-color: #FFFFFF !important;
             border-color: #FFFFFF !important;
+            color: #333333 !important;
+          }
+          section[data-testid="stSidebar"] .stButton > button:hover *,
+          section[data-testid="stSidebar"] .stButton > button:focus *,
+          section[data-testid="stSidebar"] .stButton > button:focus-visible *,
+          section[data-testid="stSidebar"] .stButton > button:active *,
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"] *,
+          section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] * {
             color: #333333 !important;
           }
           
@@ -313,8 +329,18 @@ def apply_brand_theme() -> None:
             font-size:0.82rem; color:#333; white-space:nowrap;
             overflow:hidden; text-overflow:ellipsis; vertical-align:middle;
           }
+          .editor-toolbar-title {
+            font-size: 12px !important;
+            color: #333333 !important;
+            margin: 6px 0 4px;
+          }
+          [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+            border: 1.5px solid #555555 !important;
+            border-radius: 6px !important;
+            overflow-x: auto !important;
+          }
           
-          /* 蝘駁 arrow_down ?撱箏?蝷綽??踹??啣虜憿舐內蝝?摮?*/
+          /* 移除 arrow_down 及內建圖示，避免異常顯示純文字 */
           [data-testid="stExpanderToggleIcon"], .material-symbols-rounded {
               display: none !important;
           }
@@ -328,26 +354,116 @@ def apply_brand_theme() -> None:
 def analyze_complaint(subject: str, content: str) -> tuple[str, str]:
     s = subject if isinstance(subject, str) else ""
     c = content if isinstance(content, str) else ""
-    t = f"{s} {c}".lower()
+    t = (s + " " + c).lower()
 
-    if any(k in t for k in ["error", "exception", "失敗", "錯誤", "無法"]):
+    # 顧客關係類型
+    if "註冊" in t and "無法" in t:
         return "顧客關係類型", "其他建議"
-    if any(k in t for k in ["登入", "密碼", "帳號", "password", "login"]):
+    if any(k in t for k in ["不處理", "態度", "搞什麼", "不願意"]):
+        return "顧客關係類型", "其他建議"
+    if any(k in t for k in ["刪除帳號", "註銷"]):
+        return "顧客關係類型", "申請刪除帳號"
+    if any(k in t for k in ["手機號碼", "原帳號"]) and any(k in t for k in ["變更", "更改", "修改"]):
+        return "顧客關係類型", "更換帳號"
+    if any(k in t for k in ["更換帳號", "換帳號"]):
+        return "顧客關係類型", "更換帳號"
+    if any(k in t for k in ["新增站點", "設站", "建議", "許願"]):
+        return "顧客關係類型", "許願新增站點/設站建議"
+    if any(k in t for k in ["回收規則", "材質", "可回收"]):
+        return "顧客關係類型", "回收物使用規則"
+
+    # APP帳號設定
+    if any(k in t for k in ["驗證碼", "認證碼", "otp", "簡訊"]):
+        if "忘記密碼" in t:
+            return "APP帳號設定問題類型", "忘記密碼/無法重設密碼"
+        return "APP帳號設定問題類型", "無法接收簡訊驗證碼"
+    if any(k in t for k in ["修改", "更改", "更換"]) and any(k in t for k in ["帳號", "手機", "電話", "號碼"]):
+        return "APP帳號設定問題類型", "帳號資訊修改/設定"
+
+    # 登入問題
+    if any(k in t for k in ["登入", "登不進去"]) and any(k in t for k in ["螢幕", "機台", "黑掉"]) and any(k in t for k in ["無法", "不能", "失敗", "不了"]):
+        return "機台問題類型", "機台操作畫面無法登入"
+    if any(k in t for k in ["無法登入", "不能登入", "登不進去", "登入失敗", "登入不了"]):
         return "APP帳號設定問題類型", "APP無法登入"
-    if any(k in t for k in ["優惠券", "coupon", "折價券", "兌換"]):
-        return "優惠券問題類型", "兌換失敗/顯示錯誤"
-    if any(k in t for k in ["點數", "回饋", "積點", "point"]):
-        return "回收點數問題類型", "投入後未獲點數/點數未記錄"
-    if any(k in t for k in ["app", "手機", "畫面", "頁面"]):
+
+    # APP使用
+    if "可投數量" in t or ("app" in t and "顯示" in t and "0" not in t):
         return "APP使用問題類型", "APP畫面顯示與機台狀態不符"
-    if any(k in t for k in ["機台", "machine", "設備", "硬體"]):
+    if "顯示" in t and "不符" in t:
+        return "APP使用問題類型", "APP畫面顯示與機台狀態不符"
+    if any(k in t for k in ["app異常", "閃退", "轉圈", "更新"]):
+        return "APP使用問題類型", "APP多重異常狀況"
+
+    # 點數
+    if "點數" in t and any(k in t for k in ["未累積", "未增加", "沒有入帳", "未入帳"]):
+        return "回收點數問題類型", "點數未入帳號"
+    if ("點數" in t or "沒入點" in t or "計點" in t) and any(k in t for k in ["未入", "沒入", "不見", "沒記", "沒收到"]):
+        return "回收點數問題類型", "點數未入帳號"
+    if "點數" in t and any(k in t for k in ["重複", "多給", "多入"]):
+        return "回收點數問題類型", "點數重複入點"
+
+    # 優惠券
+    if any(k in t for k in ["優惠券", "兌換券", "折價", "序號", "抵用", "對換券", "票卷", "票夾", "條碼", "換這個"]):
+        if any(k in t for k in ["提前按下", "操作錯誤", "系統還沒更新", "已更換", "限制", "期限", "規則"]):
+            return "優惠券問題類型", "使用規則/限制條件說明"
+        if any(k in t for k in ["過期", "還原", "點到", "沒按出條碼"]):
+            return "優惠券問題類型", "無法進行兌換操作"
+        if any(k in t for k in ["已使用", "失敗", "錯誤", "不能用", "刷不過", "沒有跑出條碼", "這怎麼一回事"]):
+            return "優惠券問題類型", "兌換失敗/顯示錯誤"
+        if any(k in t for k in ["查詢", "紀錄", "找不到", "在哪"]):
+            return "優惠券問題類型", "查詢優惠券序號紀錄"
+        return "優惠券問題類型", "無法進行兌換操作"
+
+    # 機台問題
+    if any(k in t for k in ["處理中", "卡住"]) and "暫停不動" in t:
+        return "機台問題類型", "機台當機/無回應"
+    if "寶特瓶卡住" in t or "卡在" in t or ("黑色門" in t and "卡住" in t) or "卡瓶" in t:
+        return "機台問題類型", "投入物卡住_瓶罐/電池"
+    if any(k in t for k in ["投很多次", "無法辨識", "一直顯示", "不顯示綠燈", "辨識失敗", "辨識異常"]):
+        return "機台問題類型", "辨識失敗異常或錯誤"
+    if any(k in t for k in ["顯示0都沒有更新", "通報維修"]):
+        return "機台問題類型", "機台需維護/故障提醒"
+    if any(k in t for k in ["關閉", "設備不動", "不能使用", "撤機", "故障快", "沒開", "未開啟", "關機"]):
+        return "機台問題類型", "機台關閉/無法啟動"
+    if any(k in t for k in ["髒污不收", "清潔", "髒污"]):
+        return "機台問題類型", "機台髒污/需要清潔"
+    if any(k in t for k in ["當機", "故障訊息", "沒反應", "lag", "機台異常"]):
+        return "機台問題類型", "機台當機/無回應"
+    if any(k in t for k in ["滿倉", "收滿", "滿台"]):
+        return "機台問題類型", "瓶蓋桶已滿"
+    if "運轉不會停止" in t:
+        return "機台問題類型", "操作流程異常/無法正常操作"
+
+    # 其他原手機台問題
+    if any(k in t for k in ["履帶", "輸送帶", "傳送帶"]) and any(k in t for k in ["不動", "不轉", "異常"]):
+        return "機台問題類型", "履帶未作動或異常抖動"
+    if any(k in t for k in ["黑屏", "黑畫面", "螢幕異常", "畫面異常", "反光", "黑掉"]):
+        return "機台問題類型", "螢幕異常顯示/畫面異常"
+    if any(k in t for k in ["維護", "維修", "需維修", "故障提醒"]):
+        return "機台問題類型", "機台需維護/故障提醒"
+    if any(k in t for k in ["網路連線失敗", "連不上", "連線失敗"]) and "機台" in t:
+        return "機台問題類型", "機台網路連線失敗"
+    if any(k in t for k in ["網路不穩", "網路中斷"]):
+        return "機台問題類型", "網路中斷或不穩定"
+    if any(k in t for k in ["重量", "秤重", "偵測重量"]):
+        return "機台問題類型", "重量偵測異常"
+    if any(k in t for k in ["無法操作", "流程異常", "不能操作"]):
+        return "機台問題類型", "操作流程異常/無法正常操作"
+    if any(k in t for k in ["投入後沒點", "未獲點數", "未記錄"]):
+        return "機台問題類型", "投入後未獲點數/點數未記錄"
+    if any(k in t for k in ["中斷", "重啟", "重開機"]):
         return "機台問題類型", "機台運作中斷/重啟"
+    if any(k in t for k in ["艙門", "門沒關", "回收艙門"]):
+        return "機台問題類型", "回收艙門開啟"
+    if "綠燈" in t and "不能" in t:
+        return "機台問題類型", "投口綠燈拒收容器"
+
     return "顧客關係類型", "其他建議"
 
 
 def parse_pdf_to_df(file_obj) -> pd.DataFrame:
     if pdfplumber is None:
-        raise RuntimeError("需要 pdfplumber 才能解析 PDF")
+        raise RuntimeError("未安裝 pdfplumber，無法解析 PDF。")
     rows: list[dict] = []
     with pdfplumber.open(file_obj) as pdf:
         for p_idx, page in enumerate(pdf.pages, start=1):
@@ -376,7 +492,7 @@ def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
         return pd.read_csv(uploaded_file, encoding="utf-8", errors="replace")
     if suffix == ".pdf":
         return parse_pdf_to_df(uploaded_file)
-    raise ValueError(f"???excel / csv / pdf嚗?堆?{suffix or name}")
+    raise ValueError(f"僅支援 excel / csv / pdf，收到：{suffix or name}")
 
 
 def make_unique_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -419,12 +535,12 @@ def _is_valid_pair(t: str, d: str) -> bool:
 def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
     out = make_unique_columns(df.copy())
 
-    # ------ Preserve existing valid ??憿? + ??蝝圈? from source file ------
-    existing_type   = out["??憿?"].copy()   if "??憿?" in out.columns else pd.Series([""] * len(out))
-    existing_detail = out["??蝝圈?"].copy()   if "??蝝圈?" in out.columns else pd.Series([""] * len(out))
+    # ------ Preserve existing valid 問題類型 + 問題細項 from source file ------
+    existing_type   = out["問題類型"].copy()   if "問題類型" in out.columns else pd.Series([""] * len(out))
+    existing_detail = out["問題細項"].copy()   if "問題細項" in out.columns else pd.Series([""] * len(out))
 
     # Drop internal columns before re-adding
-    for c in ["??憿?", "??蝝圈?", "?詨?", "?券?", "?交?", "_ai_filled"]:
+    for c in ["問題類型", "問題細項", "選取", "部門", "日期", "_ai_filled"]:
         if c in out.columns:
             out = out.drop(columns=[c])
 
@@ -434,7 +550,7 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
         axis=1,
         result_type="expand",
     )
-    preds.columns = ["??憿?", "??蝝圈?"]
+    preds.columns = ["問題類型", "問題細項"]
     out = pd.concat([out, preds], axis=1)
 
     # ------ Merge: prefer original valid pair; fall back to AI prediction ------
@@ -443,37 +559,37 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
         orig_type   = str(existing_type.iloc[idx]).strip()
         orig_detail = str(existing_detail.iloc[idx]).strip()
         if _is_valid_pair(orig_type, orig_detail):
-            # Original is valid ??keep it, NOT AI-filled
-            out.iloc[idx, out.columns.get_loc("??憿?")] = orig_type
-            out.iloc[idx, out.columns.get_loc("??蝝圈?")] = orig_detail
+            # Original is valid → keep it, NOT AI-filled
+            out.iloc[idx, out.columns.get_loc("問題類型")] = orig_type
+            out.iloc[idx, out.columns.get_loc("問題細項")] = orig_detail
             ai_filled_flags.append(False)
         else:
-            # Original missing/invalid ??use AI prediction, mark as AI-filled
+            # Original missing/invalid → use AI prediction, mark as AI-filled
             ai_filled_flags.append(True)
 
     out["_ai_filled"] = ai_filled_flags
 
     # Final guard: ensure detail always belongs to its topic
-    out["??蝝圈?"] = out.apply(
-        lambda r: r["??蝝圈?"] if r["??蝝圈?"] in TOPIC_DETAIL_MAP.get(r["??憿?"], [])
-                  else TOPIC_DETAIL_MAP.get(r["??憿?"], ["?嗡?撱箄降"])[0],
+    out["問題細項"] = out.apply(
+        lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], [])
+                  else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
         axis=1,
     )
-    out["?詨?"] = False
-    out["?券?"] = out["??憿?"].map(DEPT_MAP).fillna("")
+    out["選取"] = False
+    out["部門"] = out["問題類型"].map(DEPT_MAP).fillna("")
     if cfg.date_col and cfg.date_col in out.columns:
-        out["?交?"] = pd.to_datetime(out[cfg.date_col], errors="coerce")
+        out["日期"] = pd.to_datetime(out[cfg.date_col], errors="coerce")
     return out
 
 
-# ?? Google Sheets 甇瑕蝝??銋? ????????????????????????????????????????????
-# Render ??蝣?甈⊿???皜征嚗蝙??Google Sheets 雿瘞訾??脣?敺垢??
-# ???Streamlit Secrets 閮剖?嚗?
+# ── Google Sheets 歷史紀錄持久化 ────────────────────────────────────────────
+# Render 的磁碟每次重啟會清空；使用 Google Sheets 作為永久儲存後端。
+# 需在 Streamlit Secrets 設定：
 #   HISTORY_SHEET_ID = "<your_spreadsheet_id>"
-#   [google_credentials]   ??service account JSON 甈?
+#   [google_credentials]   ← service account JSON 欄位
 
 def _get_gsheet_client():
-    """敺憓??豢? st.secrets ?? gspread client??""
+    """從環境變數或 st.secrets 取得 gspread client。"""
     try:
         import gspread as _gs
         from google.oauth2.service_account import Credentials as _Creds
@@ -481,12 +597,12 @@ def _get_gsheet_client():
         return None
     try:
         import os, json as _json
-        # ?? 1. ?芸?霈 Render ?啣?霈 ??
+        # ── 1. 優先讀 Render 環境變數 ──
         creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
         if creds_json:
             creds_dict = _json.loads(creds_json)
         else:
-            # ?? 2. ?嚗璈?st.secrets嚗?????憭???
+            # ── 2. 備用：本機 st.secrets（捕捉所有例外）──
             try:
                 raw = st.secrets.get("google_credentials", {})
                 creds_dict = dict(raw) if raw else {}
@@ -505,12 +621,12 @@ def _get_gsheet_client():
 
 
 def _history_sheet(log_error: bool = False):
-    """?甇瑕蝝?極雿”嚗仃????None?og_error=True ???航炊摮 session_state??""
+    """回傳歷史紀錄工作表；失敗回傳 None。log_error=True 時把錯誤存入 session_state。"""
     import os
     client = _get_gsheet_client()
     if client is None:
         if log_error:
-            st.session_state["_gsheet_error"] = "?⊥?撱箇? Google API ???嚗?蝣箄? GOOGLE_CREDENTIALS_JSON ?啣?霈?澆?甇?Ⅱ嚗?
+            st.session_state["_gsheet_error"] = "無法建立 Google API 連線（請確認 GOOGLE_CREDENTIALS_JSON 環境變數格式正確）"
         return None
     try:
         sid = os.environ.get("HISTORY_SHEET_ID", "").strip()
@@ -523,40 +639,96 @@ def _history_sheet(log_error: bool = False):
             sid = DEFAULT_HISTORY_SHEET_ID
         if not sid:
             if log_error:
-                st.session_state["_gsheet_error"] = "?芾身摰?HISTORY_SHEET_ID ?啣?霈"
+                st.session_state["_gsheet_error"] = "未設定 HISTORY_SHEET_ID 環境變數"
             return None
         ss = client.open_by_key(sid)
         try:
-            ws = ss.worksheet("甇瑕蝝??)
+            ws = ss.worksheet("歷史紀錄")
+            try:
+                header = ws.row_values(1)
+                if header[:5] != ["id", "created_at", "source_name", "rows", "data_ref"]:
+                    ws.update(values=[["id", "created_at", "source_name", "rows", "data_ref"]], range_name="A1:E1")
+            except Exception:
+                pass
             st.session_state.pop("_gsheet_error", None)
             return ws
         except Exception:
-            ws = ss.add_worksheet("甇瑕蝝??, rows=500, cols=6)
-            ws.append_row(["id", "created_at", "source_name", "rows", "excel_b64"])
+            ws = ss.add_worksheet("歷史紀錄", rows=500, cols=6)
+            ws.append_row(["id", "created_at", "source_name", "rows", "data_ref"])
             st.session_state.pop("_gsheet_error", None)
             return ws
     except Exception as e:
         err_str = str(e)
         if "PERMISSION_DENIED" in err_str or "403" in err_str:
-            msg = (f"Google Sheets API 甈??航炊????Google Cloud Console 蝣箄?撌脣??剁?\n"
+            msg = (f"Google Sheets API 權限錯誤。請至 Google Cloud Console 確認已啟用：\n"
                    f"1. Google Sheets API\n2. Google Drive API\n"
-                   f"?航炊嚗err_str[:200]}")
+                   f"錯誤：{err_str[:200]}")
         elif "NOT_FOUND" in err_str or "404" in err_str:
-            msg = f"閰衣?銵其?摮嚗D ?航?航炊嚗?{err_str[:200]}"
+            msg = f"試算表不存在（ID 可能錯誤）：{err_str[:200]}"
         else:
-            msg = f"Google Sheets ????航炊嚗err_str[:300]}"
+            msg = f"Google Sheets 連線錯誤：{err_str[:300]}"
         if log_error:
             st.session_state["_gsheet_error"] = msg
         return None
 
 
+def _sanitize_sheet_value(value, max_chars: int = SHEET_CELL_CHAR_LIMIT) -> str:
+    if pd.isna(value):
+        return ""
+    text = str(value)
+    if text.lower() in {"nan", "inf", "-inf", "infinity", "-infinity"}:
+        return ""
+    return text[:max_chars]
+
+
+def _sanitize_df_for_sheet(df: pd.DataFrame, max_chars: int = SHEET_CELL_CHAR_LIMIT) -> pd.DataFrame:
+    out = df.copy()
+    out = out.replace([float("inf"), float("-inf")], pd.NA)
+    out = out.astype(object).where(pd.notna(out), "")
+    mapper = lambda v: _sanitize_sheet_value(v, max_chars=max_chars)
+    if hasattr(out, "map"):
+        return out.map(mapper)
+    return out.apply(lambda col: col.map(mapper))
+
+
+def _history_data_sheet_name(item_id: str) -> str:
+    safe_id = re.sub(r"[^0-9A-Za-z_\\-]+", "_", str(item_id))[:80]
+    return f"history_{safe_id}"
+
+
+def _write_history_data_sheet(spreadsheet, worksheet_name: str, df: pd.DataFrame):
+    clean_df = _sanitize_df_for_sheet(df)
+    values = [clean_df.columns.tolist()] + clean_df.values.tolist()
+    rows = max(len(values), 1)
+    cols = max(len(clean_df.columns), 1)
+    try:
+        ws_data = spreadsheet.worksheet(worksheet_name)
+        ws_data.clear()
+        ws_data.resize(rows=max(rows, 100), cols=max(cols, 10))
+    except Exception:
+        ws_data = spreadsheet.add_worksheet(title=worksheet_name, rows=max(rows, 100), cols=max(cols, 10))
+    if values:
+        ws_data.update(values=values, range_name="A1")
+    return ws_data
+
+
+def _worksheet_to_dataframe(ws) -> pd.DataFrame:
+    values = ws.get_all_values()
+    if not values:
+        return pd.DataFrame()
+    header = values[0]
+    rows = values[1:]
+    width = len(header)
+    normalized = [(row + [""] * width)[:width] for row in rows]
+    return pd.DataFrame(normalized, columns=header)
+
+
 def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> tuple[Path, str, str]:
-    import base64
     today = datetime.now().strftime("%Y%m%d")
     ts = existing_id if existing_id else datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_name = f"{today}_??.xlsx"
+    output_name = f"{today}_分析.xlsx"
     excel_bytes = to_excel_bytes(df)
-    excel_b64 = base64.b64encode(excel_bytes).decode()
+    data_sheet_name = _history_data_sheet_name(ts)
 
     meta = {
         "id": ts, "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -564,36 +736,32 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
         "output_path": "", "rows": int(len(df)),
     }
 
-    # 1. session_state 敹怠?
-    if "_history_cache" not in st.session_state:
-        st.session_state["_history_cache"] = {}
-    st.session_state["_history_cache"][ts] = {"meta": meta, "excel_bytes": excel_bytes}
-
-    # 2. Google Sheets嚗偶銋?
+    saved_to_gsheet = False
+    # 1. Google Sheets（永久）
     ws = _history_sheet(log_error=True)
     if ws is not None:
         try:
+            _write_history_data_sheet(ws.spreadsheet, data_sheet_name, df)
             if existing_id:
                 rows = ws.get_all_values()
                 for i, row in enumerate(rows[1:], start=2):
                     if row and row[0] == existing_id:
                         ws.delete_rows(i); break
-            ws.append_row([ts, meta["created_at"], source_name, str(len(df)), excel_b64])
+            ws.append_row([ts, meta["created_at"], source_name, str(len(df)), f"sheet:{data_sheet_name}"])
             st.session_state.pop("_gsheet_error", None)
+            saved_to_gsheet = True
         except Exception as e:
-            st.session_state["_gsheet_error"] = f"甇瑕蝝?神??Google Sheets 憭望?嚗str(e)[:300]}"
+            st.session_state["_gsheet_error"] = f"歷史紀錄寫入 Google Sheets 失敗：{str(e)[:300]}"
 
-    # 3. ?祆?蝤?嚗??抬?
+    if saved_to_gsheet:
+        if "_history_cache" not in st.session_state:
+            st.session_state["_history_cache"] = {}
+        st.session_state["_history_cache"][ts] = {"meta": meta, "excel_bytes": excel_bytes}
+
+    # 2. 本機磁碟（只保存檔案，不作為歷史紀錄來源）
     output_path = HISTORY_DIR / f"{ts}_{output_name}"
     try:
         output_path.write_bytes(excel_bytes)
-        history = []
-        if META_FILE.exists():
-            try: history = json.loads(META_FILE.read_text(encoding="utf-8"))
-            except: pass
-        history = [i for i in history if i["id"] != ts]
-        history.insert(0, meta)
-        META_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         pass
     return output_path, output_name, ts
@@ -603,50 +771,46 @@ def load_history() -> list[dict]:
     import base64
     merged: dict[str, dict] = {}
 
-    # ?祆? JSON
-    if META_FILE.exists():
-        try:
-            for item in json.loads(META_FILE.read_text(encoding="utf-8")):
-                merged[item["id"]] = item
-        except Exception:
-            pass
-
-    # Google Sheets嚗??璈???舫?嚗?
+    # 只從 Google Sheets 讀取歷史紀錄，避免雲端無紀錄但網頁殘留。
     ws = _history_sheet()
-    if ws:
-        try:
-            for row in ws.get_all_values()[1:]:
-                if not row or not row[0]:
-                    continue
-                rid = row[0]
-                created_at = row[1] if len(row) > 1 else ""
-                sname = row[2] if len(row) > 2 else ""
-                rows_str = row[3] if len(row) > 3 else "0"
-                excel_b64 = row[4] if len(row) > 4 else ""
-                meta = {
-                    "id": rid, "created_at": created_at,
-                    "source_name": sname,
-                    "rows": int(rows_str) if rows_str.isdigit() else 0,
-                    "output_name": f"{rid}_??.xlsx", "output_path": "",
-                }
-                merged[rid] = meta
-                if "_history_cache" not in st.session_state:
-                    st.session_state["_history_cache"] = {}
-                if rid not in st.session_state["_history_cache"] and excel_b64:
-                    try:
-                        st.session_state["_history_cache"][rid] = {
-                            "meta": meta,
-                            "excel_bytes": base64.b64decode(excel_b64),
-                        }
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-    # session_state 鋆??嗆活?啣?
-    for rid, v in st.session_state.get("_history_cache", {}).items():
-        if rid not in merged:
-            merged[rid] = v["meta"]
+    if ws is None:
+        st.session_state["_history_cache"] = {}
+        return []
+    try:
+        for row in ws.get_all_values()[1:]:
+            if not row or not row[0]:
+                continue
+            rid = row[0]
+            created_at = row[1] if len(row) > 1 else ""
+            sname = row[2] if len(row) > 2 else ""
+            rows_str = row[3] if len(row) > 3 else "0"
+            data_ref = row[4] if len(row) > 4 else ""
+            meta = {
+                "id": rid, "created_at": created_at,
+                "source_name": sname,
+                "rows": int(rows_str) if rows_str.isdigit() else 0,
+                "output_name": f"{rid}_分析.xlsx", "output_path": "",
+            }
+            merged[rid] = meta
+            if "_history_cache" not in st.session_state:
+                st.session_state["_history_cache"] = {}
+            if rid not in st.session_state["_history_cache"] and data_ref:
+                try:
+                    if data_ref.startswith("sheet:"):
+                        data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
+                        hist_df = _worksheet_to_dataframe(data_ws)
+                        excel_bytes = to_excel_bytes(hist_df)
+                    else:
+                        excel_bytes = base64.b64decode(data_ref)
+                    st.session_state["_history_cache"][rid] = {
+                        "meta": meta,
+                        "excel_bytes": excel_bytes,
+                    }
+                except Exception:
+                    pass
+    except Exception:
+        st.session_state["_history_cache"] = {}
+        return []
 
     return sorted(merged.values(), key=lambda x: x.get("created_at", ""), reverse=True)
 
@@ -679,18 +843,28 @@ def delete_history(item_id: str):
 
 def generate_ai_summary(df: pd.DataFrame) -> str:
     if df.empty:
-        return "?桀?瘝??臬?????
+        return "目前沒有可分析資料。"
     total = len(df)
-    type_count = df["??憿?"].value_counts()
-    detail_count = df["??蝝圈?"].value_counts()
+    type_count = df["問題類型"].value_counts()
+    detail_count = df["問題細項"].value_counts()
     top_type = type_count.index[0]
     top_type_count = int(type_count.iloc[0])
     top_detail = detail_count.index[0]
     top_detail_count = int(detail_count.iloc[0])
+    dept_text = ""
+    if "部門" in df.columns and not df["部門"].dropna().empty:
+        dept_top = df["部門"].replace("", "未分配").value_counts().head(3)
+        dept_text = "；".join([f"{k} {int(v)} 件" for k, v in dept_top.items()])
+    detail_lines = []
+    for name, count in detail_count.head(5).items():
+        detail_lines.append(f"{name} {int(count)} 件")
+    detail_text = "；".join(detail_lines)
     return (
-        f"1) ?桀?銝餃????箝top_type}????{top_type_count} 隞塚??? {top_type_count/total:.1%}?n"
-        f"2) ?撣貉?蝝圈??胯top_detail}????{top_detail_count} 隞塚?撱箄降??芸??孵??n"
-        "3) 撱箄降隞?TOP3 ??撱箇?頝券??孵?隞餃?嚗蒂瘥梯蕭頩支辣?貉???蝯???
+        f"1) 自動摘要：本次共 {total} 件，主力問題為「{top_type}」{top_type_count} 件，占比 {top_type_count/total:.1%}。\n"
+        f"2) 細項說明：最高頻細項為「{top_detail}」{top_detail_count} 件；TOP5 為 {detail_text}。\n"
+        f"3) 部門觀察：{dept_text or '目前無明確部門欄位可判讀'}。\n"
+        "4) 初步判讀：請優先檢查高頻細項是否集中於特定站點、設備型態或操作流程，並比對近期是否有維修、活動或系統異動。\n"
+        "5) 建議行動：以 TOP3 問題建立改善任務，指定負責部門、預計完成日與每週追蹤指標。"
     )
 
 
@@ -705,18 +879,18 @@ def generate_ai_summary_llm(df: pd.DataFrame, model_name: str = "gpt-4o-mini") -
         api_key = st.session_state.get("OPENAI_API_KEY", "")
     if not api_key or OpenAI is None:
         return generate_ai_summary(df)
-    sample = df[["??憿?", "??蝝圈?", "?券?"]].head(300).to_dict(orient="records")
+    sample = df[["問題類型", "問題細項", "部門"]].head(300).to_dict(orient="records")
     payload = {
         "total_rows": len(df),
-        "top_types": df["??憿?"].value_counts().head(6).to_dict(),
-        "top_details": df["??蝝圈?"].value_counts().head(10).to_dict(),
+        "top_types": df["問題類型"].value_counts().head(6).to_dict(),
+        "top_details": df["問題細項"].value_counts().head(10).to_dict(),
         "sample_rows": sample,
     }
     prompt = (
-        "雿摰Ｘ??釭??憿批????函?擃葉?撓??-5暺?暺??澆?蝎曄陛嚗?
-        "?: 擃????賣?楊?券??芸??孵?撱箄降????銝?\n"
+        "你是客服品質分析顧問。請用繁體中文輸出3-5點重點，格式精簡，"
+        "包含: 高頻問題、可能根因、跨部門優先改善建議。資料如下:\n"
         f"{json.dumps(payload, ensure_ascii=False)}\n"
-        "隢?亙??綽?1. 蝡??????梢? (憒?敺摰寧?敺靘? 2. ??憿??敦???梢?(?擃?撣???
+        "請特別列出：1. 站點城市分布熱點 (如果從內容看得出來) 2. 問題類型與細項的熱點(最高頻的異常)。"
     )
     try:
         client = OpenAI(api_key=api_key)
@@ -738,13 +912,13 @@ def to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode("utf-8-sig")
 
 
-def to_pdf_bytes(df: pd.DataFrame) -> bytes:
+def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 1) -> bytes:
     """Generate PDF using fpdf2 + Noto CJK for Traditional Chinese support."""
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
     import os, glob
 
-    # ?? ?曉???憭??頝臬? ??
+    # ── 找字型：多重備援路徑 ──
     CJK_FONT_CANDIDATES = [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
@@ -758,17 +932,17 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
     CJK_FONT_CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
     CJK_FONT_CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.otf", recursive=True)
     font_path = next((p for p in CJK_FONT_CANDIDATES if os.path.exists(p)), None)
-    # 雿輻 _ensure_cjk_font 蝣箔???典???
+    # 使用 _ensure_cjk_font 確保有可用字型
     if not font_path:
         font_path = _ensure_cjk_font()
 
     table_df = df.copy()
-    drop_cols = [c for c in ["?詨?"] if c in table_df.columns]
+    drop_cols = [c for c in ["選取"] if c in table_df.columns]
     table_df = table_df.drop(columns=drop_cols).fillna("")
 
     PAGE_W_MM = 277.0
-    WIDE_COLS   = {"?冽?批捆", "銝餅", "??銝餅"}
-    MEDIUM_COLS = {"??蝝圈?", "??憿?", "?脖辣?交?", "?交???", "蝡??迂", "??蝝圈?"}
+    WIDE_COLS   = {"用戶內容", "主旨", "問題主旨"}
+    MEDIUM_COLS = {"問題細項", "問題類型", "進件日期", "日期時間", "站點名稱", "問題細項"}
     num_cols = len(table_df.columns)
     wide_count   = sum(1 for c in table_df.columns if c in WIDE_COLS)
     medium_count = sum(1 for c in table_df.columns if c in MEDIUM_COLS)
@@ -801,14 +975,24 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
         return s
 
     def fit_text_in_cell(pdf_obj, text, max_width, max_size=8, min_size=5):
-        """蝮桀?摮??游???拙?甈祝"""
+        """縮小字型直到文字適合欄寬"""
         for fs in range(max_size, min_size-1, -1):
             pdf_obj.set_font(FONT, size=fs)
             if pdf_obj.get_string_width(text) <= max_width - 1:
                 return fs
         return min_size
 
-    # 銵券嚗?葬撠誑?拇?甈祝嚗?
+    def draw_page_label():
+        label = f"{source_name or '分析檔案'}  {datetime.now().strftime('%Y/%m/%d')}  第 {download_count} 次"
+        pdf.set_xy(8, 4)
+        pdf.set_text_color(80, 80, 80)
+        pdf.set_font(FONT, size=7)
+        pdf.cell(0, 5, safe_text(label), align="L")
+        pdf.set_xy(10, 10)
+
+    draw_page_label()
+
+    # 表頭（自動縮小以適應欄寬）
     pdf.set_fill_color(0x06, 0x0E, 0x9F)
     pdf.set_text_color(255, 255, 255)
     for col in table_df.columns:
@@ -820,23 +1004,23 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
                  new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
     pdf.ln(HDR_H)
 
-    # ?? 鞈???獢?蝯曹? row_h 擃漲嚗?摮???銵???
+    # ── 資料列：框線統一 row_h 高度，文字疊加換行 ──
     pdf.set_font(FONT, size=FS_CELL)
     col_list = list(table_df.columns)
 
     for i, (_, row) in enumerate(table_df.iterrows()):
         fill_rgb = (0xEB, 0xF4, 0xFA) if i % 2 == 0 else (0xFF, 0xFF, 0xFF)
 
-        # ?? 皞???嚗?文?擗征?質???嚗??
+        # ── 準備文字（去除多餘空白與換行）──
         cell_texts = {
             col: safe_text(
-                " ".join(str(row[col]).split())   # 憭征?賢?雿萇?桐?蝛箸
+                " ".join(str(row[col]).split())   # 多空白合併為單一空格
                 .replace("  ", " ").strip()
             )
             for col in col_list
         }
 
-        # ?? 蝎曄Ⅱ閮?瘥?銵 ??
+        # ── 精確計算每欄行數 ──
         col_lines: dict[str, int] = {}
         for col in col_list:
             cw = col_widths[col] - 2
@@ -863,9 +1047,10 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
         max_lines = max(col_lines.values())
         row_h = max_lines * ROW_H
 
-        # ?? ??瑼Ｘ ??
+        # ── 換頁檢查 ──
         if pdf.get_y() + row_h > pdf.page_break_trigger:
             pdf.add_page()
+            draw_page_label()
             pdf.set_fill_color(0x06, 0x0E, 0x9F)
             pdf.set_text_color(255, 255, 255)
             for col in col_list:
@@ -882,56 +1067,56 @@ def to_pdf_bytes(df: pd.DataFrame) -> bytes:
         y0 = pdf.get_y()
         pdf.set_text_color(0x22, 0x22, 0x22)
 
-        # ?? Step 1嚗??急?甈?摨 + 摰獢?嚗絞銝 row_h嚗??
+        # ── Step 1：先畫每欄的底色 + 完整框線（統一 row_h）──
         x_cursor = x0
         for col in col_list:
             cw = col_widths[col]
-            # 摨憛急遛?湔
+            # 底色填滿整格
             pdf.set_fill_color(*fill_rgb)
             pdf.rect(x_cursor, y0, cw, row_h, style="F")
-            # 憭?蝺??湔擃漲嚗?
+            # 外框線（整格高度）
             pdf.set_draw_color(0x99, 0x99, 0x99)
             pdf.rect(x_cursor, y0, cw, row_h, style="D")
             x_cursor += cw
 
-        # ?? Step 2嚗???摮?multi_cell ?芰??嚗??急?蝺???
+        # ── Step 2：疊加文字（multi_cell 只畫文字，不畫框線）──
         x_cursor = x0
         for col in col_list:
             cw = col_widths[col]
             val = cell_texts[col]
-            pdf.set_xy(x_cursor + 0.5, y0 + 0.5)   # 0.5mm ?抒葬 padding
+            pdf.set_xy(x_cursor + 0.5, y0 + 0.5)   # 0.5mm 內縮 padding
             pdf.set_fill_color(*fill_rgb)
             pdf.multi_cell(
                 cw - 1, ROW_H, val,
-                border=0,          # 銝獢?嚗歇??Step 1 ?怠末嚗?
+                border=0,          # 不畫框線（已在 Step 1 畫好）
                 align="L", fill=False,
                 new_x=XPos.RIGHT, new_y=YPos.TOP,
                 max_line_height=ROW_H,
             )
             x_cursor += cw
 
-        pdf.set_draw_color(0, 0, 0)  # ?Ｗ儔暺
+        pdf.set_draw_color(0, 0, 0)  # 恢復黑色
         pdf.set_xy(x0, y0 + row_h)
 
-    # ?偏
+    # 頁尾
     pdf.set_y(-12)
     pdf.set_font(FONT, size=6)
     pdf.set_text_color(120, 120, 120)
-    pdf.cell(0, 6, safe_text(f"ECOCO 摰Ｚ迄???勗?  ??{len(table_df)} 蝑? ?Ｗ?交?嚗datetime.now().strftime('%Y/%m/%d')}"), align="C")
+    pdf.cell(0, 6, safe_text(f"ECOCO 客訴分析報告  共 {len(table_df)} 筆  產出日期：{datetime.now().strftime('%Y/%m/%d')}"), align="C")
 
     return bytes(pdf.output())
 
 def _setup_cjk_font() -> None:
-    """閮剖? matplotlib 銝剜?摮?嚗蝙??_ensure_cjk_font ??摮?頝臬???""
+    """設定 matplotlib 中文字型，使用 _ensure_cjk_font 取得字型路徑。"""
     import matplotlib.font_manager as fm
     import os
 
-    # ?? 撌脰身摰?撠梁?亥?????
+    # ── 已設定過就直接返回 ──
     current = plt.rcParams.get("font.family", "")
     if current and "sans-serif" not in str(current) and current != ["DejaVu Sans"]:
         return
 
-    # ?? ?芸?雿輻 _ensure_cjk_font 蝣箔?摮?摮 ??
+    # ── 優先使用 _ensure_cjk_font 確保字型存在 ──
     fp = _ensure_cjk_font()
     if fp and os.path.exists(fp):
         try:
@@ -942,7 +1127,7 @@ def _setup_cjk_font() -> None:
         except Exception:
             pass
 
-    # ?? 1. 撌脩頝臬?嚗buntu / Render / Debian嚗??
+    # ── 1. 已知路徑（Ubuntu / Render / Debian）──
     KNOWN_PATHS = [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
@@ -964,13 +1149,13 @@ def _setup_cjk_font() -> None:
             except Exception:
                 continue
 
-    # ?? 2. ????歇摰?摮???CJK ??
+    # ── 2. 掃描所有已安裝字型找 CJK ──
     CJK_KEYWORDS = [
         "Noto Sans CJK", "Noto Serif CJK", "Noto Sans TC",
         "MingLiU", "PMingLiU", "Microsoft JhengHei",
         "WenQuanYi", "Droid Sans Fallback", "AR PL UMing",
     ]
-    fm._load_fontmanager(try_read_cache=False)   # 撘瑕???
+    fm._load_fontmanager(try_read_cache=False)   # 強制重新掃描
     for kw in CJK_KEYWORDS:
         for f in fm.fontManager.ttflist:
             if kw.lower() in f.name.lower():
@@ -978,7 +1163,7 @@ def _setup_cjk_font() -> None:
                 plt.rcParams["axes.unicode_minus"] = False
                 return
 
-    # ?? 3. ?蝯?fallback嚗撠?????蝣???
+    # ── 3. 最終 fallback：至少關掉負號亂碼 ──
     plt.rcParams["axes.unicode_minus"] = False
 
 
@@ -987,26 +1172,26 @@ def build_chart_pack(df: pd.DataFrame,
                      color_pie: list[str] | None = None,
                      color_hbar: str | None = None) -> dict[str, bytes]:
     """Build chart PNG images for download/PPT.
-    color_bar  : ??憿??湔?????None = 靘????? ??亙銝 hex 撘瑕憟
-    color_pie  : 璈?????耦憿 list嚗one = BRAND_PALETTE
-    color_hbar : ?之蝝圈?璈急????莎?None = BRAND_BLUE
+    color_bar  : 問題類型直條圖 — None = 依部門品牌色; 或傳入單一 hex 強制套用
+    color_pie  : 機台圓餅圖各扇形顏色 list，None = BRAND_PALETTE
+    color_hbar : 十大細項橫條圖顏色，None = BRAND_BLUE
     """
     _setup_cjk_font()
 
     data = df.copy()
-    # ?? 璈憿?甇?????寡?/?寡?蝡????嗥璈???
-    if "璈憿?" in data.columns:
-        data["璈憿?"] = data["璈憿?"].apply(
-            lambda v: "?嗥璈? if ("?寡?" in str(v) or "?嗥" in str(v))
-            else ("?餅?璈? if "?餅?" in str(v) else str(v))
+    # ── 機台類型正規化：方舟/方舟站 → 收瓶機 ──
+    if "機台類型" in data.columns:
+        data["機台類型"] = data["機台類型"].apply(
+            lambda v: "收瓶機" if ("方舟" in str(v) or "收瓶" in str(v))
+            else ("電池機" if "電池" in str(v) else str(v))
         )
-    stats = data["??憿?"].value_counts().rename_axis("??憿?").reset_index(name="隞嗆")
-    stats["?曉?瘥?] = (stats["隞嗆"] / max(stats["隞嗆"].sum(), 1) * 100).round(1)
-    detail_stats = data["??蝝圈?"].value_counts().reset_index().head(10)
-    detail_stats.columns = ["??蝝圈?", "隞嗆"]
-    d = detail_stats.sort_values("隞嗆", ascending=True)
+    stats = data["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(1)
+    detail_stats = data["問題細項"].value_counts().reset_index().head(10)
+    detail_stats.columns = ["問題細項", "件數"]
+    d = detail_stats.sort_values("件數", ascending=True)
 
-    # ?? resolve colors ??
+    # ── resolve colors ──
     _pie_palette  = color_pie  if color_pie  else BRAND_PALETTE
     _hbar_color   = color_hbar if color_hbar else BRAND_BLUE
 
@@ -1015,50 +1200,50 @@ def build_chart_pack(df: pd.DataFrame,
             return [color_bar] * len(series)
         return [DEPT_COLOR_MAP.get(DEPT_MAP.get(t, ""), BRAND_ORANGE) for t in series]
 
-    # 1) ??憿??湔???
+    # 1) 問題類型直條圖
     fig1, ax1 = plt.subplots(figsize=(8, 4.5))
-    bc = _bar_colors_for(stats["??憿?"])
-    ax1.bar(stats["??憿?"], stats["隞嗆"], color=bc)
-    ax1.set_title("??憿???")
-    ax1.set_ylabel("隞嗆")
+    bc = _bar_colors_for(stats["問題類型"])
+    ax1.bar(stats["問題類型"], stats["件數"], color=bc)
+    ax1.set_title("問題類型分布")
+    ax1.set_ylabel("件數")
     ax1.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
     ax1.tick_params(axis="x", rotation=20)
     for i, r in stats.iterrows():
-        ax1.text(i, r["隞嗆"], f'{int(r["?曉?瘥?])}%', ha="center", va="bottom", fontsize=9)
+        ax1.text(i, r["件數"], f'{int(r["百分比"])}%', ha="center", va="bottom", fontsize=9)
     fig1.tight_layout()
     b1 = io.BytesIO(); fig1.savefig(b1, format="png", dpi=180); plt.close(fig1)
 
-    # 2) 璈????
+    # 2) 機台圓餅圖
     fig2, ax2 = plt.subplots(figsize=(6.2, 4.5))
-    df_machine = data[data["??憿?"] == "璈??憿?"].copy()
+    df_machine = data[data["問題類型"] == "機台問題類型"].copy()
     if df_machine.empty:
-        ax2.text(0.5, 0.5, "?⊥??啁????, ha="center", va="center", transform=ax2.transAxes)
+        ax2.text(0.5, 0.5, "無機台相關資料", ha="center", va="center", transform=ax2.transAxes)
         pie_counts = None
     else:
         def _get_mtype(row):
-            txt = str(row.get("?冽?批捆", "")) + " " + str(row.get("銝餅", ""))
-            if "?寡?" in txt: return "?寡?蝡?
-            if "?餅?" in txt: return "?餅?璈?
-            return "?嗥璈?
-        df_machine["璈璈?"] = df_machine.apply(_get_mtype, axis=1)
-        pie_counts = df_machine["璈璈?"].value_counts()
+            txt = str(row.get("用戶內容", "")) + " " + str(row.get("主旨", ""))
+            if "方舟" in txt: return "方舟站"
+            if "電池" in txt: return "電池機"
+            return "收瓶機"
+        df_machine["機台機型"] = df_machine.apply(_get_mtype, axis=1)
+        pie_counts = df_machine["機台機型"].value_counts()
         pc = _pie_palette[:len(pie_counts)]
         wedges, texts, autotexts = ax2.pie(
             pie_counts.values, labels=pie_counts.index, autopct="%1.1f%%",
             colors=pc, wedgeprops=dict(linewidth=1.5, edgecolor="white"),
         )
         for at in autotexts: at.set_fontsize(10)
-    ax2.set_title("璈??憿???")
+    ax2.set_title("機台問題類型分布")
     fig2.tight_layout()
     b2 = io.BytesIO(); fig2.savefig(b2, format="png", dpi=180); plt.close(fig2)
 
-    # 3) ?之蝝圈?璈急??? ?? 撘瑕??銝餉? #060E9F嚗?詨摨?
+    # 3) 十大細項橫條圖  ── 強制品牌主藍 #060E9F，整數刻度
     fig3, ax3 = plt.subplots(figsize=(8, 4.5))
     _hbar = _hbar_color if _hbar_color else "#060E9F"
-    ax3.barh(d["??蝝圈?"], d["隞嗆"], color=_hbar)
-    ax3.set_title("?之??蝝圈???")
-    ax3.set_xlabel("隞嗆")
-    # 撘瑕?湔?餃漲嚗辣?詨??箸?賂?
+    ax3.barh(d["問題細項"], d["件數"], color=_hbar)
+    ax3.set_title("十大問題細項分布")
+    ax3.set_xlabel("件數")
+    # 強制整數刻度（件數必為整數）
     from matplotlib.ticker import MultipleLocator
     ax3.xaxis.set_major_locator(MultipleLocator(1))
     ax3.xaxis.set_minor_locator(MultipleLocator(1))
@@ -1066,34 +1251,34 @@ def build_chart_pack(df: pd.DataFrame,
     fig3.tight_layout()
     b3 = io.BytesIO(); fig3.savefig(b3, format="png", dpi=180); plt.close(fig3)
 
-    # 4) Dashboard ??
+    # 4) Dashboard 合圖
     fig4 = plt.figure(figsize=(14, 5))
     gs = fig4.add_gridspec(1, 3)
     a1 = fig4.add_subplot(gs[0, 0])
     a2 = fig4.add_subplot(gs[0, 1])
     a3 = fig4.add_subplot(gs[0, 2])
-    a1.bar(stats["??憿?"], stats["隞嗆"], color=bc)
-    a1.set_title("??憿???")
+    a1.bar(stats["問題類型"], stats["件數"], color=bc)
+    a1.set_title("問題類型分布")
     a1.yaxis.set_major_locator(MultipleLocator(1))
     a1.tick_params(axis="x", rotation=18)
     if pie_counts is None:
-        a2.text(0.5, 0.5, "?⊥??啗???, ha="center", va="center", transform=a2.transAxes)
+        a2.text(0.5, 0.5, "無機台資料", ha="center", va="center", transform=a2.transAxes)
     else:
         a2.pie(pie_counts.values, labels=pie_counts.index, autopct="%1.1f%%",
                colors=_pie_palette[:len(pie_counts)],
                wedgeprops=dict(linewidth=1.5, edgecolor="white"))
-    a2.set_title("璈????")
-    a3.barh(d["??蝝圈?"], d["隞嗆"], color=_hbar)
+    a2.set_title("機台問題占比")
+    a3.barh(d["問題細項"], d["件數"], color=_hbar)
     a3.xaxis.set_major_locator(MultipleLocator(1))
     a3.set_xlim(left=0)
-    a3.set_title("?之蝝圈?")
+    a3.set_title("十大細項")
     fig4.tight_layout()
     b4 = io.BytesIO(); fig4.savefig(b4, format="png", dpi=180); plt.close(fig4)
 
     return {
-        "chart_??憿???.png": b1.getvalue(),
-        "chart_璈????.png": b2.getvalue(),
-        "chart_?之??蝝圈?.png": b3.getvalue(),
+        "chart_問題類型分布.png": b1.getvalue(),
+        "chart_機台問題占比.png": b2.getvalue(),
+        "chart_十大問題細項.png": b3.getvalue(),
         "chart_dashboard.png":    b4.getvalue(),
     }
 
@@ -1103,7 +1288,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                     chart_pack: Optional[dict[str, bytes]] = None) -> bytes:
     """
     Build a PPT presentation.
-    ?芸?雿輻???蝭嚗?曆??啣?敺瑽遣蝚血? ECOCO ??憸冽??敶梁???
+    優先使用同目錄的範本；若找不到則從零構建符合 ECOCO 品牌風格的投影片。
     """
     from pptx.util import Emu, Inches, Pt
     from pptx.enum.text import PP_ALIGN
@@ -1114,24 +1299,24 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
     BEIGE  = RGBColor(0xFA, 0xE0, 0xB8)
     DARK   = RGBColor(0x22, 0x22, 0x22)
     LGRAY  = RGBColor(0xE8, 0xF1, 0xF5)
-    FONT   = "MingLiU"   # 蝝唳?擃?
+    FONT   = "MingLiU"   # 細明體
 
-    # ?? ?岫頛蝭 ??
+    # ── 嘗試載入範本 ──
     _tpath = Path(template_path) if template_path else TEMPLATE_PATH
     use_template = _tpath.exists()
     prs = Presentation(str(_tpath)) if use_template else Presentation()
     if not use_template:
-        # 閮剖??蔣?之撠撖祈撟?16:9
+        # 設定投影片大小為寬螢幕 16:9
         prs.slide_width  = Inches(13.33)
         prs.slide_height = Inches(7.5)
 
     SW = prs.slide_width
     SH = prs.slide_height
 
-    # ?? 撠極????
+    # ── 小工具 ──
     def blank_layout():
         for lay in prs.slide_layouts:
-            if lay.name.lower() in ("blank", "蝛箇"):
+            if lay.name.lower() in ("blank", "空白"):
                 return lay
         return prs.slide_layouts[-1]
 
@@ -1167,7 +1352,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                 pass
 
     def add_header(slide, title_text, subtitle_text=""):
-        """?? ECOCO ????嚗??脤璇?+ 璅?嚗?""
+        """加上 ECOCO 品牌頁首（藍色長條 + 標題）"""
         add_rect(slide, 0, 0, SW/914400, 1.05, BLUE)
         add_text(slide, title_text, 0.3, 0.08, 9.0, 0.55,
                  20, bold=True, color=WHITE)
@@ -1178,17 +1363,17 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
     def delete_shape(sp):
         sp.element.getparent().remove(sp.element)
 
-    # ????????????????????????????????????????????????????????
-    #  雿輻蝭嚗?撖急?摮”?潦???
-    # ????????????????????????????????????????????????????????
+    # ════════════════════════════════════════════════════════
+    #  使用範本：覆寫文字、表格、圖片
+    # ════════════════════════════════════════════════════════
     if use_template:
         slides = list(prs.slides)
 
-        # --- 撠 (slide 0) ---
-        # 蝭?嚗椰?渲??脤?選???蔭??嚗??喳銝?摮?嚗?
-        #   Shape;99  ??銝餅?憿???晞?(l??.66, t??.18)
-        #   Shape;98  ???交?/鞈???(l??.14, t??.48)
-        #   Shape;96  ???砍??摨摮?(l??.67, t??.04)
+        # --- 封面 (slide 0) ---
+        # 範本版面：左側藍色面板（版面配置提供），右側三個文字框：
+        #   Shape;99  → 主標題「營運周報」 (l≈5.66, t≈2.18)
+        #   Shape;98  → 日期/資料列 (l≈6.14, t≈3.48)
+        #   Shape;96  → 公司名藍底白字 (l≈6.67, t≈5.04)
         s0 = slides[0]
         for sp in s0.shapes:
             if not sp.has_text_frame:
@@ -1197,25 +1382,25 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
             t_in = sp.top  / 914400
             raw  = sp.text_frame.text.strip()
 
-            # ?? 銝餅?憿???x>5" 銝?y<3"嚗?
+            # ── 主標題（在 x>5" 且 y<3"）
             if l_in > 5.0 and t_in < 3.0:
                 tf = sp.text_frame
                 tf.clear()
                 p = tf.paragraphs[0]
                 run = p.add_run()
-                run.text = "摰Ｚ迄??蝪∪"
+                run.text = "客訴分析簡報"
                 run.font.name  = FONT
                 run.font.bold  = True
                 run.font.size  = Pt(32)
                 run.font.color.rgb = RGBColor(0x16, 0x2B, 0x7E)
 
-            # ?? ?交?/鞈?甈???x>5" 銝?y ??3~5"嚗?
+            # ── 日期/資料欄（在 x>5" 且 y 在 3~5"）
             elif l_in > 5.0 and 3.0 <= t_in < 5.0:
                 tf = sp.text_frame
                 tf.clear()
                 for label, val in [
-                    ("?勗??交?", datetime.now().strftime("%Y/%m/%d")),
-                    ("?勗?鞈?", source_name),
+                    ("報告日期", datetime.now().strftime("%Y/%m/%d")),
+                    ("報告資料", source_name),
                 ]:
                     p = tf.add_paragraph()
                     run = p.add_run()
@@ -1225,20 +1410,20 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                     run.font.size  = Pt(18)
                     run.font.color.rgb = RGBColor(0x1A, 0x2A, 0x7F)
 
-            # ?? ?砍????x>6" 銝?y>=5" ??憛怨??嚗?
+            # ── 公司名（在 x>6" 且 y>=5" 或有填色藍底）
             elif l_in > 6.0 and t_in >= 4.8:
-                pass   # 靽??見?蝡??∩遢???砍??
+                pass   # 保留原樣「凡立橙股份有限公司」
 
         def _fill_slide(slide, title_txt, chart_key_list, add_table=True):
             SWi = prs.slide_width  / 914400
             SHi = prs.slide_height / 914400
 
-            # ?湔璅???嚗?撠??萄?嚗?
+            # 更新標題文字（比對關鍵字）
             for sp in slide.shapes:
                 if sp.has_text_frame:
                     txt = sp.text_frame.text
-                    if any(k in txt for k in ("摰Ｚ迄????", "璈??雿?", "璈?敦??,
-                                               "摰Ｚ迄??", "????", "20260")):
+                    if any(k in txt for k in ("客訴問題分析", "機台問題佔比", "機台與細項",
+                                               "客訴問題", "問題分析", "20260")):
                         tf = sp.text_frame; tf.clear()
                         p = tf.paragraphs[0]
                         run = p.add_run()
@@ -1248,7 +1433,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                         run.font.size = Pt(16)
                         run.font.color.rgb = BLUE
 
-            # ?園??暹? Table / Picture 雿蔭敺?歹?皜征?摰對?
+            # 收集現有 Table / Picture 位置後刪除（清空舊內容）
             tbl_rect = None
             pic_rects = []
             for sp in list(slide.shapes):
@@ -1260,16 +1445,16 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                     delete_shape(sp)
             pic_rects.sort(key=lambda x: x[0])
 
-            # ?? ?”?嚗?蝙?函??砌?雿?蝵殷??血??典摰漣璅???
+            # ── 圖表插入：優先使用範本佔位位置，否則用固定座標 ──
             if chart_pack:
                 if add_table:
-                    # slide 2嚗?憿???嚗”?澆椰??+ ?”?喳?
-                    # ?箏?摨扳?嚗?銵冽?喳
+                    # slide 2（問題分析）：表格左半 + 圖表右半
+                    # 固定座標：圖表放右側
                     chart_fixed = [
-                        (6.2, 1.15, SWi - 6.5, SHi - 1.4),   # ??憿???
+                        (6.2, 1.15, SWi - 6.5, SHi - 1.4),   # 問題類型分布
                     ]
                 else:
-                    # slide 3嚗??啁敦??嚗椰?喳??曆?撘萄?
+                    # slide 3（機台細項）：左右各放一張圖
                     chart_fixed = [
                         (0.3,              1.15, (SWi - 0.6) / 2,       SHi - 1.4),
                         (0.3 + (SWi-0.6)/2 + 0.15, 1.15, (SWi-0.6)/2, SHi - 1.4),
@@ -1279,16 +1464,16 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                     if key not in chart_pack:
                         continue
                     if idx < len(pic_rects):
-                        # 蝭??雿??????典?憪?蝵?
+                        # 範本有佔位圖片 → 用原始位置
                         add_img(slide, chart_pack[key],
                                 *[v / 914400 for v in pic_rects[idx]])
                     elif idx < len(chart_fixed):
-                        # 蝭瘝?雿? ???典摰漣璅?
+                        # 範本沒有佔位 → 用固定座標
                         add_img(slide, chart_pack[key], *chart_fixed[idx])
 
-            # ?? ?遣鞈?銵冽 ??
+            # ── 重建資料表格 ──
             if add_table:
-                # 憒?蝭??銵冽雿蔭撠望窒?剁??血??身撌血
+                # 如果範本有舊表格位置就沿用，否則預設左側
                 if tbl_rect:
                     tb_l, tb_t, tb_w, tb_h = tbl_rect
                 else:
@@ -1301,7 +1486,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                 col_ws = [Inches(2.4), Inches(0.8), Inches(1.0), Inches(1.5)]
                 for ci, cw in enumerate(col_ws):
                     tb.columns[ci].width = cw
-                for ci, hdr in enumerate(["??憿?", "隞嗆", "?曉?瘥?, "甇詨惇?券?"]):
+                for ci, hdr in enumerate(["問題類型", "件數", "百分比", "歸屬部門"]):
                     cell = tb.cell(0, ci)
                     cell.text = hdr
                     cell.fill.solid(); cell.fill.fore_color.rgb = BLUE
@@ -1313,11 +1498,11 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                             run.font.size  = Pt(13)
                             run.font.name  = FONT
                 for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), 1):
-                    try:   pct = f'{int(float(r["?曉?瘥?]))}%'
-                    except: pct = f'{r["?曉?瘥?]}%'
-                    dept = str(r.get("甇詨惇?券?", ""))
-                    vals = [str(r["??憿?"]), str(int(r["隞嗆"])), pct, dept]
-                    # 靘?憟???脩????
+                    try:   pct = f'{int(float(r["百分比"]))}%'
+                    except: pct = f'{r["百分比"]}%'
+                    dept = str(r.get("歸屬部門", ""))
+                    vals = [str(r["問題類型"]), str(int(r["件數"])), pct, dept]
+                    # 依部門套用品牌色為列底色
                     dept_hex = DEPT_COLOR_MAP.get(dept, "")
                     if dept_hex:
                         r_bg = RGBColor(
@@ -1325,7 +1510,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                             int(dept_hex[3:5], 16),
                             int(dept_hex[5:7], 16),
                         )
-                        # 瘛∪?嚗毽?亦??80%
+                        # 淡化：混入白色 80%
                         r_bg = RGBColor(
                             min(255, int(r_bg[0] * 0.25 + 255 * 0.75)),
                             min(255, int(r_bg[1] * 0.25 + 255 * 0.75)),
@@ -1346,43 +1531,43 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
 
         if len(slides) >= 2:
             _fill_slide(slides[1],
-                        f"{source_name} 摰Ｚ迄????",
-                        ["chart_??憿???.png"],
+                        f"{source_name} 客訴問題分析",
+                        ["chart_問題類型分布.png"],
                         add_table=True)
         if len(slides) >= 3:
             _fill_slide(slides[2],
-                        f"{source_name} 璈?敦????,
-                        ["chart_?之??蝝圈?.png", "chart_璈????.png"],
+                        f"{source_name} 機台與細項分析",
+                        ["chart_十大問題細項.png", "chart_機台問題占比.png"],
                         add_table=False)
 
-    # ????????????????????????????????????????????????????????
-    #  敺瑽遣嚗??砌?摮??
-    # ????????????????????????????????????????????????????????
+    # ════════════════════════════════════════════════════════
+    #  從零構建（範本不存在時）
+    # ════════════════════════════════════════════════════════
     else:
-        SWi = SW / 914400   # EMU ??inches
+        SWi = SW / 914400   # EMU → inches
         SHi = SH / 914400
 
-        # ?? Slide 1: 撠 ??
+        # ── Slide 1: 封面 ──
         s0 = prs.slides.add_slide(blank_layout())
-        add_rect(s0, 0, 0, SWi, SHi, BLUE)      # ?刻??
-        add_text(s0, "ECOCO 摰Ｚ迄??蝪∪",
+        add_rect(s0, 0, 0, SWi, SHi, BLUE)      # 全藍背景
+        add_text(s0, "ECOCO 客訴分析簡報",
                  1.0, SHi*0.25, SWi-2, 1.2, 36, bold=True,
                  color=WHITE, align=PP_ALIGN.CENTER)
-        add_text(s0, f"?勗??交?嚗datetime.now().strftime('%Y/%m/%d')}",
+        add_text(s0, f"報告日期：{datetime.now().strftime('%Y/%m/%d')}",
                  1.0, SHi*0.52, SWi-2, 0.5, 16,
                  color=BEIGE, align=PP_ALIGN.CENTER)
-        add_text(s0, f"鞈?靘?嚗source_name}",
+        add_text(s0, f"資料來源：{source_name}",
                  1.0, SHi*0.64, SWi-2, 0.5, 14,
                  color=BEIGE, align=PP_ALIGN.CENTER)
-        add_text(s0, "?∠?璈隞賣????,
+        add_text(s0, "凡立橙股份有限公司",
                  1.0, SHi*0.82, SWi-2, 0.4, 13,
                  color=WHITE, align=PP_ALIGN.CENTER)
 
-        # ?? Slide 2: ??憿??? ??
+        # ── Slide 2: 問題類型分析 ──
         s1 = prs.slides.add_slide(blank_layout())
-        add_header(s1, f"摰Ｚ迄???? ??{source_name}",
-                   f"?勗??交?嚗datetime.now().strftime('%Y/%m/%d')}?鞈?靘?嚗source_name}")
-        # 銵冽嚗椰??
+        add_header(s1, f"客訴問題分析 — {source_name}",
+                   f"報告日期：{datetime.now().strftime('%Y/%m/%d')}　資料來源：{source_name}")
+        # 表格（左半）
         rows_n = min(len(stats) + 1, 10)
         tbl_left = Inches(0.3); tbl_top = Inches(1.15)
         tbl_w    = Inches(5.8); tbl_h   = Inches(SHi - 1.4)
@@ -1391,7 +1576,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
         tb.columns[1].width = Inches(0.9)
         tb.columns[2].width = Inches(1.0)
         tb.columns[3].width = Inches(1.5)
-        for ci, hdr in enumerate(["??憿?", "隞嗆", "?曉?瘥?, "甇詨惇?券?"]):
+        for ci, hdr in enumerate(["問題類型", "件數", "百分比", "歸屬部門"]):
             c = tb.cell(0, ci); c.text = hdr
             c.fill.solid(); c.fill.fore_color.rgb = BLUE
             for para in c.text_frame.paragraphs:
@@ -1400,10 +1585,10 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                     run.font.bold = True; run.font.color.rgb = WHITE
                     run.font.size = Pt(12); run.font.name = FONT
         for ri, (_, r) in enumerate(stats.head(rows_n - 1).iterrows(), 1):
-            try:   pct = f'{int(float(r["?曉?瘥?]))}%'
-            except: pct = f'{r["?曉?瘥?]}%'
-            vals = [str(r["??憿?"]), str(r["隞嗆"]), pct,
-                    str(r.get("甇詨惇?券?", ""))]
+            try:   pct = f'{int(float(r["百分比"]))}%'
+            except: pct = f'{r["百分比"]}%'
+            vals = [str(r["問題類型"]), str(r["件數"]), pct,
+                    str(r.get("歸屬部門", ""))]
             bg = LGRAY if ri % 2 == 0 else BEIGE
             for ci, v in enumerate(vals):
                 c = tb.cell(ri, ci); c.text = v
@@ -1413,38 +1598,38 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
                     for run in para.runs:
                         run.font.size = Pt(11); run.font.color.rgb = DARK
                         run.font.name = FONT
-        # ?”嚗??
-        if chart_pack and "chart_??憿???.png" in chart_pack:
-            add_img(s1, chart_pack["chart_??憿???.png"],
+        # 圖表（右半）
+        if chart_pack and "chart_問題類型分布.png" in chart_pack:
+            add_img(s1, chart_pack["chart_問題類型分布.png"],
                     6.25, 1.15, SWi - 6.55, SHi - 1.4)
 
-        # ?? Slide 3: 璈?敦??????
+        # ── Slide 3: 機台與細項分析 ──
         s2 = prs.slides.add_slide(blank_layout())
-        add_header(s2, f"璈?敦??????{source_name}",
-                   f"?勗??交?嚗datetime.now().strftime('%Y/%m/%d')}")
+        add_header(s2, f"機台與細項分析 — {source_name}",
+                   f"報告日期：{datetime.now().strftime('%Y/%m/%d')}")
         half_w = (SWi - 0.6) / 2
         ch_t = 1.15; ch_h = SHi - 1.4
-        if chart_pack and "chart_璈????.png" in chart_pack:
-            add_img(s2, chart_pack["chart_璈????.png"],
+        if chart_pack and "chart_機台問題占比.png" in chart_pack:
+            add_img(s2, chart_pack["chart_機台問題占比.png"],
                     0.3, ch_t, half_w, ch_h)
-        if chart_pack and "chart_?之??蝝圈?.png" in chart_pack:
-            add_img(s2, chart_pack["chart_?之??蝝圈?.png"],
+        if chart_pack and "chart_十大問題細項.png" in chart_pack:
+            add_img(s2, chart_pack["chart_十大問題細項.png"],
                     0.3 + half_w + 0.15, ch_t, half_w, ch_h)
 
-    # ?? ?蝯?AI ?????蔣????楝敺????
+    # ── 最終：AI 重點分析投影片（所有路徑都加）──
     s_ai = prs.slides.add_slide(blank_layout())
     SWi2 = prs.slide_width  / 914400
     SHi2 = prs.slide_height / 914400
-    # ???
+    # 藍色頁首
     add_rect(s_ai, 0, 0, SWi2, 1.05, BLUE)
-    add_text(s_ai, "AI ??????",
+    add_text(s_ai, "AI 重點問題分析",
              0.3, 0.08, 9.0, 0.55, 20, bold=True, color=WHITE)
     add_text(s_ai,
-             f"鞈?靘?嚗source_name}??Ｗ?交?嚗datetime.now().strftime('%Y/%m/%d')}",
+             f"資料來源：{source_name}　產出日期：{datetime.now().strftime('%Y/%m/%d')}",
              0.3, 0.65, 10.5, 0.35, 11, color=BEIGE)
-    # 璈撌阡?獢?憌?
+    # 橘色左邊框裝飾
     add_rect(s_ai, 0.25, 1.15, 0.08, SHi2 - 1.35, ORANGE)
-    # AI ??獢?
+    # AI 文字框
     txb = s_ai.shapes.add_textbox(Inches(0.45), Inches(1.2),
                                    Inches(SWi2 - 0.65), Inches(SHi2 - 1.35))
     tf = txb.text_frame; tf.word_wrap = True
@@ -1456,7 +1641,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
         p = tf.paragraphs[0] if first else tf.add_paragraph()
         first = False
         p.space_before = Pt(4)
-        is_head = line[:2] in ('1)', '2)', '3)', '4)', '5)', '銝??, '鈭?, '銝?)
+        is_head = line[:2] in ('1)', '2)', '3)', '4)', '5)', '一、', '二、', '三、')
         run = p.add_run()
         run.text = line
         run.font.name  = FONT
@@ -1473,7 +1658,7 @@ def build_ppt_bytes(stats: pd.DataFrame, ai_text: str, source_name: str,
 def upload_to_google_sheet(df: pd.DataFrame, credentials_json: dict, spreadsheet_id: str, worksheet_name: str) -> None:
     import gspread as _gs
     from google.oauth2.service_account import Credentials as _Creds
-    # 敹???? spreadsheets ??drive scope
+    # 必須同時包含 spreadsheets 和 drive scope
     scopes = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/spreadsheets",
@@ -1485,41 +1670,42 @@ def upload_to_google_sheet(df: pd.DataFrame, credentials_json: dict, spreadsheet
         sh = client.open_by_key(spreadsheet_id)
     except Exception as e:
         raise PermissionError(
-            f"?⊥?摮?閰衣?銵剁?ID: {spreadsheet_id}嚗n"
-            f"隢Ⅱ隤歇撠岫蝞”?梁蝯佗?{credentials_json.get('client_email', '?')}\n"
-            f"???航炊嚗e}"
+            f"無法存取試算表（ID: {spreadsheet_id}）。\n"
+            f"請確認已將試算表共用給：{credentials_json.get('client_email', '?')}\n"
+            f"原始錯誤：{e}"
         )
+    clean_df = _sanitize_df_for_sheet(df)
+    values = [clean_df.columns.tolist()] + clean_df.values.tolist()
     try:
         ws = sh.worksheet(worksheet_name)
         ws.clear()
+        ws.resize(rows=max(len(values), 100), cols=max(len(clean_df.columns), 10))
     except Exception:
-        ws = sh.add_worksheet(title=worksheet_name, rows=1000, cols=30)
-    values = [df.columns.tolist()] + df.fillna("").astype(str).values.tolist()
-    ws.update(values)
+        ws = sh.add_worksheet(
+            title=worksheet_name,
+            rows=max(len(values), 100),
+            cols=max(len(clean_df.columns), 10),
+        )
+    if values:
+        ws.update(values=values, range_name="A1")
     return ws.url if hasattr(ws, 'url') else ""
 
 
 def section_1():
-    st.subheader("?銝嚗?獢??唾????")
-    st.markdown("<div class='ecoco-card'>?舀銝 excel / csv / pdf嚗??蒂?Ｗ??憿???憿敦??/div>", unsafe_allow_html=True)
+    st.markdown('<div class="feature-title">功能一：檔案上傳與分析區</div>', unsafe_allow_html=True)
+    st.markdown("<div class='ecoco-card'>支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。</div>", unsafe_allow_html=True)
 
-    # File info badge ??no long text, just a compact pill with truncated name
+    # File info badge — no long text, just a compact pill with truncated name
     if st.session_state.get("_uploaded_bytes") and st.session_state.get("_uploaded_name"):
         fname_short = st.session_state['_uploaded_name']
         if len(fname_short) > 30:
             fname_short = fname_short[:14] + "..." + fname_short[-12:]
-        col_badge, col_clear = st.columns([9, 1])
-        col_badge.markdown(
+        st.markdown(
             f"<span class='file-badge'>&#128196; {fname_short}</span>",
             unsafe_allow_html=True
         )
-        if col_clear.button("x 皜", help="皜?桀?瑼?嚗??唬???):
-            for key in ["_uploaded_bytes", "_uploaded_name", "_uploaded_type", "analysis_df", "source_name",
-                        "_editing_history_id", "_saved_history_id"]:
-                st.session_state.pop(key, None)
-            st.rerun()
 
-    uploaded = st.file_uploader("銝?唳?獢?, type=["xlsx", "xls", "csv", "pdf"], key="uploader")
+    uploaded = st.file_uploader("上傳新檔案", type=["xlsx", "xls", "csv", "pdf"], key="uploader")
     # Persist file bytes across menu switches
     if uploaded is not None:
         if uploaded.name != st.session_state.get("_uploaded_name"):
@@ -1534,7 +1720,7 @@ def section_1():
         saved_name = st.session_state.get("_uploaded_name", "file")
         buf = io.BytesIO(st.session_state["_uploaded_bytes"])
         df_raw_bytes = load_input_file(buf, filename=saved_name)
-        st.caption(f"撌脰???{saved_name}嚗?閮敺拙?嚗?鞈?蝑嚗len(df_raw_bytes)}")
+        st.caption(f"已載入 {saved_name}（從記憶復原），資料筆數：{len(df_raw_bytes)}")
         df_raw = make_unique_columns(df_raw_bytes)
         uploaded_name = saved_name
     elif uploaded is not None:
@@ -1543,10 +1729,10 @@ def section_1():
             io.BytesIO(st.session_state["_uploaded_bytes"]), filename=fname
         ))
         uploaded_name = uploaded.name
-        st.caption(f"撌脰???{uploaded.name}嚗????賂?{len(df_raw)}")
+        st.caption(f"已載入 {uploaded.name}，資料筆數：{len(df_raw)}")
     else:
         if "analysis_df" not in st.session_state:
-            st.info("隢??單?獢?憪???)
+            st.info("請上傳檔案開始分析。")
             return
         # Already analysed, show results without needing the raw file
         df_raw = None
@@ -1555,19 +1741,19 @@ def section_1():
     if df_raw is not None:
         cols = list(df_raw.columns)
         if not cols:
-            st.warning("瑼?瘝??舐甈???)
+            st.warning("檔案沒有可用欄位。")
             return
 
-        st.markdown("##### ???祟?貉?甈?閮剖?")
-        subject_col = st.selectbox("?冽憛怠神?蜓憿?雿?, options=cols, index=0)
-        content_col = st.selectbox("?冽?批捆甈?", options=cols, index=min(1, len(cols) - 1))
-        date_opt = ["(??"] + cols
-        date_col = st.selectbox("?交?甈?嚗憛恬?", options=date_opt, index=0)
-        pre_keyword = st.text_input("???祟?賊??萄?嚗蜓憿??批捆嚗憛恬?")
+        st.markdown("##### 分析前篩選與欄位設定")
+        subject_col = st.selectbox("用戶填寫的主題欄位", options=cols, index=0)
+        content_col = st.selectbox("用戶內容欄位", options=cols, index=min(1, len(cols) - 1))
+        date_opt = ["(無)"] + cols
+        date_col = st.selectbox("日期欄位（選填）", options=date_opt, index=0)
+        pre_keyword = st.text_input("分析前篩選關鍵字（主題/內容，選填）")
         cfg = AnalysisConfig(subject_col=subject_col, content_col=content_col,
-                             date_col=None if date_col == "(??" else date_col)
+                             date_col=None if date_col == "(無)" else date_col)
 
-        if st.button("????", type="primary"):
+        if st.button("開始分析", type="primary"):
             work = df_raw.copy()
             if pre_keyword:
                 work = work[
@@ -1581,8 +1767,8 @@ def section_1():
         return
     df = st.session_state["analysis_df"]
     c1, c2, c3 = st.columns([2, 2, 1])
-    keyword = c1.text_input("蝭拚嚗??萄?嚗蜓憿??批捆嚗?)
-    filter_type = c2.multiselect("蝭拚嚗?憿???, options=TYPE_OPTIONS, default=[])
+    keyword = c1.text_input("篩選：關鍵字（主題/內容）")
+    filter_type = c2.multiselect("篩選：問題類型", options=TYPE_OPTIONS, default=[])
     
     valid_details = DETAIL_OPTIONS
     if filter_type:
@@ -1590,7 +1776,7 @@ def section_1():
         for t in filter_type:
             valid_details.extend(TOPIC_DETAIL_MAP.get(t, []))
             
-    filter_detail = c3.multiselect("蝭拚嚗?憿敦??, options=valid_details, default=[])
+    filter_detail = c3.multiselect("篩選：問題細項", options=valid_details, default=[])
 
     show = make_unique_columns(df.copy())
     # hide_index=True alone sometimes still shows original integer index;
@@ -1602,15 +1788,15 @@ def section_1():
             | show[content_col].astype(str).str.contains(keyword, case=False, na=False)
         ]
     if filter_type:
-        show = show[show["??憿?"].isin(filter_type)]
+        show = show[show["問題類型"].isin(filter_type)]
     if filter_detail:
-        show = show[show["??蝝圈?"].isin(filter_detail)]
+        show = show[show["問題細項"].isin(filter_detail)]
 
-    st.markdown("#### ?舐楊頛舀?閮”嚗?港???+ ??蝺刻摩嚗?)
+    st.markdown('<div class="editor-toolbar-title">可編輯標記表（支援下拉 + 手動編輯）</div>', unsafe_allow_html=True)
 
-    # ---- AI憛怠璅內 ---
+    # ---- AI填入標示 ---
     ai_col = "_ai_filled"
-    MARKER_COL = "AI璅?"  # kept for save compatibility only
+    MARKER_COL = "AI標記"  # kept for save compatibility only
     has_ai_col = ai_col in show.columns
     n_ai = 0
     if has_ai_col:
@@ -1621,37 +1807,58 @@ def section_1():
             f"""
             <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
                         padding:8px 14px; margin-bottom:8px; font-size:0.85rem;'>
-              <b style='color:#cc0000;'>??AI ?芸?璅?</b>嚗 <b style='color:#cc0000;'>{n_ai} 蝑?/b> ??甈?蝛箇???
-              撌脩 AI ?寞?摰Ｚ迄?批捆?芸???憛怠??
-              隢?撠嗾蝑撠?憒?靽格隢?亙銵冽銝凋??????????脣?靽格?Ⅱ隤?
+              <b style='color:#cc0000;'>● AI 自動標記</b>：共 <b style='color:#cc0000;'>{n_ai} 筆</b> 原始欄位空白或無效，
+              已由 AI 根據客訴內容自動分析填入。
+              請針對這幾筆核對，如需修改請直接在表格中下拉選擇，再點「💾 儲存修改」確認。
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    st.caption("? ?湔?刻”?潔葉銝??豢???憿? / ??蝝圈?嚗矽?游???暺?????脣?靽格??)
+    st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
 
-    # ???閬＊蝷箇?甈?嚗Ⅱ靽??祇?? MARKER_COL 甇?Ⅱ?
+    tool_add, tool_add_btn, tool_del, tool_del_btn = st.columns([3, 1, 3, 1])
+    new_col_name = tool_add.text_input("新增直立欄位", value="", key="editor_new_col", placeholder="輸入欄位名稱")
+    if tool_add_btn.button("新增欄位", key="editor_add_col", use_container_width=True):
+        col_name = new_col_name.strip()
+        if not col_name:
+            st.warning("請輸入欄位名稱。")
+        elif col_name in st.session_state["analysis_df"].columns:
+            st.warning("欄位已存在。")
+        else:
+            st.session_state["analysis_df"][col_name] = ""
+            st.session_state.pop("editor_table", None)
+            st.rerun()
+    protected_cols = {"選取", MARKER_COL, ai_col}
+    deletable_cols = [c for c in st.session_state["analysis_df"].columns if c not in protected_cols]
+    del_col_name = tool_del.selectbox("選取欄位", options=deletable_cols, key="editor_delete_col")
+    if tool_del_btn.button("刪除整欄", key="editor_del_col", use_container_width=True):
+        if del_col_name:
+            st.session_state["analysis_df"] = st.session_state["analysis_df"].drop(columns=[del_col_name], errors="ignore")
+            st.session_state.pop("editor_table", None)
+            st.rerun()
+
+    # 重新處理要顯示的欄位，確保原本隱藏的 MARKER_COL 正確加入
     display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
     show_display = show[display_cols].reset_index(drop=True)
 
-    # ?啣?銝甈???閮策 AI 憛怠????
+    # 新增一欄字號標記給 AI 填入的資料
     if has_ai_col:
         flags = show[ai_col].reset_index(drop=True)
-        marker_vals = flags.map(lambda x: "潃?AI憛怠神)" if x else "")
+        marker_vals = flags.map(lambda x: "⭐(AI填寫)" if x else "")
     else:
         marker_vals = [""] * len(show_display)
         
     insert_idx = 1
-    if "?詨?" in show_display.columns:
-        insert_idx = show_display.columns.get_loc("?詨?") + 1
+    if "選取" in show_display.columns:
+        insert_idx = show_display.columns.get_loc("選取") + 1
     show_display.insert(insert_idx, MARKER_COL, marker_vals)
 
     # --- Select All Trigger ---
     cols_h = st.columns([13, 2])
-    if cols_h[1].button("漎??詨? / ??", key="toggle_all_btn", help="?券??瘨??):
-        all_sel = bool(df["?詨?"].all()) if "?詨?" in df.columns and not df.empty else False
-        st.session_state["analysis_df"]["?詨?"] = not all_sel
+    if cols_h[1].button("⬓ 選取 / 取消", key="toggle_all_btn", help="全選或取消全選"):
+        all_sel = bool(df["選取"].all()) if "選取" in df.columns and not df.empty else False
+        st.session_state["analysis_df"]["選取"] = not all_sel
         st.rerun()
 
     edited = st.data_editor(
@@ -1660,31 +1867,31 @@ def section_1():
         num_rows="dynamic",
         hide_index=True,
         column_config={
-            "?詨?": st.column_config.CheckboxColumn("?詨?", help="?暸閬甈∟?????),
-            MARKER_COL: st.column_config.TextColumn("?酉", disabled=True),
-            "??憿?": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
-            "??蝝圈?": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
-            "?券?": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
+            "選取": st.column_config.CheckboxColumn("選取", help="勾選要批次處理的列"),
+            MARKER_COL: st.column_config.TextColumn("備註", disabled=True),
+            "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
+            "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
+            "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
         },
         key="editor_table",
     )
 
-    # ?脣????刻”?潔???
+    # 儲存按鈕在表格下方
     sv_col1, sv_col2, sv_col3 = st.columns([2, 2, 6])
-    if sv_col1.button("? ?脣?靽格", use_container_width=True):
+    if sv_col1.button("💾 儲存修改", use_container_width=True):
         full_df = st.session_state["analysis_df"].copy()
-        # Drop the AI marker column and ?詨? before saving back
-        save_edited = edited.drop(columns=["?詨?", MARKER_COL], errors="ignore")
+        # Drop the AI marker column and 選取 before saving back
+        save_edited = edited.drop(columns=["選取", MARKER_COL], errors="ignore")
         full_df.update(save_edited)
         # Clear _ai_filled flags for all saved rows (user has confirmed)
         if "_ai_filled" in full_df.columns:
             full_df["_ai_filled"] = False
         st.session_state["analysis_df"] = full_df
         # Also push to drafts list
-        src_name = st.session_state.get("source_name", "?芸??)
+        src_name = st.session_state.get("source_name", "未命名")
         if "_draft_list" not in st.session_state:
             st.session_state["_draft_list"] = []
-        # Avoid duplicate same name drafts ??update existing
+        # Avoid duplicate same name drafts – update existing
         draft_ids = [d["name"] for d in st.session_state["_draft_list"]]
         if src_name not in draft_ids:
             st.session_state["_draft_list"].insert(0, {"name": src_name, "df": full_df.copy()})
@@ -1698,24 +1905,24 @@ def section_1():
         if st.session_state.get("_gsheet_error"):
             st.warning(st.session_state["_gsheet_error"])
         else:
-            st.success(f"撌脣摮src_name}??銝血歇?甇瑕蝝??)
+            st.success(f"已儲存「{src_name}」，並已加入歷史紀錄")
 
-    # 撌脣摮?蝔踹?銵?
+    # 已儲存草稿列表
     if st.session_state.get("_draft_list"):
         st.markdown("---")
-        st.markdown("##### 撌脣摮??阮")
+        st.markdown("##### 已儲存的草稿")
         for idx, draft in enumerate(st.session_state["_draft_list"]):
             d_col1, d_col2, d_col3, d_col4 = st.columns([5, 1, 1, 1])
             d_col1.markdown(
                 f"<div style='padding-top:0.45rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;'>"
-                f"?? {draft['name']}</div>",
+                f"📄 {draft['name']}</div>",
                 unsafe_allow_html=True
             )
-            if d_col2.button("[頛]", key=f"draft_load_{idx}", use_container_width=True):
+            if d_col2.button("[載入]", key=f"draft_load_{idx}", use_container_width=True):
                 st.session_state["analysis_df"] = draft["df"].copy()
                 st.session_state["source_name"] = draft["name"]
-                st.success(f"撌脰??乓draft['name']}???舐匱蝥楊頛胯?)
-            if d_col3.button("[靽格]", key=f"draft_edit_{idx}", use_container_width=True):
+                st.success(f"已載入「{draft['name']}」，可繼續編輯。")
+            if d_col3.button("[修改]", key=f"draft_edit_{idx}", use_container_width=True):
                 st.session_state["analysis_df"] = draft["df"].copy()
                 st.session_state["source_name"] = draft["name"]
                 st.rerun()
@@ -1723,49 +1930,51 @@ def section_1():
                 st.session_state["_draft_list"].pop(idx)
                 st.rerun()
 
-    st.markdown("##### ?寞活???摮?)
+    st.markdown("##### 批次處理與儲存")
     
     b1, b2, b3, b4 = st.columns([2, 2, 2, 2])
-    batch_type = b1.selectbox("?寞活??憿?", ["(銝???"] + TYPE_OPTIONS, key="batch_type_sel")
-    valid_batch_det = ["(銝???"]
-    if batch_type != "(銝???":
+    batch_type = b1.selectbox("批次問題類型", ["(不變更)"] + TYPE_OPTIONS, key="batch_type_sel")
+    valid_batch_det = ["(不變更)"]
+    if batch_type != "(不變更)":
         valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
-    batch_detail = b2.selectbox("?寞活??蝝圈?", valid_batch_det, key="batch_cat_sel")
+    batch_detail = b2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel")
 
-    if b3.button("撠??寡身摰??典???詨?", type="primary"):
-        if "?詨?" not in edited.columns or not edited["?詨?"].any():
-            st.warning("隢??刻”?澆?暸閬???鞈???")
+    if b3.button("將上方設定套用到所有勾選列", type="primary"):
+        if "選取" not in edited.columns or not edited["選取"].any():
+            st.warning("請先在表格內勾選要處理的資料列！")
         else:
-            mask = edited["?詨?"] == True
-            if batch_type != "(銝???":
-                edited.loc[mask, "??憿?"] = batch_type
-                edited.loc[mask, "?券?"] = edited.loc[mask, "??憿?"].map(DEPT_MAP).fillna("")
-            if batch_detail != "(銝???":
-                edited.loc[mask, "??蝝圈?"] = batch_detail
+            mask = edited["選取"] == True
+            if batch_type != "(不變更)":
+                edited.loc[mask, "問題類型"] = batch_type
+                edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("")
+            if batch_detail != "(不變更)":
+                edited.loc[mask, "問題細項"] = batch_detail
             # Auto-fix rows whose detail mismatches topic
-            edited["??蝝圈?"] = edited.apply(
-                lambda r: r["??蝝圈?"] if r["??蝝圈?"] in TOPIC_DETAIL_MAP.get(r["??憿?"], []) else TOPIC_DETAIL_MAP.get(r["??憿?"], ["?嗡?撱箄降"])[0],
+            edited["問題細項"] = edited.apply(
+                lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], []) else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
                 axis=1,
             )
             st.session_state["analysis_df"] = edited.copy()
+            st.session_state.pop("editor_table", None)
             st.session_state["_batch_applied"] = True
             st.rerun()
             
     if st.session_state.pop("_batch_applied", False):
-        st.success("撌脣??冽甈∠楊頛胯?)
+        st.success("已套用批次編輯。")
         
-    if b4.button("?芷?暸??):
-        if "?詨?" not in edited.columns or not edited["?詨?"].any():
-            st.warning("隢??刻”?澆?暸閬?斤?鞈???")
+    if b4.button("刪除勾選列"):
+        if "選取" not in edited.columns or not edited["選取"].any():
+            st.warning("請先在表格內勾選要刪除的資料列！")
         else:
-            st.session_state["analysis_df"] = edited[edited["?詨?"] != True].copy()
-            st.success("撌脣?文?詨???)
+            st.session_state["analysis_df"] = edited[edited["選取"] != True].copy()
+            st.session_state.pop("editor_table", None)
+            st.success("已刪除勾選列。")
             st.rerun()
 
     final_df = st.session_state["analysis_df"]
     
-    st.markdown("#### 銝???蝯? (銝?敺?飛瑼甇瑕蝝??")
-    dl_format = st.radio("?豢?銝??澆?", ["Excel", "CSV", "PDF"], horizontal=True)
+    st.markdown("#### 下載分析結果 (下載後自動歸檔至歷史紀錄)")
+    dl_format = st.radio("選擇下載格式", ["Excel", "CSV", "PDF"], horizontal=True)
     
     def on_download():
         existing_id = st.session_state.pop("_editing_history_id", "") or st.session_state.get("_saved_history_id", "")
@@ -1774,25 +1983,27 @@ def section_1():
         st.session_state["history_saved_msg"] = True
 
     if dl_format == "Excel":
-        out_name = f"{datetime.now().strftime('%Y%m%d')}_??.xlsx"
+        out_name = f"{datetime.now().strftime('%Y%m%d')}_分析.xlsx"
         data_bytes = to_excel_bytes(final_df)
         mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     elif dl_format == "CSV":
-        out_name = f"{datetime.now().strftime('%Y%m%d')}_??.csv"
+        out_name = f"{datetime.now().strftime('%Y%m%d')}_分析.csv"
         data_bytes = to_csv_bytes(final_df)
         mime = "text/csv"
     else:
-        out_name = f"{datetime.now().strftime('%Y%m%d')}_????pdf"
+        out_name = f"{datetime.now().strftime('%Y%m%d')}_分析單.pdf"
         try:
-            data_bytes = to_pdf_bytes(final_df)
+            dl_key = f"_pdf_download_count_{st.session_state.get('source_name', 'unknown')}"
+            st.session_state[dl_key] = int(st.session_state.get(dl_key, 0)) + 1
+            data_bytes = to_pdf_bytes(final_df, st.session_state.get("source_name", "unknown"), st.session_state[dl_key])
             mime = "application/pdf"
         except Exception as e:
-            st.error(f"PDF ?Ｙ??航炊: {e}")
+            st.error(f"PDF 產生錯誤: {e}")
             data_bytes = b""
             mime = "application/pdf"
 
     st.download_button(
-        label=f"? 銝? {dl_format} ?澆???",
+        label=f"📥 下載 {dl_format} 格式分析",
         data=data_bytes,
         file_name=out_name,
         mime=mime,
@@ -1800,117 +2011,120 @@ def section_1():
     )
     
     if st.session_state.get("history_saved_msg"):
-        st.success("瑼?撌脖?頛?銝西??摮甇瑕蝝??)
+        if st.session_state.get("_gsheet_error"):
+            st.warning(st.session_state["_gsheet_error"])
+        else:
+            st.success("檔案已下載，並自動保存至歷史紀錄。")
         st.session_state["history_saved_msg"] = False
 
-    st.markdown("#### ?????Ｗ")
+    st.markdown("#### 分析文字產出")
     summary_text = generate_ai_summary(final_df)
-    st.text_area("??蝯???", summary_text, height=120)
+    st.text_area("分析結果文字", summary_text, height=120)
     st.download_button(
-        "銝?????嚗xt嚗?,
+        "下載分析文字（txt）",
         data=summary_text.encode("utf-8"),
-        file_name=f"{datetime.now().strftime('%Y%m%d')}_????.txt",
+        file_name=f"{datetime.now().strftime('%Y%m%d')}_分析文字.txt",
         mime="text/plain",
     )
 
-    with st.expander("銝??Google Sheet"):
-        st.write("隢?靘?Service Account JSON ??Spreadsheet ID")
+    with st.expander("上傳到 Google Sheet"):
+        st.write("請提供 Service Account JSON 與 Spreadsheet ID")
         cred_file = st.file_uploader("Google Service Account JSON", type=["json"], key="gcp_json")
         spreadsheet_id = st.text_input("Spreadsheet ID")
-        ws_name = st.text_input("Worksheet ?迂", value=datetime.now().strftime("%Y%m%d_??"))
-        if st.button("銝 Google Sheet"):
+        ws_name = st.text_input("Worksheet 名稱", value=datetime.now().strftime("%Y%m%d_分析"))
+        if st.button("上傳 Google Sheet"):
             if not cred_file or not spreadsheet_id:
-                st.error("隢?銝 JSON 銝血‵撖?Spreadsheet ID??)
+                st.error("請先上傳 JSON 並填寫 Spreadsheet ID。")
             else:
                 try:
                     credentials_json = json.loads(cred_file.getvalue().decode("utf-8"))
                     upload_to_google_sheet(final_df, credentials_json, spreadsheet_id, ws_name)
-                    st.success(f"??撌脖??喳 Google Sheet 撌乩?銵剁?{ws_name}")
-                    st.info(f"?? Service Account嚗credentials_json.get('client_email', '')}")
+                    st.success(f"✅ 已上傳到 Google Sheet 工作表：{ws_name}")
+                    st.info(f"📋 Service Account：{credentials_json.get('client_email', '')}")
                 except PermissionError as e:
                     st.error(str(e))
-                    st.warning("?? 隢 Google 閰衣?銵典銝???具??銝 Service Account email嚗蒂蝯虫??楊頛航???)
+                    st.warning("👉 請到 Google 試算表右上角「共用」，加入上方 Service Account email，並給予「編輯者」權限")
                 except Exception as e:
-                    st.error(f"銝憭望?嚗e}")
+                    st.error(f"上傳失敗：{e}")
 
 
 def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: str = ""):
     """Render interactive Plotly charts with per-chart color pickers."""
 
-    # ?? 憿閮剖? expander ??????????????????????????????????????????
+    # ── 顏色設定 expander ──────────────────────────────────────────
     kp = key_prefix or "main"
-    with st.expander("? 隤踵?”憿嚗?靽格嚗?, expanded=False):
+    with st.expander("🎨 調整圖表顏色（可個別修改）", expanded=False):
         ca, cb, cc = st.columns(3)
-        # ??憿??湔????身???券????脯??暸敺???株
-        use_single_bar = ca.checkbox("?湔??蝙?典銝憿", key=f"{kp}_cb_bar")
-        c_bar_single   = ca.color_picker("?湔?????, value=BRAND_ORANGE, key=f"{kp}_cp_bar") if use_single_bar else None
+        # 問題類型直條圖：預設「依部門品牌色」，勾選後可指定單色
+        use_single_bar = ca.checkbox("直條圖使用單一顏色", key=f"{kp}_cb_bar")
+        c_bar_single   = ca.color_picker("直條圖顏色", value=BRAND_ORANGE, key=f"{kp}_cp_bar") if use_single_bar else None
 
-        # ?????憭???敶Ｙ蝡矽??
-        pie_c1 = cb.color_picker("????蝚??莎?銝鳴?", value=BRAND_BLUE,   key=f"{kp}_cp_pie1")
-        pie_c2 = cb.color_picker("????蝚??莎?甈∴?", value=BRAND_ORANGE, key=f"{kp}_cp_pie2")
-        pie_c3 = cb.color_picker("????蝚???,       value=BRAND_LBLUE,  key=f"{kp}_cp_pie3")
+        # 圓餅圖：最多3個扇形獨立調色
+        pie_c1 = cb.color_picker("圓餅圖 第1色（主）", value=BRAND_BLUE,   key=f"{kp}_cp_pie1")
+        pie_c2 = cb.color_picker("圓餅圖 第2色（次）", value=BRAND_ORANGE, key=f"{kp}_cp_pie2")
+        pie_c3 = cb.color_picker("圓餅圖 第3色",       value=BRAND_LBLUE,  key=f"{kp}_cp_pie3")
 
-        c_hbar = cc.color_picker("蝝圈?璈急?????, value=BRAND_BLUE, key=f"{kp}_cp_hbar")
+        c_hbar = cc.color_picker("細項橫條圖顏色", value=BRAND_BLUE, key=f"{kp}_cp_hbar")
 
     custom_pie   = [pie_c1, pie_c2, pie_c3] + BRAND_PALETTE[3:]
     custom_hbar  = c_hbar
 
-    # ?? ??????靘?Plotly + matplotlib ?梁嚗????????????????
-    df_machine = df[df["??憿?"] == "璈??憿?"].copy()
+    # ── 圓餅圖資料（供 Plotly + matplotlib 共用）────────────────
+    df_machine = df[df["問題類型"] == "機台問題類型"].copy()
     m_stats = None
     if not df_machine.empty:
         def _gmt(row):
-            txt = str(row.get("?冽?批捆", "")) + " " + str(row.get("銝餅", ""))
-            if "?寡?" in txt: return "?寡?蝡?
-            if "?餅?" in txt: return "?餅?璈?
-            return "?嗥璈?
-        df_machine["璈璈?"] = df_machine.apply(_gmt, axis=1)
-        m_stats = df_machine["璈璈?"].value_counts().reset_index()
-        m_stats.columns = ["璈?", "隞嗆"]
+            txt = str(row.get("用戶內容", "")) + " " + str(row.get("主旨", ""))
+            if "方舟" in txt: return "方舟站"
+            if "電池" in txt: return "電池機"
+            return "收瓶機"
+        df_machine["機台機型"] = df_machine.apply(_gmt, axis=1)
+        m_stats = df_machine["機台機型"].value_counts().reset_index()
+        m_stats.columns = ["機型", "件數"]
 
-    detail_stats = df["??蝝圈?"].value_counts().reset_index().head(10)
-    detail_stats.columns = ["??蝝圈?", "隞嗆"]
+    detail_stats = df["問題細項"].value_counts().reset_index().head(10)
+    detail_stats.columns = ["問題細項", "件數"]
 
     c1, c2, c3 = st.columns(3)
 
-    # ?? ??嚗?憿??璇? ????????????????????????????????????
+    # ── 圖1：問題類型直條圖 ────────────────────────────────────
     if use_single_bar:
-        fig1 = px.bar(stats, x="??憿?", y="隞嗆", text="?曉?瘥?,
-                      title="??憿???", color_discrete_sequence=[c_bar_single])
+        fig1 = px.bar(stats, x="問題類型", y="件數", text="百分比",
+                      title="問題類型分布", color_discrete_sequence=[c_bar_single])
         fig1.update_traces(marker_color=c_bar_single)
     else:
-        fig1 = px.bar(stats, x="??憿?", y="隞嗆",
-                      color="甇詨惇?券?", text="?曉?瘥?, title="??憿???",
+        fig1 = px.bar(stats, x="問題類型", y="件數",
+                      color="歸屬部門", text="百分比", title="問題類型分布",
                       color_discrete_map=DEPT_COLOR_MAP)
     fig1.update_traces(texttemplate="%{text}%", textposition="outside")
-    fig1.update_layout(height=420, yaxis=dict(dtick=1, tickformat="d"),
+    fig1.update_layout(height=420, yaxis=dict(tickformat="d", nticks=6),
                        margin=dict(t=45, b=0))
     c1.plotly_chart(fig1, use_container_width=True, key=f"{kp}_fig1")
 
-    # ?? ??嚗??啣?擗? ????????????????????????????????????????
+    # ── 圖2：機台圓餅圖 ────────────────────────────────────────
     if m_stats is not None:
-        cmap = {row["璈?"]: custom_pie[i % len(custom_pie)]
+        cmap = {row["機型"]: custom_pie[i % len(custom_pie)]
                 for i, row in m_stats.iterrows()}
-        fig2 = px.pie(m_stats, names="璈?", values="隞嗆",
-                      title="璈??蝝啣?瘥?", hole=0.3,
-                      color="璈?", color_discrete_map=cmap)
+        fig2 = px.pie(m_stats, names="機型", values="件數",
+                      title="機台問題細分比較", hole=0.3,
+                      color="機型", color_discrete_map=cmap)
         fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent+label")
         fig2.update_layout(height=420, margin=dict(t=45, b=0, l=0, r=0))
         c2.plotly_chart(fig2, use_container_width=True, key=f"{kp}_fig2")
     else:
-        c2.info("?⊥??啁???)
+        c2.info("無機台相關數據")
 
-    # ?? ??嚗?憭抒敦?帖璇? ????????????????????????????????????
-    fig3 = px.bar(detail_stats, x="隞嗆", y="??蝝圈?",
-                  orientation="h", title="?之??蝝圈???",
+    # ── 圖3：十大細項橫條圖 ────────────────────────────────────
+    fig3 = px.bar(detail_stats, x="件數", y="問題細項",
+                  orientation="h", title="十大問題細項分布",
                   color_discrete_sequence=[custom_hbar])
     fig3.update_traces(marker_color=custom_hbar)
     fig3.update_layout(height=420, yaxis={"categoryorder": "total ascending"},
-                       xaxis=dict(dtick=1, tickformat="d"),
+                       xaxis=dict(tickformat="d", nticks=6),
                        margin=dict(t=45, b=0, l=0, r=0))
     c3.plotly_chart(fig3, use_container_width=True, key=f"{kp}_fig3")
 
-    # ?? ??嗉?賊??脣???session_state 靘?PPT/ZIP 雿輻 ????????
+    # ── 把用戶自選顏色存進 session_state 供 PPT/ZIP 使用 ────────
     st.session_state[f"chart_colors_{kp}"] = {
         "bar":  c_bar_single if use_single_bar else None,
         "pie":  custom_pie,
@@ -1919,7 +2133,7 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
 
 
 def render_charts(df: pd.DataFrame, key_prefix: str = ""):
-    date_cols = [c for c in df.columns if "?交?" in c or "date" in c.lower()]
+    date_cols = [c for c in df.columns if "日期" in c or "date" in c.lower()]
     if date_cols:
         dcol = date_cols[0]
         try:
@@ -1928,80 +2142,80 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
             if not valid_dates.empty:
                 min_d = valid_dates.min().date()
                 max_d = valid_dates.max().date()
-                st.markdown("##### ???交????)
+                st.markdown("##### 分析日期區間")
                 c_d1, c_d2 = st.columns(2)
-                start_d = c_d1.date_input("韏瑕??交?", value=min_d, min_value=min_d, max_value=max_d, key=f"{key_prefix}_sd")
-                end_d   = c_d2.date_input("蝯??交?", value=max_d, min_value=min_d, max_value=max_d, key=f"{key_prefix}_ed")
+                start_d = c_d1.date_input("起始日期", value=min_d, min_value=min_d, max_value=max_d, key=f"{key_prefix}_sd")
+                end_d   = c_d2.date_input("結束日期", value=max_d, min_value=min_d, max_value=max_d, key=f"{key_prefix}_ed")
                 df = df[(df[dcol].dt.date >= start_d) & (df[dcol].dt.date <= end_d)]
         except Exception:
             pass
 
-    stats = df["??憿?"].value_counts().rename_axis("??憿?").reset_index(name="隞嗆")
-    stats["?曉?瘥?] = (stats["隞嗆"] / max(stats["隞嗆"].sum(), 1) * 100).round(0).astype(int)
-    stats["甇詨惇?券?"] = stats["??憿?"].map(DEPT_MAP).fillna("?芸???)
+    stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int)
+    stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("未分配")
 
     c1, c2, c3 = st.columns(3)
     
     fig1 = px.bar(
-        stats, x="??憿?", y="隞嗆", color="甇詨惇?券?", text="?曉?瘥?, title="??憿???",
+        stats, x="問題類型", y="件數", color="歸屬部門", text="百分比", title="問題類型分布",
         color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
     )
     fig1.update_traces(texttemplate="%{text}%", textposition="outside")
     fig1.update_layout(height=400)
     c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
 
-    df_machine = df[df["??憿?"] == "璈??憿?"].copy()
+    df_machine = df[df["問題類型"] == "機台問題類型"].copy()
     if not df_machine.empty:
         def get_machine_type(row):
-            txt = str(row.get("?冽?批捆", "")) + " " + str(row.get("銝餅", ""))
-            if "?寡?" in txt: return "?寡?蝡?
-            if "?餅?" in txt: return "?餅?璈?
-            return "?嗥璈?
-        df_machine["璈璈?"] = df_machine.apply(get_machine_type, axis=1)
-        m_stats = df_machine["璈璈?"].value_counts().reset_index()
-        m_stats.columns = ["璈?", "隞嗆"]
-        color_map = {row["璈?"]: BRAND_PALETTE[i % len(BRAND_PALETTE)]
+            txt = str(row.get("用戶內容", "")) + " " + str(row.get("主旨", ""))
+            if "方舟" in txt: return "方舟站"
+            if "電池" in txt: return "電池機"
+            return "收瓶機"
+        df_machine["機台機型"] = df_machine.apply(get_machine_type, axis=1)
+        m_stats = df_machine["機台機型"].value_counts().reset_index()
+        m_stats.columns = ["機型", "件數"]
+        color_map = {row["機型"]: BRAND_PALETTE[i % len(BRAND_PALETTE)]
                      for i, row in m_stats.iterrows()}
         fig2 = px.pie(
-            m_stats, names="璈?", values="隞嗆",
-            title="璈??蝝啣?瘥?", hole=0.3,
-            color="璈?", color_discrete_map=color_map,
+            m_stats, names="機型", values="件數",
+            title="機台問題細分比較", hole=0.3,
+            color="機型", color_discrete_map=color_map,
         )
         fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent+label")
         fig2.update_layout(height=400, margin=dict(t=40, b=0, l=0, r=0))
         c2.plotly_chart(fig2, use_container_width=True, key=f"{key_prefix}_fig2" if key_prefix else None)
     else:
-        c2.info("?⊥??啁???)
+        c2.info("無機台相關數據")
 
-    detail_stats = df["??蝝圈?"].value_counts().reset_index().head(10)
-    detail_stats.columns = ["??蝝圈?", "隞嗆"]
+    detail_stats = df["問題細項"].value_counts().reset_index().head(10)
+    detail_stats.columns = ["問題細項", "件數"]
     fig3 = px.bar(
-        detail_stats, x="隞嗆", y="??蝝圈?",
-        orientation="h", title="?之??蝝圈???",
+        detail_stats, x="件數", y="問題細項",
+        orientation="h", title="十大問題細項分布",
         color_discrete_sequence=[BRAND_BLUE],
     )
     fig3.update_traces(marker_color=BRAND_BLUE)
     fig3.update_layout(
         height=400,
         yaxis={"categoryorder": "total ascending"},
-        xaxis=dict(dtick=1, tickformat="d"),
+        xaxis=dict(tickformat="d", nticks=6),
         margin=dict(t=40, b=0, l=0, r=0),
     )
     c3.plotly_chart(fig3, use_container_width=True, key=f"{key_prefix}_fig3" if key_prefix else None)
 
 
 def section_2():
-    st.subheader("?鈭??”?? AI ????")
+    st.markdown('<div class="feature-title">功能二：圖表化與 AI 重點分析</div>', unsafe_allow_html=True)
     if "analysis_df" not in st.session_state:
-        st.info("隢??典??賭?摰?????)
+        st.info("請先在功能一完成分析。")
         return
     df_full = st.session_state["analysis_df"]
     if df_full.empty:
-        st.warning("?桀?瘝?鞈???)
+        st.warning("目前沒有資料。")
         return
 
     # --- Date range filter ---
-    date_cols = [c for c in df_full.columns if "?交?" in c or "date" in c.lower()]
+    date_cols = [c for c in df_full.columns if "日期" in c or "date" in c.lower()]
     df = df_full.copy()
     start_d = end_d = None
     if date_cols:
@@ -2012,71 +2226,71 @@ def section_2():
             if not valid_dates.empty:
                 min_d = valid_dates.min().date()
                 max_d = valid_dates.max().date()
-                st.markdown("##### ???交????)
+                st.markdown("##### 分析日期區間")
                 dr_col1, dr_col2 = st.columns(2)
-                start_d = dr_col1.date_input("韏瑕??交?", value=min_d, min_value=min_d, max_value=max_d)
-                end_d   = dr_col2.date_input("蝯??交?", value=max_d, min_value=min_d, max_value=max_d)
+                start_d = dr_col1.date_input("起始日期", value=min_d, min_value=min_d, max_value=max_d)
+                end_d   = dr_col2.date_input("結束日期", value=max_d, min_value=min_d, max_value=max_d)
                 df = df[(df[dcol].dt.date >= start_d) & (df[dcol].dt.date <= end_d)]
-                st.caption(f"?桀?憿舐內 {len(df)} 蝑?/ ??{len(df_full)} 蝑?)
+                st.caption(f"目前顯示 {len(df)} 筆 / 共 {len(df_full)} 筆")
         except Exception:
             pass
 
-    # 蝯? source_name = ?交?????冽 PPT 撠嚗?
+    # 組合 source_name = 日期區間（用於 PPT 封面）
     if start_d and end_d:
-        ppt_source = f"{start_d.strftime('%Y/%m/%d')}嚚end_d.strftime('%Y/%m/%d')}"
+        ppt_source = f"{start_d.strftime('%Y/%m/%d')}～{end_d.strftime('%Y/%m/%d')}"
     else:
         ppt_source = st.session_state.get("source_name", "unknown")
 
-    stats = df["??憿?"].value_counts().rename_axis("??憿?").reset_index(name="隞嗆")
-    stats["?曉?瘥?] = (stats["隞嗆"] / max(stats["隞嗆"].sum(), 1) * 100).round(0).astype(int)
-    stats["甇詨惇?券?"] = stats["??憿?"].map(DEPT_MAP).fillna("")
+    stats = df["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
+    stats["百分比"] = (stats["件數"] / max(stats["件數"].sum(), 1) * 100).round(0).astype(int)
+    stats["歸屬部門"] = stats["問題類型"].map(DEPT_MAP).fillna("")
 
     # Build totals row
-    total_count = int(stats["隞嗆"].sum())
-    dept_totals = stats.groupby("甇詨惇?券?")["隞嗆"].sum()
-    dept_summary = "  ".join([f"{d}:{int(n)}隞? for d, n in dept_totals.items() if d])
+    total_count = int(stats["件數"].sum())
+    dept_totals = stats.groupby("歸屬部門")["件數"].sum()
+    dept_summary = "  ".join([f"{d}:{int(n)}件" for d, n in dept_totals.items() if d])
     totals_row = pd.DataFrame([{
-        "??憿?": "[ ?? ]",
-        "隞嗆": total_count,
-        "?曉?瘥?: 100,
-        "甇詨惇?券?": dept_summary,
+        "問題類型": "[ 合計 ]",
+        "件數": total_count,
+        "百分比": 100,
+        "歸屬部門": dept_summary,
     }])
     stats_with_total = pd.concat([stats, totals_row], ignore_index=True)
 
-    st.markdown("#### 憿?隞嗆?? (?舐?亦楊頛荔??”?單??郊)")
+    st.markdown("#### 類型件數與部門 (可直接編輯，圖表即時同步)")
     edited_stats = st.data_editor(
         stats_with_total,
         use_container_width=True,
         hide_index=True,
         column_config={
-            "甇詨惇?券?": st.column_config.SelectboxColumn(options=DEPT_OPTIONS + [dept_summary]),
-            "?曉?瘥?: st.column_config.NumberColumn(format="%d %%")
+            "歸屬部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS + [dept_summary]),
+            "百分比": st.column_config.NumberColumn(format="%d %%")
         },
         key="stats_editor",
         num_rows="fixed",
     )
     # Use main stats (drop totals row) for charts
-    chart_stats = edited_stats[edited_stats["??憿?"] != "[ ?? ]"]
+    chart_stats = edited_stats[edited_stats["問題類型"] != "[ 合計 ]"]
     render_charts_from_stats(chart_stats, df, key_prefix="sec2")
 
-    st.markdown("#### AI ??????")
-    st.markdown("##### AI 閮剖?嚗憛恬?")
+    st.markdown("#### AI 問題重點分析")
+    st.markdown("##### AI 設定（選填）")
     col_ai_1, col_ai_2 = st.columns([3, 2])
-    key_input = col_ai_1.text_input("OpenAI API Key嚗?征?蝙?典撱箄???閬?", type="password")
-    model_name = col_ai_2.text_input("璅∪?", value="gpt-4o-mini")
+    key_input = col_ai_1.text_input("OpenAI API Key（若留空則使用內建規則摘要）", type="password")
+    model_name = col_ai_2.text_input("模型", value="gpt-4o-mini")
     if key_input:
         st.session_state["OPENAI_API_KEY"] = key_input
 
     ai_text = generate_ai_summary_llm(df, model_name=model_name)
-    st.text_area("?????汗", ai_text, height=140)
+    st.text_area("分析摘要預覽", ai_text, height=140)
 
-    # ?? ???Ｙ????頛?獢??踹? Streamlit on_click ??獢??芰????
+    # ── 預先產生所有下載檔案（避免 Streamlit on_click 時檔案還未產生）──
     chart_colors = st.session_state.get("chart_colors_sec2", {})
 
-    # ??session_state 敹怠?嚗??甈⊿?蝜芷??Ｙ?憭扳?
+    # 用 session_state 快取，避免每次重繪都重新產生大檔
     cache_key = f"chart_pack_{ppt_source}"
     if cache_key not in st.session_state:
-        with st.spinner("甇??Ｙ??”?陛??.."):
+        with st.spinner("正在產生圖表與簡報..."):
             try:
                 st.session_state[cache_key] = build_chart_pack(
                     df,
@@ -2085,25 +2299,25 @@ def section_2():
                     color_hbar=chart_colors.get("hbar"),
                 )
             except Exception as e:
-                st.error(f"?”?Ｙ?憭望?嚗e}")
+                st.error(f"圖表產生失敗：{e}")
                 st.session_state[cache_key] = {}
 
     chart_pack = st.session_state[cache_key]
 
     ppt_cache_key = f"ppt_bytes_{ppt_source}"
     if ppt_cache_key not in st.session_state:
-        with st.spinner("甇??Ｙ? PPT 蝪∪..."):
+        with st.spinner("正在產生 PPT 簡報..."):
             try:
                 st.session_state[ppt_cache_key] = build_ppt_bytes(
                     chart_stats, ai_text, ppt_source, chart_pack=chart_pack,
                 )
             except Exception as e:
-                st.error(f"PPT ?Ｙ?憭望?嚗e}")
+                st.error(f"PPT 產生失敗：{e}")
                 st.session_state[ppt_cache_key] = b""
 
     ppt_bytes = st.session_state[ppt_cache_key]
 
-    # ?? ?Ｙ? ZIP ??
+    # ── 產生 ZIP ──
     zip_cache_key = f"zip_bytes_{ppt_source}"
     if zip_cache_key not in st.session_state:
         try:
@@ -2116,32 +2330,32 @@ def section_2():
                     zf.writestr(zi, b)
             st.session_state[zip_cache_key] = zip_buf.getvalue()
         except Exception as e:
-            st.error(f"ZIP ?Ｙ?憭望?嚗e}")
+            st.error(f"ZIP 產生失敗：{e}")
             st.session_state[zip_cache_key] = b""
 
     zip_bytes = st.session_state[zip_cache_key]
 
-    # ?? 銝???嚗?獢歇???末嚗??
+    # ── 下載按鈕（檔案已預先備好）──
     dl_col1, dl_col2, dl_col3 = st.columns(3)
     dl_col1.download_button(
-        "漎? 銝? AI ????瑼?,
+        "⬇️ 下載 AI 分析文字檔",
         data=ai_text.encode("utf-8"),
-        file_name=f"{datetime.now().strftime('%Y%m%d')}_AI????.txt",
+        file_name=f"{datetime.now().strftime('%Y%m%d')}_AI重點分析.txt",
         mime="text/plain",
         use_container_width=True,
     )
     dl_col2.download_button(
-        "漎? 銝??”??嚗IP嚗?,
+        "⬇️ 下載圖表圖檔（ZIP）",
         data=zip_bytes,
-        file_name=f"{datetime.now().strftime('%Y%m%d')}_?”??.zip",
+        file_name=f"{datetime.now().strftime('%Y%m%d')}_圖表圖檔.zip",
         mime="application/zip",
         use_container_width=True,
         disabled=not zip_bytes,
     )
     dl_col3.download_button(
-        "漎? 銝?萎?頛??陛??PPT",
+        "⬇️ 一鍵下載分析簡報 PPT",
         data=ppt_bytes,
-        file_name=f"{datetime.now().strftime('%Y%m%d')}_??蝪∪.pptx",
+        file_name=f"{datetime.now().strftime('%Y%m%d')}_分析簡報.pptx",
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         use_container_width=True,
         disabled=not ppt_bytes,
@@ -2150,26 +2364,26 @@ def section_2():
 
 
 def section_3():
-    st.subheader("?銝?甇瑕??蝝??)
+    st.markdown('<div class="feature-title">功能三：歷史分析紀錄</div>', unsafe_allow_html=True)
 
-    # ?? Google Sheets ????????
+    # ── Google Sheets 連線狀態 ──
     import os
     has_creds = bool(os.environ.get("GOOGLE_CREDENTIALS_JSON", ""))
     has_sid   = bool(os.environ.get("HISTORY_SHEET_ID", ""))
     ws_test   = _history_sheet()
     if ws_test is not None:
-        st.success("?? Google Sheets 撌脤??嚗風?脩??偶銋?摮?)
+        st.success("☁️ Google Sheets 已連線，歷史紀錄永久保存")
     elif has_creds and has_sid:
         ws_test2 = _history_sheet(log_error=True)
         err_detail = st.session_state.get("_gsheet_error", "")
-        st.warning(f"?? ?啣?霈撌脰身摰????憭望?\n{err_detail}")
-        st.info("? 隢 Google Cloud Console 蝣箄?撌脣???**Google Sheets API** ??**Google Drive API**嚗nhttps://console.cloud.google.com/apis/library")
+        st.warning(f"⚠️ 環境變數已設定但連線失敗\n{err_detail}")
+        st.info("💡 請到 Google Cloud Console 確認已啟用 **Google Sheets API** 與 **Google Drive API**：\nhttps://console.cloud.google.com/apis/library")
     else:
-        st.info("?對? ?芷?? Google Sheets嚗風?脩????甈∠汗")
+        st.info("ℹ️ 未連線 Google Sheets，歷史紀錄僅限本次瀏覽")
 
     history = load_history()
     if not history:
-        st.info("撠甇瑕蝝??)
+        st.info("尚無歷史紀錄。")
         return
 
     # De-duplicate
@@ -2182,12 +2396,12 @@ def section_3():
             deduped.append(item)
     history = deduped
 
-    # ?? ?交???祟?詨 ?????????????????????????????????????????
+    # ── 日期區間篩選器 ─────────────────────────────────────────
     st.markdown("---")
-    st.markdown("##### ?? ?交???祟?賂??祟?豢??＊蝷箇???")
+    st.markdown("##### 📅 日期區間篩選（有篩選時才顯示紀錄）")
     f_col1, f_col2, f_col3 = st.columns([2, 2, 1])
 
-    # ????????交?蝭?
+    # 取得所有紀錄的日期範圍
     all_dates = []
     for item in history:
         try:
@@ -2201,20 +2415,20 @@ def section_3():
     else:
         min_date = max_date = datetime.now().date()
 
-    start_filter = f_col1.date_input("???交?", value=None, min_value=min_date, max_value=max_date,
+    start_filter = f_col1.date_input("開始日期", value=None, min_value=min_date, max_value=max_date,
                                       key="s3_start", format="YYYY/MM/DD")
-    end_filter   = f_col2.date_input("蝯??交?", value=None, min_value=min_date, max_value=max_date,
+    end_filter   = f_col2.date_input("結束日期", value=None, min_value=min_date, max_value=max_date,
                                       key="s3_end", format="YYYY/MM/DD")
-    do_filter = f_col3.button("?? 蝭拚", key="s3_filter", use_container_width=True)
+    do_filter = f_col3.button("🔍 篩選", key="s3_filter", use_container_width=True)
 
-    # ?臬撌脣??祟??
+    # 是否已啟動篩選
     filter_active = start_filter is not None or end_filter is not None
 
     if not filter_active:
-        st.caption("隢??????祟?詻????喳憿舐內閰脣???甇瑕蝝??)
+        st.caption("請選擇日期區間後按「篩選」按鈕，即可顯示該區間的歷史紀錄。")
         return
 
-    # 靘????瞈?
+    # 依日期區間過濾
     filtered = []
     for item in history:
         try:
@@ -2228,10 +2442,10 @@ def section_3():
             filtered.append(item)
 
     if not filtered:
-        st.info(f"??豢????{start_filter} 嚚?{end_filter}嚗甇瑕蝝??)
+        st.info(f"所選日期區間（{start_filter} ～ {end_filter}）無歷史紀錄。")
         return
 
-    st.caption(f"?望??{len(filtered)} 蝑???)
+    st.caption(f"共找到 {len(filtered)} 筆紀錄")
     history = filtered
 
     for item in history:
@@ -2239,7 +2453,7 @@ def section_3():
         cache = st.session_state.get("_history_cache", {})
         item_id = item["id"]
 
-        # ?? excel bytes嚗?蝣???session_state 敹怠?嚗歇??load_history 敺?Sheets 憛怠嚗?
+        # 取得 excel bytes：磁碟 → session_state 快取（已由 load_history 從 Sheets 填入）
         dl_bytes = None
         df_hist  = None
         if out_path.exists():
@@ -2256,32 +2470,32 @@ def section_3():
                 dl_bytes = None
 
         if dl_bytes is None:
-            continue   # ???曆??堆?頝喲?
+            continue   # 真的找不到，跳過
         
         sname = item.get('source_name', '')
         if len(sname) > 28:
             sname = sname[:14] + "..." + sname[-10:]
-        label = f"{item['created_at'][:16]}  {sname}  ({item['rows']} 蝑?"
+        label = f"{item['created_at'][:16]}  {sname}  ({item['rows']} 筆)"
         with st.expander(label):
-            tab_data, tab_chart, tab_ai = st.tabs(["鞈??汗", "?”??", "AI ????"])
+            tab_data, tab_chart, tab_ai = st.tabs(["資料預覽", "圖表分析", "AI 重點摘要"])
             
             with tab_data:
                 st.dataframe(df_hist.head(30), use_container_width=True, hide_index=True)
                 col1, col2, col3 = st.columns([1, 1, 1])
                 col1.download_button(
-                    "銝?閰脣???",
+                    "下載該分析檔",
                     data=dl_bytes,
                     file_name=item["output_name"],
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key=f"download_{item['id']}",
                 )
-                if col2.button("[蝺刻摩]", key=f"edit_{item['id']}"):
+                if col2.button("[編輯]", key=f"edit_{item['id']}"):
                     st.session_state["analysis_df"] = df_hist.copy()
                     st.session_state["source_name"] = item["source_name"]
                     st.session_state["_editing_history_id"] = item["id"]
-                    st.session_state["menu"] = "銝瑼??嚗???嚗?
+                    st.session_state["menu"] = "上傳檔案區（分析區）"
                     st.rerun()
-                if col3.button("[?芷]", key=f"del_{item['id']}"):
+                if col3.button("[刪除]", key=f"del_{item['id']}"):
                     delete_history(item["id"])
                     st.rerun()
             
@@ -2289,9 +2503,9 @@ def section_3():
                 if not df_hist.empty:
                     render_charts(df_hist, key_prefix=f"hist_{item['id']}")
                     cdl1, cdl2 = st.columns(2)
-                    hist_stats = df_hist["??憿?"].value_counts().rename_axis("??憿?").reset_index(name="隞嗆")
-                    hist_stats["?曉?瘥?] = (hist_stats["隞嗆"] / max(hist_stats["隞嗆"].sum(), 1) * 100).round(0).astype(int)
-                    hist_stats["甇詨惇?券?"] = hist_stats["??憿?"].map(DEPT_MAP).fillna("")
+                    hist_stats = df_hist["問題類型"].value_counts().rename_axis("問題類型").reset_index(name="件數")
+                    hist_stats["百分比"] = (hist_stats["件數"] / max(hist_stats["件數"].sum(), 1) * 100).round(0).astype(int)
+                    hist_stats["歸屬部門"] = hist_stats["問題類型"].map(DEPT_MAP).fillna("")
                     hist_ai = generate_ai_summary(df_hist)
                     hist_chart_pack = build_chart_pack(df_hist)
 
@@ -2302,9 +2516,9 @@ def section_3():
                         chart_pack=hist_chart_pack,
                     )
                     cdl1.download_button(
-                        "銝?萎?頛PT",
+                        "一鍵下載PPT",
                         data=hist_ppt,
-                        file_name=f"{datetime.now().strftime('%Y%m%d')}_{safe_filename(item.get('source_name','history'))}_?”??.pptx",
+                        file_name=f"{datetime.now().strftime('%Y%m%d')}_{safe_filename(item.get('source_name','history'))}_圖表分析.pptx",
                         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                         key=f"hist_ppt_{item['id']}",
                     )
@@ -2312,36 +2526,36 @@ def section_3():
                     with zipfile.ZipFile(hist_zip, "w", zipfile.ZIP_DEFLATED) as zf:
                         for fn, b in hist_chart_pack.items():
                             zi = zipfile.ZipInfo(fn)
-                            zi.flag_bits |= 0x800  # UTF-8 filename flag嚗?葉??蝣?
+                            zi.flag_bits |= 0x800  # UTF-8 filename flag，避免中文亂碼
                             zi.compress_type = zipfile.ZIP_DEFLATED
                             zf.writestr(zi, b)
                     cdl2.download_button(
-                        "銝???嚗IP嚗?,
+                        "下載圖檔（ZIP）",
                         data=hist_zip.getvalue(),
-                        file_name=f"{datetime.now().strftime('%Y%m%d')}_{safe_filename(item.get('source_name','history'))}_?”.zip",
+                        file_name=f"{datetime.now().strftime('%Y%m%d')}_{safe_filename(item.get('source_name','history'))}_圖表.zip",
                         mime="application/zip",
                         key=f"hist_img_{item['id']}",
                     )
                 else:
-                    st.info("?∟??蝜芸?")
+                    st.info("無資料可繪圖")
                     
             with tab_ai:
-                st.info("暺?銝???單????祆?獢? AI ????")
-                if st.button("[?Ｙ? AI ??]", key=f"ai_btn_{item['id']}"):
-                    with st.spinner("AI ??銝?.."):
+                st.info("點擊下方按鈕即時生成本檔案的 AI 重點摘要")
+                if st.button("[產生 AI 摘要]", key=f"ai_btn_{item['id']}"):
+                    with st.spinner("AI 分析中..."):
                         ai_result = generate_ai_summary_llm(df_hist)
                         st.markdown(ai_result)
 
 
 
 def section_4():
-    """???????摮?撟游漲頞典???銵冽"""
+    """功能四：週/月/季/年度趨勢分析儀表板"""
 
-    # ?? ECOCO ?? CSS嚗?朣?HTML 蝭憸冽嚗??????????????????????
+    # ── ECOCO 品牌 CSS（對齊 HTML 範本風格）──────────────────────
     st.markdown("""<style>
     .s4-header{background:#060E9F;color:#fff;padding:22px 26px;border-radius:12px;
                border-bottom:6px solid #FF5000;margin-bottom:18px}
-    .s4-header h2{margin:0;font-size:20px;font-weight:700;letter-spacing:.3px}
+    .s4-header h2{margin:0;font-size:14px;font-weight:700;letter-spacing:.3px}
     .s4-header p{margin:4px 0 0;opacity:.85;font-size:13px}
     .s4-section{border-left:6px solid #FF5000;padding-left:14px;
                 color:#060E9F;font-size:17px;font-weight:700;margin:22px 0 14px}
@@ -2364,15 +2578,15 @@ def section_4():
     .filter-chip.active{background:#060E9F;color:#fff}
     </style>""", unsafe_allow_html=True)
 
-    # ?? ?? ??????????????????????????????????????????????????????
+    # ── 頁首 ──────────────────────────────────────────────────────
     st.markdown("""
     <div class="s4-header">
-      <h2>?? ECOCO 摰Ｚ迄頞典???銵冽</h2>
-      <p>???餌?暺?券??餃?憿??璈瘥? | ?芾??交????+ 蝬剖漲蝭拚</p>
+      <h2>📈 ECOCO 客訴趨勢分析儀表板</h2>
+      <p>城市・站點・部門・問題類型・機台比例 | 自訂日期區間 + 維度篩選</p>
     </div>""", unsafe_allow_html=True)
 
-    # ?? 鞈?靘? ??????????????????????????????????????????????????
-    src_tab1, src_tab2 = st.tabs(["?? 甇瑕蝝????, "?? 憛怠 Google Sheets 蝬脣?"])
+    # ── 資料來源 ──────────────────────────────────────────────────
+    src_tab1, src_tab2 = st.tabs(["📂 歷史紀錄資料", "🔗 填入 Google Sheets 網址"])
     all_dfs: list[pd.DataFrame] = []
 
     with src_tab1:
@@ -2382,32 +2596,34 @@ def section_4():
             try:
                 for grow in ws.get_all_values()[1:]:
                     if not grow or not grow[0]: continue
-                    excel_b64 = grow[4] if len(grow) > 4 else ""
-                    if excel_b64:
-                        try: all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(excel_b64))))
+                    data_ref = grow[4] if len(grow) > 4 else ""
+                    if data_ref:
+                        try:
+                            if data_ref.startswith("sheet:"):
+                                data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
+                                all_dfs.append(_worksheet_to_dataframe(data_ws))
+                            else:
+                                all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(data_ref))))
                         except Exception: pass
             except Exception: pass
-        for v in st.session_state.get("_history_cache", {}).values():
-            try: all_dfs.append(pd.read_excel(io.BytesIO(v["excel_bytes"])))
-            except Exception: pass
-        st.caption(f"撌脰???{len(all_dfs)} 隞賣風?脩??? if all_dfs else "撠甇瑕鞈?")
+        st.caption(f"已載入 {len(all_dfs)} 份歷史紀錄" if all_dfs else "尚無歷史資料")
 
     with src_tab2:
-        gs_url = st.text_input("Google Sheets 蝬脣?", placeholder="https://docs.google.com/spreadsheets/d/xxxxx/edit", key="s4v3_gsurl")
-        gs_sheet = st.text_input("撌乩?銵典?蝔梧??征霈?洵銝撘蛛?", key="s4v3_gssheet", value="")
-        if st.button("? 霈??, key="s4v3_load_gs"):
+        gs_url = st.text_input("Google Sheets 網址", placeholder="https://docs.google.com/spreadsheets/d/xxxxx/edit", key="s4v3_gsurl")
+        gs_sheet = st.text_input("工作表名稱（留空讀取第一張）", key="s4v3_gssheet", value="")
+        if st.button("📥 讀取", key="s4v3_load_gs"):
             if not gs_url:
-                st.error("隢‵?亦雯?")
+                st.error("請填入網址")
             else:
                 try:
                     import re as _re
                     m = _re.search(r"/spreadsheets/d/([^/]+)", gs_url)
                     if not m:
-                        st.error("?⊥?閫??閰衣?銵?ID")
+                        st.error("無法解析試算表 ID")
                     else:
                         _client = _get_gsheet_client()
                         if not _client:
-                            st.error("?芷?? Google API")
+                            st.error("未連線 Google API")
                         else:
                             _ss = _client.open_by_key(m.group(1))
                             _ws = _ss.worksheet(gs_sheet) if gs_sheet else _ss.get_worksheet(0)
@@ -2416,22 +2632,22 @@ def section_4():
                                 _df = pd.DataFrame(_rows[1:], columns=_rows[0])
                                 all_dfs.append(_df)
                                 st.session_state["_s4v3_gs_df"] = _df
-                                st.success(f"??撌脰??_ws.title}????{len(_df)} ??)
+                                st.success(f"✅ 已讀取「{_ws.title}」，共 {len(_df)} 列")
                 except Exception as e:
-                    st.error(f"霈?仃??{e}")
+                    st.error(f"讀取失敗：{e}")
         if st.session_state.get("_s4v3_gs_df") is not None:
             all_dfs.append(st.session_state["_s4v3_gs_df"])
 
     if not all_dfs:
-        st.info("撠鞈?嚗???銝摰????脣?嚗?憛怠 Google Sheets 蝬脣???)
+        st.info("尚無資料，請先在功能一完成分析儲存，或填入 Google Sheets 網址。")
         return
 
-    # ?蔥?Ⅱ靽?隞?df 甈??迂?臭?嚗??銴?雿? InvalidIndexError嚗?
+    # 合併前確保每份 df 欄位名稱唯一（避免重複欄位造成 InvalidIndexError）
     clean_dfs = []
     for _d in all_dfs:
         try:
             _d = _d.copy()
-            # ?交???甈??迂嚗?敺韌???
+            # 若有重複欄位名稱，加後綴區分
             _seen = {}
             _new_cols = []
             for c in _d.columns:
@@ -2447,51 +2663,51 @@ def section_4():
             clean_dfs.append(_d)
 
     df_all = pd.concat(clean_dfs, ignore_index=True)
-    # drop_duplicates 閬? index ?臭?嚗? reset_index
+    # drop_duplicates 要求 index 唯一，先 reset_index
     try:
-        df_all = df_all.loc[:, ~df_all.columns.duplicated()]  # 蝘駁??甈?
+        df_all = df_all.loc[:, ~df_all.columns.duplicated()]  # 移除重複欄位
         df_all = df_all.drop_duplicates().reset_index(drop=True)
     except Exception:
         df_all = df_all.reset_index(drop=True)
 
-    # ?? 甈??芸??菜葫 ??????????????????????????????????????????????
-    date_col   = next((c for c in df_all.columns if "?交?" in c or "date" in c.lower()), None)
-    type_col   = next((c for c in df_all.columns if "??憿?" in c), None)
-    detail_col = next((c for c in df_all.columns if "??蝝圈?" in c), None)
-    dept_col   = next((c for c in df_all.columns if "?券?" in c or "甇詨惇" in c), None)
-    city_col   = next((c for c in df_all.columns if "蝡???? in c or "??" in c or "??? in c), None)
-    station_col= next((c for c in df_all.columns if c == "蝡??迂"), None) or \
-                 next((c for c in df_all.columns if "蝡??迂" in c and "蝺刻?" not in c), None)
-    machine_col= next((c for c in df_all.columns if "璈憿?" in c or "璈" in c), None)
+    # ── 欄位自動偵測 ──────────────────────────────────────────────
+    date_col   = next((c for c in df_all.columns if "日期" in c or "date" in c.lower()), None)
+    type_col   = next((c for c in df_all.columns if "問題類型" in c), None)
+    detail_col = next((c for c in df_all.columns if "問題細項" in c), None)
+    dept_col   = next((c for c in df_all.columns if "部門" in c or "歸屬" in c), None)
+    city_col   = next((c for c in df_all.columns if "站點區域" in c or "城市" in c or "區域" in c), None)
+    station_col= next((c for c in df_all.columns if c == "站點名稱"), None) or \
+                 next((c for c in df_all.columns if "站點名稱" in c and "編號" not in c), None)
+    machine_col= next((c for c in df_all.columns if "機台類型" in c or "機台" in c), None)
 
     if not date_col:
-        st.warning("?曆??唳??雿?)
+        st.warning("找不到日期欄位")
         return
 
     df_all[date_col] = pd.to_datetime(df_all[date_col], errors="coerce")
     df_all = df_all.dropna(subset=[date_col])
     if df_all.empty:
-        st.warning("?⊥??????)
+        st.warning("無有效日期資料")
         return
 
-    # ?? ??????蝬剖漲 + ?芾??交?嚗????????????????????????????
-    st.markdown('<div class="s4-section">?? 蝭拚璇辣</div>', unsafe_allow_html=True)
+    # ── 時間區間選擇（維度 + 自訂日期）────────────────────────────
+    st.markdown('<div class="s4-section">⚙️ 篩選條件</div>', unsafe_allow_html=True)
     filter_c1, filter_c2, filter_c3 = st.columns([2, 3, 2])
 
-    dim_mode = filter_c1.radio("??璅∪?", ["蝬剖漲?豢?", "?芾??交????], horizontal=True, key="s4v3_dimmode")
+    dim_mode = filter_c1.radio("時間模式", ["維度選擇", "自訂日期區間"], horizontal=True, key="s4v3_dimmode")
 
-    DIM_FREQ = {"??: "W", "??: "M", "摮?: "Q", "撟游漲": "Y"}
+    DIM_FREQ = {"週": "W", "月": "M", "季": "Q", "年度": "Y"}
     period_sel = period_prev = None
     df_cur = df_prev = pd.DataFrame()
 
-    if dim_mode == "蝬剖漲?豢?":
-        dim = filter_c2.selectbox("??蝬剖漲", ["??, "??, "摮?, "撟游漲"], index=1, key="s4v3_dim")
+    if dim_mode == "維度選擇":
+        dim = filter_c2.selectbox("分析維度", ["週", "月", "季", "年度"], index=1, key="s4v3_dim")
         df_all["_period"] = df_all[date_col].dt.to_period(DIM_FREQ[dim]).astype(str)
         periods = sorted(df_all["_period"].unique(), reverse=True)
         if not periods:
-            st.warning("鞈?銝雲")
+            st.warning("資料不足")
             return
-        period_sel = filter_c3.selectbox(f"?祆?", periods, key="s4v3_period")
+        period_sel = filter_c3.selectbox(f"本期", periods, key="s4v3_period")
         p_idx = periods.index(period_sel)
         period_prev = periods[p_idx + 1] if p_idx + 1 < len(periods) else None
         df_cur  = df_all[df_all["_period"] == period_sel].copy()
@@ -2501,21 +2717,29 @@ def section_4():
         min_d = df_all[date_col].min().date()
         max_d = df_all[date_col].max().date()
         d_col1, d_col2 = filter_c2.columns(2)
-        start_d = d_col1.date_input("??", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_sd")
-        end_d   = d_col2.date_input("蝯?", value=max_d, min_value=min_d, max_value=max_d, key="s4v3_ed")
+        start_d = d_col1.date_input("開始", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_sd")
+        end_d   = d_col2.date_input("結束", value=max_d, min_value=min_d, max_value=max_d, key="s4v3_ed")
         df_cur  = df_all[(df_all[date_col].dt.date >= start_d) & (df_all[date_col].dt.date <= end_d)].copy()
-        period_label = f"{start_d} 嚚?{end_d}"
-        period_prev = None
-        df_prev = pd.DataFrame()
+        period_label = f"{start_d} ～ {end_d}"
+        enable_compare = filter_c3.checkbox("啟用對照期", value=False, key="s4v3_compare_on")
+        if enable_compare:
+            cmp_c1, cmp_c2 = filter_c3.columns(2)
+            cmp_start = cmp_c1.date_input("對照開始", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_cmp_sd")
+            cmp_end = cmp_c2.date_input("對照結束", value=min_d, min_value=min_d, max_value=max_d, key="s4v3_cmp_ed")
+            df_prev = df_all[(df_all[date_col].dt.date >= cmp_start) & (df_all[date_col].dt.date <= cmp_end)].copy()
+            period_prev = f"{cmp_start} ～ {cmp_end}"
+        else:
+            period_prev = None
+            df_prev = pd.DataFrame()
 
-    # ?? 憭雁蝭拚 chips嚗?撣??券?/??憿?/璈嚗??????????????????
-    st.markdown("**蝭拚蝬剖漲嚗?*")
+    # ── 多維篩選 chips（城市/部門/問題類型/機台）──────────────────
+    st.markdown("**篩選維度：**")
     chip_cols = st.columns(4)
 
-    city_filter   = chip_cols[0].multiselect("??儭???", sorted(df_cur[city_col].dropna().unique().tolist()) if city_col and city_col in df_cur.columns else [], key="s4v3_city")
-    dept_filter   = chip_cols[1].multiselect("? ?券?", sorted(df_cur[dept_col].dropna().unique().tolist()) if dept_col and dept_col in df_cur.columns else [], key="s4v3_dept")
-    type_filter   = chip_cols[2].multiselect("????憿?", sorted(df_cur[type_col].dropna().unique().tolist()) if type_col and type_col in df_cur.columns else [], key="s4v3_type")
-    mach_filter   = chip_cols[3].multiselect("? 璈憿?", sorted(df_cur[machine_col].dropna().unique().tolist()) if machine_col and machine_col in df_cur.columns else [], key="s4v3_mach")
+    city_filter   = chip_cols[0].multiselect("🏙️ 城市", sorted(df_cur[city_col].dropna().unique().tolist()) if city_col and city_col in df_cur.columns else [], key="s4v3_city")
+    dept_filter   = chip_cols[1].multiselect("🏢 部門", sorted(df_cur[dept_col].dropna().unique().tolist()) if dept_col and dept_col in df_cur.columns else [], key="s4v3_dept")
+    type_filter   = chip_cols[2].multiselect("❓ 問題類型", sorted(df_cur[type_col].dropna().unique().tolist()) if type_col and type_col in df_cur.columns else [], key="s4v3_type")
+    mach_filter   = chip_cols[3].multiselect("🔧 機台類型", sorted(df_cur[machine_col].dropna().unique().tolist()) if machine_col and machine_col in df_cur.columns else [], key="s4v3_mach")
 
     df_filt = df_cur.copy()
     if city_filter  and city_col:   df_filt = df_filt[df_filt[city_col].isin(city_filter)]
@@ -2530,26 +2754,26 @@ def section_4():
         if prev == 0: return None
         return (cur - prev) / prev * 100
 
-    # ?? 璈憿?嚗???飛憿??嗆??????????????????????????
+    # ── 機台類型：將「方舟」歸類為「收瓶機」────────────────────────
     if machine_col and machine_col in df_filt.columns:
         def _normalize_machine(val):
             v = str(val).strip()
-            if "?寡?" in v or "?嗥" in v: return "?嗥璈?
-            if "?餅?" in v: return "?餅?璈?
+            if "方舟" in v or "收瓶" in v: return "收瓶機"
+            if "電池" in v: return "電池機"
             return v
         df_filt = df_filt.copy()
         df_filt[machine_col] = df_filt[machine_col].apply(_normalize_machine)
     if machine_col and machine_col in df_all.columns:
         df_all = df_all.copy()
         df_all[machine_col] = df_all[machine_col].apply(
-            lambda v: "?嗥璈? if ("?寡?" in str(v) or "?嗥" in str(v)) else ("?餅?璈? if "?餅?" in str(v) else str(v))
+            lambda v: "收瓶機" if ("方舟" in str(v) or "收瓶" in str(v)) else ("電池機" if "電池" in str(v) else str(v))
         )
 
-    # ?? KPI ?∠?嚗 st.metric ?踹? HTML escape ??嚗????????????????
-    st.markdown(f'<div class="s4-section">?? ?祆??單?蝯梯?嚗period_label}嚗?/div>', unsafe_allow_html=True)
-    st.caption(f"?? 鞈????{period_label}?蝭拚敺 **{n_cur}** 蝑?)
+    # ── KPI 卡片（用 st.metric 避免 HTML escape 問題）────────────────
+    st.markdown(f'<div class="s4-section">📊 本期即時統計（{period_label}）</div>', unsafe_allow_html=True)
+    st.caption(f"📅 資料區間：{period_label}　篩選後共 **{n_cur}** 筆")
 
-    kpi_items = [("??儭?蝮賡脖辣??, n_cur, n_prev)]
+    kpi_items = [("🗂️ 總進件數", n_cur, n_prev)]
     if type_col and type_col in df_filt.columns:
         for t, tc in df_filt[type_col].value_counts().items():
             prev_tc = int(df_prev[type_col].eq(t).sum()) if not df_prev.empty and type_col in df_prev.columns else 0
@@ -2562,14 +2786,14 @@ def section_4():
         delta_str = None
         if p is not None:
             sym = "+" if p >= 0 else ""
-            delta_str = f"{sym}{p:.1f}% vs 銝?"
+            delta_str = f"{sym}{p:.1f}% vs 上期"
         kpi_cols[col_i].metric(label=lbl, value=cur, delta=delta_str)
 
-    # ?? ??蝯梯?嚗???蝡?/??蝝圈?嚗???????????????????????????????
-    st.markdown(f'<div class="s4-section">?? 獢辣??蝯梯? Top 5 ?? {period_label}</div>', unsafe_allow_html=True)
+    # ── 排行統計（區域/站點/問題細項）───────────────────────────────
+    st.markdown(f'<div class="s4-section">🏆 案件排行統計 Top 5 ── {period_label}</div>', unsafe_allow_html=True)
 
     rank_cols = st.columns(3)
-    MEDAL = ["??","??","??","4儭","5儭"]
+    MEDAL = ["🥇","🥈","🥉","4️⃣","5️⃣"]
 
     def rank_table_html(series, header1, header2):
         rows = ""
@@ -2583,28 +2807,28 @@ def section_4():
         </table>'''
 
     with rank_cols[0]:
-        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">?? ???銵?/div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">📍 區域排行</div>', unsafe_allow_html=True)
         if city_col and city_col in df_filt.columns and not df_filt[city_col].dropna().empty:
-            st.markdown('<div class="s4-card">' + rank_table_html(df_filt[city_col].value_counts(), "??/???, "隞嗆") + '</div>', unsafe_allow_html=True)
+            st.markdown('<div class="s4-card">' + rank_table_html(df_filt[city_col].value_counts(), "城市/區域", "件數") + '</div>', unsafe_allow_html=True)
         else:
-            st.info("?∪?撣???)
+            st.info("無城市資料")
 
     with rank_cols[1]:
-        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">? 蝡???</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">🏬 站點排行</div>', unsafe_allow_html=True)
         if station_col and station_col in df_filt.columns and not df_filt[station_col].dropna().empty:
-            st.markdown('<div class="s4-card">' + rank_table_html(df_filt[station_col].value_counts(), "蝡??迂", "隞嗆") + '</div>', unsafe_allow_html=True)
+            st.markdown('<div class="s4-card">' + rank_table_html(df_filt[station_col].value_counts(), "站點名稱", "件數") + '</div>', unsafe_allow_html=True)
         else:
-            st.info("?∠?暺???)
+            st.info("無站點資料")
 
     with rank_cols[2]:
-        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">?? ??蝝圈???</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">🔍 問題細項排行</div>', unsafe_allow_html=True)
         if detail_col and detail_col in df_filt.columns and not df_filt[detail_col].dropna().empty:
-            st.markdown('<div class="s4-card">' + rank_table_html(df_filt[detail_col].value_counts(), "??蝝圈?", "隞嗆") + '</div>', unsafe_allow_html=True)
+            st.markdown('<div class="s4-card">' + rank_table_html(df_filt[detail_col].value_counts(), "問題細項", "件數") + '</div>', unsafe_allow_html=True)
         else:
-            st.info("?∠敦????)
+            st.info("無細項資料")
 
-    # ?? ?”嚗?憿???+ 璈雿?嚗?朣?HTML 蝭嚗?????????????????
-    st.markdown(f'<div class="s4-section">?? ?豢??航??????? {period_label}</div>', unsafe_allow_html=True)
+    # ── 圖表：問題類型 + 機台佔比（對齊 HTML 範本）─────────────────
+    st.markdown(f'<div class="s4-section">📉 數據可視化分析 ── {period_label}</div>', unsafe_allow_html=True)
     chart_col1, chart_col2 = st.columns(2)
 
     with chart_col1:
@@ -2614,20 +2838,20 @@ def section_4():
             COLORS_PIE = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"]
             fig_pie = px.pie(
                 values=_tc.values, names=_tc.index,
-                title=f"{period_label} 摰Ｚ迄憿??",
+                title=f"{period_label} 客訴類別分佈",
                 hole=0.38,
                 color_discrete_sequence=COLORS_PIE,
             )
             fig_pie.update_traces(
-                texttemplate="%{percent:.0%}",   # ?芸?耦?折＊蝷?%
+                texttemplate="%{percent:.0%}",   # 只在扇形內顯示 %
                 textposition="inside",
                 textfont=dict(size=13, color="white"),
-                hovertemplate="<b>%{label}</b><br>%{value}隞?/ %{percent:.1%}<extra></extra>",
+                hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
                 showlegend=True,
             )
-            # ??嚗??亙? + % + 隞嗆嚗?朣?撘?
+            # 圖例：類別名 + % + 件數（對齊截圖格式）
             _leg_labels = {
-                k: f"{k}  {int(v)/_total*100:.0f}%嚗int(v)}隞塚?"
+                k: f"{k}  {int(v)/_total*100:.0f}%（{int(v)}件）"
                 for k, v in _tc.items()
             }
             fig_pie.for_each_trace(lambda t: t.update(name=_leg_labels.get(t.name, t.name)))
@@ -2656,17 +2880,17 @@ def section_4():
             COLORS_MAC = ["#FF5000","#060E9F","#8EB9C9","#FFCE00"]
             fig_mac = px.pie(
                 values=_mc.values, names=_mc.index,
-                title=f"{period_label} 璈摰Ｚ迄雿?",
+                title=f"{period_label} 機台客訴佔比",
                 color_discrete_sequence=COLORS_MAC,
             )
             fig_mac.update_traces(
                 texttemplate="%{percent:.0%}",
                 textposition="inside",
                 textfont=dict(size=14, color="white"),
-                hovertemplate="<b>%{label}</b><br>%{value}隞?/ %{percent:.1%}<extra></extra>",
+                hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
             )
             _leg_labels_mac = {
-                k: f"{k}  {int(v)/_mc_total*100:.0f}%嚗int(v)}隞塚?"
+                k: f"{k}  {int(v)/_mc_total*100:.0f}%（{int(v)}件）"
                 for k, v in _mc.items()
             }
             fig_mac.for_each_trace(lambda t: t.update(name=_leg_labels_mac.get(t.name, t.name)))
@@ -2689,20 +2913,20 @@ def section_4():
             _dc = df_filt[detail_col].value_counts().head(8)
             fig_det = px.bar(
                 x=list(_dc.values)[::-1], y=list(_dc.index)[::-1],
-                orientation="h", title=f"{period_label} TOP 8 ??蝝圈?",
+                orientation="h", title=f"{period_label} TOP 8 問題細項",
                 color_discrete_sequence=["#060E9F"],
             )
-            fig_det.update_layout(height=420, xaxis=dict(dtick=1,tickformat="d"),
+            fig_det.update_layout(height=420, xaxis=dict(tickformat="d", nticks=6),
                                    margin=dict(t=45,b=0,l=0,r=0))
             st.plotly_chart(fig_det, use_container_width=True)
 
-    # ?? 頞典????????????????????????????????????????????????????
-    st.markdown(f'<div class="s4-section">?? 摰Ｚ迄頞典?? ?? {period_label}</div>', unsafe_allow_html=True)
-    if dim_mode == "蝬剖漲?豢?" and len(df_all["_period"].unique()) >= 2:
-        _trend = df_all.groupby("_period").size().reset_index(name="隞嗆").sort_values("_period")
+    # ── 趨勢折線圖 ────────────────────────────────────────────────
+    st.markdown(f'<div class="s4-section">📈 客訴趨勢分析 ── {period_label}</div>', unsafe_allow_html=True)
+    if dim_mode == "維度選擇" and len(df_all["_period"].unique()) >= 2:
+        _trend = df_all.groupby("_period").size().reset_index(name="件數").sort_values("_period")
         fig_line = px.line(
-            _trend, x="_period", y="隞嗆",
-            title=f"甇瑕隞嗆頞典",
+            _trend, x="_period", y="件數",
+            title=f"歷史件數趨勢",
             markers=True,
             color_discrete_sequence=["#FF5000"],
         )
@@ -2711,54 +2935,54 @@ def section_4():
             _sel_i = _trend.index[_trend["_period"] == period_sel].tolist()
             if _sel_i:
                 fig_line.add_vline(x=_sel_i[0], line_dash="dash", line_color="#060E9F",
-                                   annotation_text="?祆?", annotation_font_color="#060E9F")
+                                   annotation_text="本期", annotation_font_color="#060E9F")
         fig_line.update_layout(
-            height=320, xaxis_title="??",
-            yaxis=dict(dtick=1, tickformat="d"),
+            height=320, xaxis_title="期間",
+            yaxis=dict(tickformat="d", nticks=6),
             paper_bgcolor="white", plot_bgcolor="rgba(250,224,184,0.15)",
             margin=dict(t=45,b=0),
         )
         st.plotly_chart(fig_line, use_container_width=True)
     else:
-        # ?芾??交?嚗??乩辣??
-        _daily = df_filt.groupby(df_filt[date_col].dt.date).size().reset_index(name="隞嗆")
-        _daily.columns = ["?交?", "隞嗆"]
+        # 自訂日期：每日件數
+        _daily = df_filt.groupby(df_filt[date_col].dt.date).size().reset_index(name="件數")
+        _daily.columns = ["日期", "件數"]
         if not _daily.empty:
             fig_daily = px.bar(
-                _daily, x="?交?", y="隞嗆",
-                title="???扳??乩辣??,
+                _daily, x="日期", y="件數",
+                title="期間內每日件數",
                 color_discrete_sequence=["#060E9F"],
             )
-            fig_daily.update_layout(height=300, yaxis=dict(dtick=1, tickformat="d"), margin=dict(t=45,b=0))
+            fig_daily.update_layout(height=300, yaxis=dict(tickformat="d", nticks=6), margin=dict(t=45,b=0))
             st.plotly_chart(fig_daily, use_container_width=True)
 
-    # ?? ??撅???嚗??嚗????????????????????????????????????
+    # ── 城市展開排行（可折疊）────────────────────────────────────
     if city_col and city_col in df_filt.columns and not df_filt.empty:
-        st.markdown(f'<div class="s4-section">??儭????銵? ?? {period_label}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="s4-section">🏙️ 區域排行榜 ── {period_label}</div>', unsafe_allow_html=True)
         city_rank = df_filt[city_col].value_counts()
-        MEDAL_LIST = ["??","??","??","4儭","5儭","6儭","7儭","8儭","9儭","??"]
+        MEDAL_LIST = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
         for ri, (city, cnt) in enumerate(city_rank.items()):
             prev_cnt = int(df_prev[city_col].eq(city).sum()) if not df_prev.empty and city_col in df_prev.columns else 0
             p = pct_change(int(cnt), prev_cnt)
-            delta_s = (f"?{'?? if p>0 else '??}{abs(p):.1f}%") if p is not None else ""
+            delta_s = (f"　{'▲' if p>0 else '▼'}{abs(p):.1f}%") if p is not None else ""
             medal = MEDAL_LIST[ri] if ri < len(MEDAL_LIST) else f"#{ri+1}"
-            with st.expander(f"{medal} **{city}**?{int(cnt)} 隞閔delta_s}", expanded=(ri==0)):
+            with st.expander(f"{medal} **{city}**　{int(cnt)} 件{delta_s}", expanded=(ri==0)):
                 df_city = df_filt[df_filt[city_col] == city]
                 ec1, ec2 = st.columns(2)
                 with ec1:
-                    st.markdown("**?? 蝡???**")
+                    st.markdown("**📍 站點排行**")
                     if station_col and station_col in df_city.columns:
                         _sr = df_city[station_col].value_counts().head(8)
                         _sr_prev = df_prev[df_prev[city_col]==city][station_col].value_counts() if not df_prev.empty and city_col in df_prev.columns and station_col in df_prev.columns else pd.Series(dtype=int)
                         _html = ""
                         for si, (sn, sv) in enumerate(_sr.items()):
                             _sp = int(_sr_prev.get(sn, 0))
-                            _sd = (f"?{'?? if int(sv)-_sp>0 else '??}{abs(pct_change(int(sv),_sp)):.0f}%") if _sp and pct_change(int(sv),_sp) is not None else ""
+                            _sd = (f"　{'▲' if int(sv)-_sp>0 else '▼'}{abs(pct_change(int(sv),_sp)):.0f}%") if _sp and pct_change(int(sv),_sp) is not None else ""
                             _sm = MEDAL_LIST[si] if si < len(MEDAL_LIST) else f"#{si+1}"
                             _html += f'<div style="padding:5px 0;border-bottom:.5px solid #eee;font-size:13px;display:flex;justify-content:space-between"><span>{_sm} {str(sn)[:18]}</span><b style="color:#FF5000">{int(sv)}{_sd}</b></div>'
                         st.markdown(_html, unsafe_allow_html=True)
                 with ec2:
-                    st.markdown("**?? ??蝝圈???**")
+                    st.markdown("**🔍 問題細項排行**")
                     if detail_col and detail_col in df_city.columns:
                         _dr = df_city[detail_col].value_counts().head(8)
                         _max = int(_dr.max()) if not _dr.empty else 1
@@ -2774,27 +2998,27 @@ def section_4():
                             </div>'''
                         st.markdown(_dhtml, unsafe_allow_html=True)
 
-    # ?? ?券??? ?????????????????????????????????????????????????
+    # ── 部門分析 ─────────────────────────────────────────────────
     if dept_col and dept_col in df_filt.columns:
-        st.markdown(f'<div class="s4-section">? ??隞嗆?? ?? {period_label}</div>', unsafe_allow_html=True)
-        dept_rank = df_filt[dept_col].replace("","?芸???).value_counts()
-        DEPT_COLOR = {"????:"#FF5000","銵??:"#FFCE00","鞈???:"#060E9F"}
+        st.markdown(f'<div class="s4-section">🏢 各部門件數分析 ── {period_label}</div>', unsafe_allow_html=True)
+        dept_rank = df_filt[dept_col].replace("","未分配").value_counts()
+        DEPT_COLOR = {"營運部":"#FF5000","行銷部":"#FFCE00","資訊部":"#060E9F"}
         fig_dept = px.bar(
             dept_rank.reset_index(), x=dept_col, y="count",
-            title="??隞嗆",
+            title="各部門件數",
             color=dept_col,
             color_discrete_map=DEPT_COLOR,
         )
-        fig_dept.update_layout(height=300, yaxis=dict(dtick=1,tickformat="d"),
+        fig_dept.update_layout(height=300, yaxis=dict(tickformat="d", nticks=6),
                                 showlegend=False, margin=dict(t=45,b=0))
         st.plotly_chart(fig_dept, use_container_width=True)
 
-    # ?? 摰? PDF 銝? ????????????????????????????????????????
+    # ── 完整頁面 PDF 下載 ────────────────────────────────────────
     st.markdown("---")
-    st.markdown(f'<div class="s4-section">漎? 銝?摰???勗?</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="s4-section">⬇️ 下載完整分析報告</div>', unsafe_allow_html=True)
 
-    if st.button("?? ?Ｙ?摰?? PDF", key="s4_full_pdf", use_container_width=False):
-        with st.spinner("甇??Ｙ?憭? PDF ?勗?..."):
+    if st.button("📄 產生完整分析 PDF", key="s4_full_pdf", use_container_width=False):
+        with st.spinner("正在產生多頁 PDF 報告..."):
             try:
                 from fpdf import FPDF
                 from fpdf.enums import XPos, YPos
@@ -2809,7 +3033,7 @@ def section_4():
                     "/tmp/NotoSansCJK.ttc",
                 ]
                 _FONT_CANDS += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
-                _font_path = _ensure_cjk_font()  # 雿輻撌脣翰??摮?頝臬?
+                _font_path = _ensure_cjk_font()  # 使用已快取的字型路徑
                 if not _font_path:
                     _font_path = next((p for p in _FONT_CANDS if os.path.exists(p)), None)
 
@@ -2826,13 +3050,13 @@ def section_4():
                         self.set_margins(15, 15, 15)
 
                     def header(self):
-                        # ???璇?
+                        # 藍色頁首條
                         self.set_fill_color(6, 14, 159)
                         self.rect(0, 0, 210, 14, style="F")
                         self.set_font(self.fn, size=9)
                         self.set_text_color(255, 255, 255)
                         self.set_xy(5, 3)
-                        self.cell(0, 8, self._s(f"ECOCO 摰Ｚ迄頞典???勗??{period_label}"))
+                        self.cell(0, 8, self._s(f"ECOCO 客訴趨勢分析報告　{period_label}"))
                         self.set_draw_color(255, 80, 0)
                         self.set_line_width(1.5)
                         self.line(0, 14, 210, 14)
@@ -2844,7 +3068,7 @@ def section_4():
                         self.set_y(-12)
                         self.set_font(self.fn, size=8)
                         self.set_text_color(150, 150, 150)
-                        self.cell(0, 8, self._s(f"蝚?{self.page_no()} ??Ｗ?交?嚗datetime.now().strftime('%Y/%m/%d')}"), align="C")
+                        self.cell(0, 8, self._s(f"第 {self.page_no()} 頁　產出日期：{datetime.now().strftime('%Y/%m/%d')}"), align="C")
 
                     def _s(self, s):
                         return s if self.fn != "Helvetica" else s.encode("ascii", "replace").decode()
@@ -2860,8 +3084,8 @@ def section_4():
                         self.ln(2)
 
                     def full_table(self, headers, rows, col_widths):
-                        """?典?銵冽嚗?游?銵??銵?""
-                        # 銵券
+                        """全幅表格，支援多行自動換行"""
+                        # 表頭
                         self.set_fill_color(6, 14, 159)
                         self.set_text_color(255, 255, 255)
                         self.set_font(self.fn, size=9)
@@ -2870,7 +3094,7 @@ def section_4():
                             self.cell(w, 8, self._s(str(h)), border=1, fill=True, align="C",
                                       new_x=XPos.RIGHT, new_y=YPos.TOP)
                         self.ln(8)
-                        # 鞈???
+                        # 資料列
                         self.set_text_color(30, 30, 30)
                         self.set_font(self.fn, size=9)
                         for i, row in enumerate(rows):
@@ -2884,13 +3108,13 @@ def section_4():
                         self.ln(3)
 
                     def embed_image(self, fig, w=180, h=110):
-                        """撋 matplotlib ?”"""
+                        """嵌入 matplotlib 圖表"""
                         _b = io.BytesIO()
                         fig.savefig(_b, format="png", dpi=180, bbox_inches="tight",
                                     facecolor="white")
                         _mplt.close(fig)
                         _b.seek(0)
-                        x = (210 - w) / 2  # 蝵桐葉
+                        x = (210 - w) / 2  # 置中
                         self.image(_b, x=x, y=self.get_y(), w=w, h=h)
                         self.set_y(self.get_y() + h + 4)
 
@@ -2898,21 +3122,21 @@ def section_4():
 
                 pdf = EcocoPDF(_font_path, F)
 
-                # ????????????????????????????????????????????
-                # Page 1嚗???+ KPI ??
-                # ????????????????????????????????????????????
+                # ════════════════════════════════════════════
+                # Page 1：封面 + KPI 摘要
+                # ════════════════════════════════════════════
                 pdf.add_page()
-                # 憭扳?憿?
+                # 大標題框
                 pdf.set_fill_color(6, 14, 159)
                 pdf.rect(15, 20, 180, 38, style="F")
                 pdf.set_font(F, size=20)
                 pdf.set_text_color(255, 255, 255)
                 pdf.set_xy(15, 26)
-                pdf.cell(180, 12, pdf._s("ECOCO 摰Ｚ迄頞典???勗?"), align="C",
+                pdf.cell(180, 12, pdf._s("ECOCO 客訴趨勢分析報告"), align="C",
                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 pdf.set_font(F, size=11)
                 pdf.set_xy(15, 42)
-                pdf.cell(180, 8, pdf._s(f"鞈????{period_label}"), align="C",
+                pdf.cell(180, 8, pdf._s(f"資料區間：{period_label}"), align="C",
                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 pdf.set_draw_color(255, 80, 0)
                 pdf.set_line_width(2)
@@ -2920,16 +3144,16 @@ def section_4():
                 pdf.set_line_width(0.2)
                 pdf.set_y(68)
 
-                # KPI ?∠?嚗帖??
-                pdf.section_title("?祆??單?蝯梯???")
-                kpi_data = [("??儭?蝮賡脖辣??, n_cur)]
+                # KPI 卡片（橫排）
+                pdf.section_title("本期即時統計摘要")
+                kpi_data = [("🗂️ 總進件數", n_cur)]
                 if type_col and type_col in df_filt.columns:
                     for t, tc in df_filt[type_col].value_counts().head(3).items():
                         kpi_data.append((str(t), int(tc)))
                 card_w = 170 // len(kpi_data)
                 card_x = 20
                 for lbl, val in kpi_data:
-                    pdf.set_fill_color(255, 206, 0)  # 暺??
+                    pdf.set_fill_color(255, 206, 0)  # 黃色頂線
                     pdf.rect(card_x, pdf.get_y(), card_w - 4, 3, style="F")
                     pdf.set_fill_color(248, 249, 252)
                     pdf.rect(card_x, pdf.get_y() + 3, card_w - 4, 28, style="F")
@@ -2946,69 +3170,69 @@ def section_4():
                     card_x += card_w
                 pdf.set_y(pdf.get_y() + 36)
 
-                # ?? KPI
+                # 城市 KPI
                 if city_col and city_col in df_filt.columns:
                     pdf.ln(4)
                     pdf.set_font(F, size=9)
                     pdf.set_text_color(60, 60, 60)
                     city_top = df_filt[city_col].value_counts().head(3)
-                    line = "?|?".join([f"{c}嚗int(v)} 隞? for c, v in city_top.items()])
+                    line = "　|　".join([f"{c}：{int(v)} 件" for c, v in city_top.items()])
                     pdf.set_x(20)
-                    pdf.cell(0, 7, pdf._s(f"??憭批?撣?{line}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                    pdf.cell(0, 7, pdf._s(f"前三大城市：{line}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-                # ????????????????????????????????????????????
-                # Page 2嚗?銵絞閮?
-                # ????????????????????????????????????????????
+                # ════════════════════════════════════════════
+                # Page 2：排行統計
+                # ════════════════════════════════════════════
                 pdf.add_page()
-                pdf.section_title("獢辣??蝯梯?")
+                pdf.section_title("案件排行統計")
 
-                # ???銵?
+                # 區域排行
                 if city_col and city_col in df_filt.columns:
                     pdf.set_font(F, size=10); pdf.set_text_color(6,14,159)
-                    pdf.cell(0, 7, pdf._s("?? ??/???銵?), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                    pdf.cell(0, 7, pdf._s("📍 城市/區域排行"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                     _city_v = df_filt[city_col].value_counts()
                     rows_c = [[i+1, c, int(v), f"{int(v)/n_cur*100:.0f}%"]
                                for i, (c, v) in enumerate(_city_v.head(10).items())]
-                    pdf.full_table(["??","??/???,"隞嗆","雿?"], rows_c, [15,110,25,30])
+                    pdf.full_table(["排名","城市/區域","件數","佔比"], rows_c, [15,110,25,30])
 
-                # 蝡???
+                # 站點排行
                 if station_col and station_col in df_filt.columns:
                     pdf.set_font(F, size=10); pdf.set_text_color(6,14,159)
-                    pdf.cell(0, 7, pdf._s("? 蝡???"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                    pdf.cell(0, 7, pdf._s("🏬 站點排行"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                     _sta_v = df_filt[station_col].value_counts()
                     rows_s = [[i+1, str(s)[:30], int(v)]
                                for i, (s, v) in enumerate(_sta_v.head(10).items())]
-                    pdf.full_table(["??","蝡??迂","隞嗆"], rows_s, [15,140,25])
+                    pdf.full_table(["排名","站點名稱","件數"], rows_s, [15,140,25])
 
-                # ????????????????????????????????????????????
-                # Page 3嚗?憿敦??銵?
-                # ????????????????????????????????????????????
+                # ════════════════════════════════════════════
+                # Page 3：問題細項排行
+                # ════════════════════════════════════════════
                 pdf.add_page()
-                pdf.section_title("??蝝圈???")
+                pdf.section_title("問題細項排行")
 
                 if detail_col and detail_col in df_filt.columns:
                     _det_v = df_filt[detail_col].value_counts()
                     rows_d = [[i+1, str(d)[:35], int(v), f"{int(v)/n_cur*100:.0f}%"]
                                for i, (d, v) in enumerate(_det_v.head(15).items())]
-                    pdf.full_table(["??","??蝝圈?","隞嗆","雿?"], rows_d, [15,120,20,25])
+                    pdf.full_table(["排名","問題細項","件數","佔比"], rows_d, [15,120,20,25])
 
-                # ????????????????????????????????????????????
-                # Page 4嚗?銵剁??? + 璈嚗?
-                # ????????????????????????????????????????????
+                # ════════════════════════════════════════════
+                # Page 4：圖表（圓餅 + 機台）
+                # ════════════════════════════════════════════
                 pdf.add_page()
-                pdf.section_title("?豢??航?????)
+                pdf.section_title("數據可視化分析")
 
                 if type_col and type_col in df_filt.columns:
                     _tc4 = df_filt[type_col].value_counts()
                     _total4 = _tc4.sum()
-                    # 憭批?嚗igsize ?游祝嚗?璅惜?寧???踹???
+                    # 大圖（figsize 更寬），標籤改用圖例避免重疊
                     _f4, _a4 = _mplt.subplots(figsize=(9, 6))
                     _clrs4 = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"]
-                    _labels4 = [f"{k}嚗int(v)}隞塚?" for k, v in _tc4.items()]
+                    _labels4 = [f"{k}（{int(v)}件）" for k, v in _tc4.items()]
                     wedges, texts, autotexts = _a4.pie(
                         list(_tc4.values),
-                        labels=None,           # 銝?耦銝＊蝷箸?蝐歹??寧??
-                        autopct=lambda p: f"{p:.0f}%" if p >= 5 else "",  # 撠?敶Ｖ?憿舐內%
+                        labels=None,           # 不在扇形上顯示標籤，改用圖例
+                        autopct=lambda p: f"{p:.0f}%" if p >= 5 else "",  # 小扇形不顯示%
                         colors=_clrs4[:len(_tc4)],
                         startangle=90,
                         pctdistance=0.75,
@@ -3024,13 +3248,13 @@ def section_4():
                         fontsize=9,
                         frameon=False,
                     )
-                    _a4.set_title(f"{period_label}?摰Ｚ迄憿??", fontsize=13, pad=12)
+                    _a4.set_title(f"{period_label}　客訴類別分佈", fontsize=13, pad=12)
                     _f4.tight_layout()
                     pdf.embed_image(_f4, w=175, h=120)
 
                 if machine_col and machine_col in df_filt.columns and not df_filt[machine_col].dropna().empty:
                     _mc4 = df_filt[machine_col].value_counts()
-                    _labels_mc = [f"{k}嚗int(v)}隞塚?" for k, v in _mc4.items()]
+                    _labels_mc = [f"{k}（{int(v)}件）" for k, v in _mc4.items()]
                     _f5, _a5 = _mplt.subplots(figsize=(7, 5))
                     wedges5, texts5, autotexts5 = _a5.pie(
                         list(_mc4.values),
@@ -3051,62 +3275,62 @@ def section_4():
                         fontsize=10,
                         frameon=False,
                     )
-                    _a5.set_title(f"{period_label}?璈摰Ｚ迄雿?", fontsize=13, pad=12)
+                    _a5.set_title(f"{period_label}　機台客訴佔比", fontsize=13, pad=12)
                     _f5.tight_layout()
                     pdf.embed_image(_f5, w=175, h=110)
 
-                # ????????????????????????????????????????????
-                # Page 5嚗隅??+ ?券???
-                # ????????????????????????????????????????????
+                # ════════════════════════════════════════════
+                # Page 5：趨勢 + 部門分析
+                # ════════════════════════════════════════════
                 pdf.add_page()
-                pdf.section_title("摰Ｚ迄頞典??")
+                pdf.section_title("客訴趨勢分析")
 
-                _daily3 = df_filt.groupby(df_filt[date_col].dt.date).size().reset_index(name="隞嗆")
+                _daily3 = df_filt.groupby(df_filt[date_col].dt.date).size().reset_index(name="件數")
                 if len(_daily3) > 1:
                     _f6, _a6 = _mplt.subplots(figsize=(10, 4))
-                    _a6.bar([str(d) for d in _daily3.iloc[:,0]], list(_daily3["隞嗆"]),
+                    _a6.bar([str(d) for d in _daily3.iloc[:,0]], list(_daily3["件數"]),
                             color="#060E9F", edgecolor="white", linewidth=0.5)
-                    _a6.set_title(f"{period_label}?瘥隞嗆頞典", fontsize=13)
+                    _a6.set_title(f"{period_label}　每日件數趨勢", fontsize=13)
                     _a6.tick_params(axis="x", rotation=30, labelsize=8)
                     _a6.yaxis.set_major_locator(_MNL(integer=True))
-                    _a6.set_ylabel("隞嗆", fontsize=10)
+                    _a6.set_ylabel("件數", fontsize=10)
                     _a6.grid(axis="y", alpha=0.3)
                     _f6.tight_layout()
                     pdf.embed_image(_f6, w=180, h=100)
 
                 if dept_col and dept_col in df_filt.columns:
-                    pdf.section_title("??隞嗆??")
-                    _dp = df_filt[dept_col].replace("","?芸???).value_counts()
+                    pdf.section_title("各部門件數分析")
+                    _dp = df_filt[dept_col].replace("","未分配").value_counts()
                     rows_dp = [[i+1, str(d), int(v), f"{int(v)/n_cur*100:.0f}%"]
                                 for i, (d, v) in enumerate(_dp.items())]
-                    pdf.full_table(["??","?券?","隞嗆","雿?"], rows_dp, [15,80,20,20])
+                    pdf.full_table(["排名","部門","件數","佔比"], rows_dp, [15,80,20,20])
 
                 _pdf_bytes = bytes(pdf.output())
                 st.session_state["_s4_pdf_bytes"] = _pdf_bytes
                 st.session_state["_s4_pdf_label"] = period_label
-                st.success(f"??PDF 撌脩????{pdf.page_no()} ??{len(_pdf_bytes)//1024} KB嚗?)
+                st.success(f"✅ PDF 已產生，共 {pdf.page_no()} 頁（{len(_pdf_bytes)//1024} KB）")
             except Exception as _e:
                 import traceback
-                st.error(f"PDF ?Ｙ?憭望?嚗_e}")
+                st.error(f"PDF 產生失敗：{_e}")
                 st.code(traceback.format_exc())
 
     if st.session_state.get("_s4_pdf_bytes"):
         _label = st.session_state.get("_s4_pdf_label", period_label)
         st.download_button(
-            "漎? 銝?摰?? PDF嚗???",
+            "⬇️ 下載完整分析 PDF（多頁）",
             data=st.session_state["_s4_pdf_bytes"],
-            file_name=f"ECOCO_摰Ｚ迄??_{_label.replace(' ','').replace('嚚?,'-').replace('/','-')}.pdf",
+            file_name=f"ECOCO_客訴分析_{_label.replace(' ','').replace('～','-').replace('/','-')}.pdf",
             mime="application/pdf",
             use_container_width=False,
             key="s4_dl_full_pdf",
         )
 
-    # ?? AI ??牧?勗? ????????????????????????????????????????????????
+    # ── AI 口說報告 ────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown(f'<div class="s4-section">??儭?AI ??牧?勗??Ｙ???/div>', unsafe_allow_html=True)
-    rep_type = st.radio("?勗?憿?", ["?望??勗?","???勗?","摮?","撟游漲?勗?"], horizontal=True, key="s4v3_rep")
+    st.markdown(f'<div class="s4-section">🎙️ AI 口說報告產生器</div>', unsafe_allow_html=True)
+    rep_type = st.radio("報告類型", ["週會報告","月會報告","季報","年度報告"], horizontal=True, key="s4v3_rep")
 
-    if st.button("?? ?Ｙ? AI ??牧?勗?", type="primary", key="s4v3_gen"):
+    if st.button("🚀 產生 AI 口說報告", type="primary", key="s4v3_gen"):
         total_cur  = len(df_filt)
         total_prev = len(df_prev) if not df_prev.empty else None
         pct_chg    = pct_change(total_cur, total_prev) if total_prev else None
@@ -3118,8 +3342,8 @@ def section_4():
             for cat, cnt in _cvs.items():
                 prev_cnt = int(_pvs.get(cat, 0))
                 d = int(cnt) - prev_cnt
-                pline = f"嚗?銝? {d:+d} 隞塚?{pct_change(int(cnt),prev_cnt):+.1f}%嚗? if prev_cnt else ""
-                type_summary += f"- {cat}嚗int(cnt)} 隞閔pline}\n"
+                pline = f"（較上期 {d:+d} 件，{pct_change(int(cnt),prev_cnt):+.1f}%）" if prev_cnt else ""
+                type_summary += f"- {cat}：{int(cnt)} 件{pline}\n"
 
         city_summary = ""
         if city_col and city_col in df_filt.columns:
@@ -3127,39 +3351,39 @@ def section_4():
             _pc = df_prev[city_col].value_counts() if not df_prev.empty and city_col in df_prev.columns else pd.Series(dtype=int)
             for city, cnt in _cc.head(5).items():
                 d = int(cnt) - int(_pc.get(city,0))
-                city_summary += f"- {city}嚗int(cnt)} 隞塚?{d:+d}嚗n"
+                city_summary += f"- {city}：{int(cnt)} 件（{d:+d}）\n"
 
         top3 = ""
         if detail_col and detail_col in df_filt.columns:
             for _, r in df_filt[detail_col].value_counts().head(3).reset_index().iterrows():
-                top3 += f"- {r[detail_col]}嚗r['count']} 隞跚n"
+                top3 += f"- {r[detail_col]}：{r['count']} 件\n"
 
         _upper_cmp = (
-            f"\n????瘥?{period_prev}嚗total_prev} 隞塚?蝮賭辣??{pct_chg:+.1f}%嚗?
+            f"\n【上期對比】（{period_prev}，{total_prev} 件，總件數 {pct_chg:+.1f}%）"
             if pct_chg is not None else ""
         )
         prompt = (
-            f"雿 ECOCO 摰?臬儐?啁?瞈恥???蝝????～n"
-            f"隢?誑銝???Ｗ銝隞緹rep_type}?隤芸???拙??冽?霅唬葉撠摰陛?晞n\n"
-            f"??瘞??撠平?????啜葆?遣霅唳改?憒?游隤?n"
-            f"??瑽?\n"
-            f"1. ??踝?暺?祆???嚗n"
-            f"2. 蝮賡?頞典璁膩嚗摮?蝢抬??敹菜摮?\n"
-            f"3. ??憭抒?暺楛摨西圾?????蔣?選?\n"
-            f"4. ??/????漁暺n"
-            f"5. ?孵???餈質馱\n"
-            f"6. 銝?畾菔??遣霅豹n\n"
-            f"????{period_label}嚗 {total_cur} 隞塚?嚗n"
-            f"{type_summary or '嚗??憿?鞈?嚗?}\n\n"
-            f"??撣?撣?TOP5??\n"
-            f"{city_summary or '嚗??鞈?嚗?}\n\n"
-            f"??銝之??蝝圈???\n"
-            f"{top3 or '嚗蝝圈?鞈?嚗?}\n"
+            f"你是 ECOCO 宜可可循環經濟客服部的高級分析專員。\n"
+            f"請根據以下數據，產出一份{rep_type}的「口說報告」，適合在會議中對長官簡報。\n\n"
+            f"【語氣】：專業、條理清晰、帶有建議性，如現場口語報告。\n"
+            f"【結構】：\n"
+            f"1. 開場白（點出本期重點）\n"
+            f"2. 總體趨勢概述（數字意義，非只念數字）\n"
+            f"3. 前三大痛點深度解析（原因與影響）\n"
+            f"4. 城市/區域分析亮點\n"
+            f"5. 改善成效追蹤\n"
+            f"6. 下階段行動建議\n\n"
+            f"【本期數據】（{period_label}，共 {total_cur} 件）：\n"
+            f"{type_summary or '（無問題類型資料）'}\n\n"
+            f"【城市分布 TOP5】：\n"
+            f"{city_summary or '（無城市資料）'}\n\n"
+            f"【前三大問題細項】：\n"
+            f"{top3 or '（無細項資料）'}\n"
             f"{_upper_cmp}\n\n"
-            f"隢誑蝜?銝剜??啣神嚗隤?嗡?銝仃撠平嚗?畾菔 2-4 ?乓?
+            f"請以繁體中文撰寫，口語自然但不失專業，每段落 2-4 句。"
         )
 
-        with st.spinner("AI 甇??啣神??牧?勗?..."):
+        with st.spinner("AI 正在撰寫口說報告..."):
             try:
                 import anthropic as _anth, os
                 _api_key = (os.environ.get("ANTHROPIC_API_KEY","") or
@@ -3174,14 +3398,14 @@ def section_4():
             except Exception as e:
                 try:
                     report_text = generate_ai_summary_llm(df_filt, model_name="haiku")
-                    report_text = f"?隤芸?n\n{report_text}"
+                    report_text = f"【口說報告】\n\n{report_text}"
                 except Exception:
-                    report_text = f"?? AI ?急??⊥?雿輻嚗e}嚗n\n?豢???嚗n\n{prompt}"
+                    report_text = f"⚠️ AI 暫時無法使用（{e}）\n\n數據摘要：\n\n{prompt}"
 
-        st.text_area("?? ??牧?勗?嚗銴ˊ嚗?, report_text, height=460, key="s4v3_report_out")
+        st.text_area("📋 口說報告（可複製）", report_text, height=460, key="s4v3_report_out")
 
         dl_c1, dl_c2 = st.columns(2)
-        dl_c1.download_button("漎? 銝???牧?勗?嚗XT嚗?,
+        dl_c1.download_button("⬇️ 下載口說報告（TXT）",
                               data=report_text.encode("utf-8"),
                               file_name=f"{period_label}_{rep_type}.txt",
                               mime="text/plain", key="s4v3_dl_txt",
@@ -3196,25 +3420,25 @@ def section_4():
                 _colors = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9"]
                 _a.pie(list(_tc2.values), labels=list(_tc2.index), autopct="%1.1f%%",
                        colors=_colors[:len(_tc2)], startangle=90)
-                _a.set_title(f"{period_label} 摰Ｚ迄憿??")
+                _a.set_title(f"{period_label} 客訴類別分佈")
                 _b = io.BytesIO(); _f.savefig(_b, format="png", dpi=150, bbox_inches="tight")
-                _mplt.close(_f); _charts["摰Ｚ迄憿??.png"] = _b.getvalue()
+                _mplt.close(_f); _charts["客訴類別分佈.png"] = _b.getvalue()
             if city_col and city_col in df_filt.columns:
                 _cc2 = df_filt[city_col].value_counts().head(10)
                 _f2, _a2 = _mplt.subplots(figsize=(8,4))
                 _a2.bar(list(_cc2.index), list(_cc2.values), color="#FF5000")
-                _a2.set_title(f"{period_label} ??隞嗆??")
+                _a2.set_title(f"{period_label} 城市件數排行")
                 _a2.yaxis.set_major_locator(_mplt.MaxNLocator(integer=True))
                 _a2.tick_params(axis="x", rotation=15)
                 _b2 = io.BytesIO(); _f2.savefig(_b2, format="png", dpi=150, bbox_inches="tight")
-                _mplt.close(_f2); _charts["????.png"] = _b2.getvalue()
+                _mplt.close(_f2); _charts["城市排行.png"] = _b2.getvalue()
             if detail_col and detail_col in df_filt.columns:
                 _dc2 = df_filt[detail_col].value_counts().head(8)
                 _f3, _a3 = _mplt.subplots(figsize=(8,4))
                 _a3.barh(list(_dc2.index)[::-1], list(_dc2.values)[::-1], color="#060E9F")
-                _a3.set_title(f"{period_label} TOP 8 ??蝝圈?")
+                _a3.set_title(f"{period_label} TOP 8 問題細項")
                 _b3 = io.BytesIO(); _f3.savefig(_b3, format="png", dpi=150, bbox_inches="tight")
-                _mplt.close(_f3); _charts["??蝝圈???.png"] = _b3.getvalue()
+                _mplt.close(_f3); _charts["問題細項排行.png"] = _b3.getvalue()
             _zbuf = io.BytesIO()
             with zipfile.ZipFile(_zbuf, "w", zipfile.ZIP_DEFLATED) as _zf:
                 for _fn, _fb in _charts.items():
@@ -3222,88 +3446,96 @@ def section_4():
                     _zi.compress_type = zipfile.ZIP_DEFLATED; _zf.writestr(_zi, _fb)
                 _zr = zipfile.ZipInfo(f"{period_label}_{rep_type}.txt")
                 _zr.flag_bits |= 0x800; _zf.writestr(_zr, report_text.encode("utf-8"))
-            dl_c2.download_button("漎? 銝??”+?勗?嚗IP嚗?,
+            dl_c2.download_button("⬇️ 下載圖表+報告（ZIP）",
                                   data=_zbuf.getvalue(),
-                                  file_name=f"{period_label}_頞典??.zip",
+                                  file_name=f"{period_label}_趨勢分析.zip",
                                   mime="application/zip", key="s4v3_dl_zip",
                                   use_container_width=True)
         except Exception as _ze:
-            dl_c2.warning(f"ZIP ?Ｙ?憭望?嚗_ze}")
+            dl_c2.warning(f"ZIP 產生失敗：{_ze}")
 
 
 
 def main():
     apply_brand_theme()
-    st.markdown("<div class='ecoco-banner'>ECOCO 摰Ｚ迄?箄??撟喳</div>", unsafe_allow_html=True)
+    st.markdown("<div class='ecoco-banner'>ECOCO 客訴智能分析平台</div>", unsafe_allow_html=True)
     with st.sidebar:
         st.markdown("<div class='side-title'>ECOCO AI</div>", unsafe_allow_html=True)
-        st.markdown("<div class='side-sub'>摰Ｚ迄????摰?/div>", unsafe_allow_html=True)
+        st.markdown("<div class='side-sub'>客訴分析處理室</div>", unsafe_allow_html=True)
         if "menu" not in st.session_state:
-            st.session_state["menu"] = "??”?"
-        if st.button("?妝 ??”?", use_container_width=True, type="primary" if st.session_state["menu"] == "??”?" else "secondary"):
-            st.session_state["menu"] = "??”?"
-        if st.button("? 銝瑼??嚗???嚗?, use_container_width=True, type="primary" if st.session_state["menu"] == "銝瑼??嚗???嚗? else "secondary"):
-            st.session_state["menu"] = "銝瑼??嚗???嚗?
-        if st.button("?? ?”??AI ??", use_container_width=True, type="primary" if st.session_state["menu"] == "?”??AI ??" else "secondary"):
-            st.session_state["menu"] = "?”??AI ??"
-        if st.button("??儭?甇瑕蝝??, use_container_width=True, type="primary" if st.session_state["menu"] == "甇瑕蝝?? else "secondary"):
-            st.session_state["menu"] = "甇瑕蝝??
-        if st.button("?? ????摮?撟游漲??", use_container_width=True, type="primary" if st.session_state["menu"] == "頞典??" else "secondary"):
-            st.session_state["menu"] = "頞典??"
+            st.session_state["menu"] = "功能列表區"
+        if st.button("🧩 功能列表區", use_container_width=True, type="primary" if st.session_state["menu"] == "功能列表區" else "secondary"):
+            st.session_state["menu"] = "功能列表區"
+        if st.button("📤 上傳檔案區（分析區）", use_container_width=True, type="primary" if st.session_state["menu"] == "上傳檔案區（分析區）" else "secondary"):
+            st.session_state["menu"] = "上傳檔案區（分析區）"
+        if st.button("📊 圖表與 AI 分析", use_container_width=True, type="primary" if st.session_state["menu"] == "圖表與 AI 分析" else "secondary"):
+            st.session_state["menu"] = "圖表與 AI 分析"
+        if st.button("🗂️ 歷史紀錄", use_container_width=True, type="primary" if st.session_state["menu"] == "歷史紀錄" else "secondary"):
+            st.session_state["menu"] = "歷史紀錄"
+        if st.button("📈 週/月/季/年度分析", use_container_width=True, type="primary" if st.session_state["menu"] == "趨勢分析" else "secondary"):
+            st.session_state["menu"] = "趨勢分析"
         menu = st.session_state["menu"]
 
-    if menu == "??”?":
+    if menu == "功能列表區":
         st.markdown(
             """
             <div class="ecoco-card">
-              <b>? 1</b>嚗???excel/csv/pdf嚗??蒂璅???憿???憿敦???舀銝??詨‵?楊頛胯祟?詻甈∪?貊楊頛??芷??頛?Excel????Google Sheet??
+              <b>功能 1</b>：上傳 excel/csv/pdf，分析並標記【問題類型、問題細項】；支援下拉選填、編輯、篩選、批次勾選編輯/刪除、下載 Excel、上傳 Google Sheet。
             </div>
             <div class="ecoco-card">
-              <b>? 2</b>嚗???蝯??”??憿舐內???辣?貉??曉?瘥?銝行?蝷箸飛撅祇?嚗?汗??頛?AI ??????
+              <b>功能 2</b>：將分析結果圖表化，顯示各類型件數與百分比，並標示歸屬部門；可預覽與下載 AI 重點分析。
             </div>
             <div class="ecoco-card">
-              <b>? 3</b>嚗風?脣????恣????啁蔭??嚗?汗??頛?
+              <b>功能 3</b>：歷史分析紀錄管理（最新置頂），可預覽與下載。
             </div>
             <div class="ecoco-card">
-              <b>? 4</b>嚗???摮?撟游漲頞典????甇瑕蝝????隅?Ｗ?瘥I ??牧?勗??Ｙ??具?
+              <b>功能 4</b>：週/月/季/年度趨勢分析——從歷史紀錄聚合數據、趨勢對比、AI 口說報告產生器。
             </div>
             """,
             unsafe_allow_html=True,
         )
-    elif menu == "銝瑼??嚗???嚗?:
+    elif menu == "上傳檔案區（分析區）":
         section_1()
-    elif menu == "?”??AI ??":
+    elif menu == "圖表與 AI 分析":
         section_2()
-    elif menu == "頞典??":
+    elif menu == "趨勢分析":
         section_4()
     else:
         section_3()
         
-    # Use a fixed-position div to stay at the absolute bottom of the viewport
+    # Footer stays in normal document flow so it does not cover content.
     st.markdown(
         """
         <style>
             .fixed-footer {
-                position: fixed;
-                bottom: 15px;
-                left: 0;
+                position: relative;
                 width: 100%;
                 text-align: center;
                 color: #888888;
                 font-size: 14px;
-                z-index: 99;
-                pointer-events: none; /* Don't block clicks to elements behind it */
+                margin: 36px 0 12px;
+                padding: 12px 0;
+                pointer-events: none;
             }
-            /* Adjust for sidebar visibility if needed */
-            @media (min-width: 768px) {
-                .fixed-footer {
-                    padding-left: 5rem; /* Offset slightly to be visually centered in the main area */
-                }
+            .scroll-top-btn {
+                position: fixed;
+                right: 18px;
+                bottom: 18px;
+                z-index: 1000;
+                border: 1px solid #8EB9C9;
+                background: #FFFFFF;
+                color: #060E9F;
+                border-radius: 999px;
+                padding: 8px 12px;
+                font-size: 13px;
+                cursor: pointer;
+                box-shadow: 0 2px 8px rgba(0,0,0,.12);
             }
         </style>
         <div class="fixed-footer">
-            202603穢 ECOCO摰?臬儐?啁?瞈?摰Ｘ?隤???隢???扯瓷?Ｘ? ??
+            202603© ECOCO宜可可循環經濟 客服課 ※ 請尊重智慧財產權 ※
         </div>
+        <button class="scroll-top-btn" onclick="window.parent.scrollTo({top:0, behavior:'smooth'});">置頂</button>
         """,
         unsafe_allow_html=True
     )
