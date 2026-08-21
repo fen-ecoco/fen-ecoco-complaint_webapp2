@@ -10,3 +10,25 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
+
+  # ── 無人值守排程：每天 01:00 (UTC) 讀來源試算表的新資料，自動分類並產報告 ──
+  # 免費方案不支援 cron job，需升級付費方案；不使用 Render 時可改用
+  # Windows 工作排程器執行同一道指令：python -m automation.cli run --from-sheet --only-new --report
+  - type: cron
+    name: ecoco-complaint-nightly
+    env: python
+    repo: https://github.com/fen-ecoco/fen-ecoco-complaint_webapp2
+    plan: starter
+    schedule: "0 1 * * *"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -m automation.cli run --from-sheet --only-new --report --out output"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      # 下列值請在 Render 後台填入（與 web service 相同）
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: HISTORY_SHEET_ID
+        sync: false
+      - key: SOURCE_SHEET_ID
+        sync: false
