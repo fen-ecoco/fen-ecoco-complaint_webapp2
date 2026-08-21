@@ -112,8 +112,13 @@ def get_anthropic_key() -> str:
     return str(get_setting("ANTHROPIC_API_KEY", "") or "")
 
 
+# 與 complaint_webapp.py 的 DEFAULT_HISTORY_SHEET_ID 相同，
+# 讓排程模式在沒有設環境變數時也能連到同一份歷史紀錄。
+DEFAULT_HISTORY_SHEET_ID = "1Sqh_8bXtFw7jvmCPufTpStKxfIafDzwYJRlgc0HFBSs"
+
+
 def get_history_sheet_id() -> str:
-    return str(get_setting("HISTORY_SHEET_ID", "") or "")
+    return str(get_setting("HISTORY_SHEET_ID", "") or DEFAULT_HISTORY_SHEET_ID)
 
 
 def get_source_sheet_id() -> str:

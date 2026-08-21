@@ -35,90 +35,33 @@ except Exception:
 
 st.set_page_config(page_title="ECOCO 客訴分析平台", page_icon="📊", layout="wide")
 
-TOPIC_DETAIL_MAP = {
-    "APP使用問題類型": [
-        "APP畫面顯示與機台狀態不符",
-        "APP商家頁面空白",
-        "APP點數顯示異常",
-        "APP多重異常狀況",
-        "app畫面顯示與機台狀態不符",
-        "app多重異常狀況",
-        "app點數顯示異常",
-        "app商家頁面空白",
-    ],
-    "APP帳號設定問題類型": [
-        "忘記密碼/無法重設密碼",
-        "帳號資訊修改/設定",
-        "無法接收簡訊驗證碼",
-        "APP無法登入",
-        "app無法登入",
-    ],
-    "APP帳密登入問題": [
-        "APP無法登入",
-        "app無法登入",
-        "忘記密碼/無法重設密碼",
-    ],
-    "優惠券問題類型": [
-        "兌換失敗/顯示錯誤",
-        "無法進行兌換操作",
-        "使用規則/限制條件說明",
-        "查詢優惠券序號紀錄",
-    ],
-    "回收點數問題類型": [
-        "點數重複入點",
-        "點數未入帳號",
-        "投入後未獲點數/點數未記錄",
-    ],
-    "機台問題類型": [
-        "機台運作中斷/重啟",
-        "黑色分選門異常或卡瓶堵塞",
-        "重量偵測異常",
-        "操作流程異常/無法正常操作",
-        "螢幕異常顯示/畫面異常",
-        "履帶未作動或異常抖動",
-        "機台當機/無回應",
-        "機台需維護/故障提醒",
-        "機台網路連線失敗",
-        "機台髒污/需要清潔",
-        "網路中斷或不穩定",
-        "機台關閉/無法啟動",
-        "投口綠燈拒收容器",
-        "投入物卡住_瓶罐/電池",
-        "辨識失敗異常或錯誤",
-        "機台操作畫面無法登入",
-        "投入後未獲點數/點數未記錄",
-        "螢幕西曬導致黑屏或反光",
-        "瓶蓋桶已滿",
-        "回收艙門開啟",
-    ],
-    "顧客關係類型": [
-        "許願新增站點/設站建議",
-        "申請刪除帳號",
-        "更換帳號",
-        "其他建議",
-        "回收物使用規則",
-        "相關活動規則疑問",
-    ],
-}
+# ── 自動化核心（automation/ 套件；與無介面排程 automation/cli.py 共用同一套邏輯）──
+from automation import config as auto_config
+from automation.classifier import build_default as build_classifier
+from automation.columns import detect_columns
+from automation.core import (
+    META_COLUMNS,
+    AnalysisConfig,
+    analyze_dataframe as core_analyze_dataframe,
+    make_unique_columns,
+    review_summary,
+    visible_columns,
+)
+from automation.rules import _is_valid_pair, analyze_complaint
+from automation.taxonomy import (
+    DEPT_MAP,
+    DEPT_OPTIONS,
+    DETAIL_OPTIONS,
+    TOPIC_DETAIL_MAP,
+    TYPE_OPTIONS,
+)
+from automation.text import (
+    mask_sensitive_df,
+    mask_sensitive_text,
+    normalize_problem_labels,
+)
 
-TYPE_OPTIONS = list(TOPIC_DETAIL_MAP.keys())
-DETAIL_OPTIONS = [d for lst in TOPIC_DETAIL_MAP.values() for d in lst]
 
-DEPT_OPTIONS = [
-    "營運部", "研發部", "廠務部", "人資部", "行銷部", 
-    "資訊部", "企劃部", "財務部", "開發部", "總經理室"
-]
-
-DEPT_MAP = {
-    "機台問題類型": "營運部",
-    "機台相關問題": "營運部",
-    "APP帳號設定問題類型": "資訊部",
-    "APP使用問題類型": "資訊部",
-    "APP帳密登入問題": "資訊部",
-    "回收點數問題類型": "",
-    "優惠券問題類型": "行銷部",
-    "顧客關係類型": "營運部",
-}
 
 # ── ECOCO 品牌色（Pantone 對應）──────────────────────────────
 BRAND_ORANGE  = "#FF5000"   # Pantone Orange 021 C  → 營運部
@@ -196,11 +139,6 @@ SHEET_CELL_CHAR_LIMIT = 49000
 TEMPLATE_PATH = Path(__file__).parent / "簡報範本.pptx"
 
 
-@dataclass
-class AnalysisConfig:
-    subject_col: str
-    content_col: str
-    date_col: Optional[str]
 
 
 def apply_brand_theme() -> None:
@@ -351,115 +289,6 @@ def apply_brand_theme() -> None:
     )
 
 
-def analyze_complaint(subject: str, content: str) -> tuple[str, str]:
-    s = subject if isinstance(subject, str) else ""
-    c = content if isinstance(content, str) else ""
-    t = (s + " " + c).lower()
-
-    # 顧客關係類型
-    if "註冊" in t and "無法" in t:
-        return "顧客關係類型", "其他建議"
-    if any(k in t for k in ["不處理", "態度", "搞什麼", "不願意"]):
-        return "顧客關係類型", "其他建議"
-    if any(k in t for k in ["刪除帳號", "註銷"]):
-        return "顧客關係類型", "申請刪除帳號"
-    if any(k in t for k in ["手機號碼", "原帳號"]) and any(k in t for k in ["變更", "更改", "修改"]):
-        return "顧客關係類型", "更換帳號"
-    if any(k in t for k in ["更換帳號", "換帳號"]):
-        return "顧客關係類型", "更換帳號"
-    if any(k in t for k in ["新增站點", "設站", "建議", "許願"]):
-        return "顧客關係類型", "許願新增站點/設站建議"
-    if any(k in t for k in ["回收規則", "材質", "可回收"]):
-        return "顧客關係類型", "回收物使用規則"
-
-    # APP帳號設定
-    if any(k in t for k in ["驗證碼", "認證碼", "otp", "簡訊"]):
-        if "忘記密碼" in t:
-            return "APP帳號設定問題類型", "忘記密碼/無法重設密碼"
-        return "APP帳號設定問題類型", "無法接收簡訊驗證碼"
-    if any(k in t for k in ["修改", "更改", "更換"]) and any(k in t for k in ["帳號", "手機", "電話", "號碼"]):
-        return "APP帳號設定問題類型", "帳號資訊修改/設定"
-
-    # 登入問題
-    if any(k in t for k in ["登入", "登不進去"]) and any(k in t for k in ["螢幕", "機台", "黑掉"]) and any(k in t for k in ["無法", "不能", "失敗", "不了"]):
-        return "機台問題類型", "機台操作畫面無法登入"
-    if any(k in t for k in ["無法登入", "不能登入", "登不進去", "登入失敗", "登入不了"]):
-        return "APP帳號設定問題類型", "APP無法登入"
-
-    # APP使用
-    if "可投數量" in t or ("app" in t and "顯示" in t and "0" not in t):
-        return "APP使用問題類型", "APP畫面顯示與機台狀態不符"
-    if "顯示" in t and "不符" in t:
-        return "APP使用問題類型", "APP畫面顯示與機台狀態不符"
-    if any(k in t for k in ["app異常", "閃退", "轉圈", "更新"]):
-        return "APP使用問題類型", "APP多重異常狀況"
-
-    # 點數
-    if "點數" in t and any(k in t for k in ["未累積", "未增加", "沒有入帳", "未入帳"]):
-        return "回收點數問題類型", "點數未入帳號"
-    if ("點數" in t or "沒入點" in t or "計點" in t) and any(k in t for k in ["未入", "沒入", "不見", "沒記", "沒收到"]):
-        return "回收點數問題類型", "點數未入帳號"
-    if "點數" in t and any(k in t for k in ["重複", "多給", "多入"]):
-        return "回收點數問題類型", "點數重複入點"
-
-    # 優惠券
-    if any(k in t for k in ["優惠券", "兌換券", "折價", "序號", "抵用", "對換券", "票卷", "票夾", "條碼", "換這個"]):
-        if any(k in t for k in ["提前按下", "操作錯誤", "系統還沒更新", "已更換", "限制", "期限", "規則"]):
-            return "優惠券問題類型", "使用規則/限制條件說明"
-        if any(k in t for k in ["過期", "還原", "點到", "沒按出條碼"]):
-            return "優惠券問題類型", "無法進行兌換操作"
-        if any(k in t for k in ["已使用", "失敗", "錯誤", "不能用", "刷不過", "沒有跑出條碼", "這怎麼一回事"]):
-            return "優惠券問題類型", "兌換失敗/顯示錯誤"
-        if any(k in t for k in ["查詢", "紀錄", "找不到", "在哪"]):
-            return "優惠券問題類型", "查詢優惠券序號紀錄"
-        return "優惠券問題類型", "無法進行兌換操作"
-
-    # 機台問題
-    if any(k in t for k in ["處理中", "卡住"]) and "暫停不動" in t:
-        return "機台問題類型", "機台當機/無回應"
-    if "寶特瓶卡住" in t or "卡在" in t or ("黑色門" in t and "卡住" in t) or "卡瓶" in t:
-        return "機台問題類型", "投入物卡住_瓶罐/電池"
-    if any(k in t for k in ["投很多次", "無法辨識", "一直顯示", "不顯示綠燈", "辨識失敗", "辨識異常"]):
-        return "機台問題類型", "辨識失敗異常或錯誤"
-    if any(k in t for k in ["顯示0都沒有更新", "通報維修"]):
-        return "機台問題類型", "機台需維護/故障提醒"
-    if any(k in t for k in ["關閉", "設備不動", "不能使用", "撤機", "故障快", "沒開", "未開啟", "關機"]):
-        return "機台問題類型", "機台關閉/無法啟動"
-    if any(k in t for k in ["髒污不收", "清潔", "髒污"]):
-        return "機台問題類型", "機台髒污/需要清潔"
-    if any(k in t for k in ["當機", "故障訊息", "沒反應", "lag", "機台異常"]):
-        return "機台問題類型", "機台當機/無回應"
-    if any(k in t for k in ["滿倉", "收滿", "滿台"]):
-        return "機台問題類型", "瓶蓋桶已滿"
-    if "運轉不會停止" in t:
-        return "機台問題類型", "操作流程異常/無法正常操作"
-
-    # 其他原手機台問題
-    if any(k in t for k in ["履帶", "輸送帶", "傳送帶"]) and any(k in t for k in ["不動", "不轉", "異常"]):
-        return "機台問題類型", "履帶未作動或異常抖動"
-    if any(k in t for k in ["黑屏", "黑畫面", "螢幕異常", "畫面異常", "反光", "黑掉"]):
-        return "機台問題類型", "螢幕異常顯示/畫面異常"
-    if any(k in t for k in ["維護", "維修", "需維修", "故障提醒"]):
-        return "機台問題類型", "機台需維護/故障提醒"
-    if any(k in t for k in ["網路連線失敗", "連不上", "連線失敗"]) and "機台" in t:
-        return "機台問題類型", "機台網路連線失敗"
-    if any(k in t for k in ["網路不穩", "網路中斷"]):
-        return "機台問題類型", "網路中斷或不穩定"
-    if any(k in t for k in ["重量", "秤重", "偵測重量"]):
-        return "機台問題類型", "重量偵測異常"
-    if any(k in t for k in ["無法操作", "流程異常", "不能操作"]):
-        return "機台問題類型", "操作流程異常/無法正常操作"
-    if any(k in t for k in ["投入後沒點", "未獲點數", "未記錄"]):
-        return "機台問題類型", "投入後未獲點數/點數未記錄"
-    if any(k in t for k in ["中斷", "重啟", "重開機"]):
-        return "機台問題類型", "機台運作中斷/重啟"
-    if any(k in t for k in ["艙門", "門沒關", "回收艙門"]):
-        return "機台問題類型", "回收艙門開啟"
-    if "綠燈" in t and "不能" in t:
-        return "機台問題類型", "投口綠燈拒收容器"
-
-    return "顧客關係類型", "其他建議"
-
 
 def parse_pdf_to_df(file_obj) -> pd.DataFrame:
     if pdfplumber is None:
@@ -495,91 +324,43 @@ def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
     raise ValueError(f"僅支援 excel / csv / pdf，收到：{suffix or name}")
 
 
-def make_unique_columns(df: pd.DataFrame) -> pd.DataFrame:
-    cols = []
-    seen = {}
-    for c in df.columns:
-        name = str(c)
-        if name not in seen:
-            seen[name] = 0
-            cols.append(name)
-        else:
-            seen[name] += 1
-            cols.append(f"{name}_{seen[name]}")
-    out = df.copy()
-    out.columns = cols
-    return out
 
 
-# ---- valid type set for fast lookup (all keys + known variant spellings from template) ----
-_VALID_TYPES = set(TOPIC_DETAIL_MAP.keys())
+@st.cache_resource(show_spinner="正在讀取歷史標記，建立分類知識庫…")
+def get_knowledge(version: str = ""):
+    """從歷史紀錄建立知識庫（指紋快取／挖掘規則／相似案例投票池）。
 
-# All valid details (flattened from TOPIC_DETAIL_MAP) for quick check
-_VALID_DETAILS_FLAT: set[str] = {d for lst in TOPIC_DETAIL_MAP.values() for d in lst}
+    version 只是 cache key：存檔後傳入新值即可讓知識庫重建。
+    讀不到歷史時回傳 None，分類自動退回內建規則。
+    """
+    try:
+        from automation.pipeline import build_knowledge
 
-
-def _is_valid_pair(t: str, d: str) -> bool:
-    """Return True if both type and detail are non-empty and the detail belongs to the type."""
-    t, d = t.strip(), d.strip()
-    if not t or not d:
-        return False
-    # Accept if type is valid AND detail is in that type's list
-    if t in TOPIC_DETAIL_MAP and d in TOPIC_DETAIL_MAP[t]:
-        return True
-    # Also accept if type exists but detail is in the FULL detail pool (legacy data)
-    if t in _VALID_TYPES and d in _VALID_DETAILS_FLAT:
-        return True
-    return False
+        return build_knowledge()   # 同時學習雲端歷史紀錄與本機 history_reports/
+    except Exception as exc:       # 知識庫是加分項，失敗不能擋住分析
+        st.session_state["_knowledge_error"] = str(exc)[:300]
+        return None
 
 
-def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
-    out = make_unique_columns(df.copy())
+def bump_knowledge_version() -> None:
+    """人工修正存檔後呼叫，讓下次取用時重建知識庫（回饋閉環）。"""
+    st.session_state["_knowledge_version"] = datetime.now().strftime("%Y%m%d%H%M%S")
 
-    # ------ Preserve existing valid 問題類型 + 問題細項 from source file ------
-    existing_type   = out["問題類型"].copy()   if "問題類型" in out.columns else pd.Series([""] * len(out))
-    existing_detail = out["問題細項"].copy()   if "問題細項" in out.columns else pd.Series([""] * len(out))
 
-    # Drop internal columns before re-adding
-    for c in ["問題類型", "問題細項", "選取", "部門", "日期", "_ai_filled"]:
-        if c in out.columns:
-            out = out.drop(columns=[c])
-
-    # Run auto-classification for every row
-    preds = out.apply(
-        lambda r: analyze_complaint(str(r.get(cfg.subject_col, "")), str(r.get(cfg.content_col, ""))),
-        axis=1,
-        result_type="expand",
+def get_classifier():
+    """組出分類器（依設定決定是否掛上選配的 LLM 層）。"""
+    return build_classifier(
+        knowledge=get_knowledge(st.session_state.get("_knowledge_version", ""))
     )
-    preds.columns = ["問題類型", "問題細項"]
-    out = pd.concat([out, preds], axis=1)
 
-    # ------ Merge: prefer original valid pair; fall back to AI prediction ------
-    ai_filled_flags = []
-    for idx in range(len(out)):
-        orig_type   = str(existing_type.iloc[idx]).strip()
-        orig_detail = str(existing_detail.iloc[idx]).strip()
-        if _is_valid_pair(orig_type, orig_detail):
-            # Original is valid → keep it, NOT AI-filled
-            out.iloc[idx, out.columns.get_loc("問題類型")] = orig_type
-            out.iloc[idx, out.columns.get_loc("問題細項")] = orig_detail
-            ai_filled_flags.append(False)
-        else:
-            # Original missing/invalid → use AI prediction, mark as AI-filled
-            ai_filled_flags.append(True)
 
-    out["_ai_filled"] = ai_filled_flags
+def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig,
+                      classifier=None, progress=None) -> pd.DataFrame:
+    """分析核心已移至 automation/core.py，此處保留同名包裝維持既有呼叫方式。"""
+    if classifier is None:
+        classifier = get_classifier()
+    return core_analyze_dataframe(df, cfg, classifier=classifier, progress=progress)
 
-    # Final guard: ensure detail always belongs to its topic
-    out["問題細項"] = out.apply(
-        lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], [])
-                  else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
-        axis=1,
-    )
-    out["選取"] = False
-    out["部門"] = out["問題類型"].map(DEPT_MAP).fillna("")
-    if cfg.date_col and cfg.date_col in out.columns:
-        out["日期"] = pd.to_datetime(out[cfg.date_col], errors="coerce")
-    return out
 
 
 # ── Google Sheets 歷史紀錄持久化 ────────────────────────────────────────────
@@ -596,18 +377,8 @@ def _get_gsheet_client():
     except ImportError:
         return None
     try:
-        import os, json as _json
-        # ── 1. 優先讀 Render 環境變數 ──
-        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
-        if creds_json:
-            creds_dict = _json.loads(creds_json)
-        else:
-            # ── 2. 備用：本機 st.secrets（捕捉所有例外）──
-            try:
-                raw = st.secrets.get("google_credentials", {})
-                creds_dict = dict(raw) if raw else {}
-            except Exception:
-                creds_dict = {}
+        # 憑證來源統一由 automation/config.py 解析（環境變數 → secrets → JSON 檔）
+        creds_dict = auto_config.get_google_credentials()
         if not creds_dict:
             return None
         creds = _Creds.from_service_account_info(
@@ -724,6 +495,10 @@ def _worksheet_to_dataframe(ws) -> pd.DataFrame:
 
 
 def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> tuple[Path, str, str]:
+    if auto_config.history_readonly():
+        # 唯讀模式（測試／示範用）：不寫雲端也不寫本機，避免污染正式歷史
+        st.session_state["_gsheet_error"] = "唯讀模式（HISTORY_READONLY=true），未寫入歷史紀錄"
+        return Path(), "", existing_id
     today = datetime.now().strftime("%Y%m%d")
     ts = existing_id if existing_id else datetime.now().strftime("%Y%m%d_%H%M%S")
     output_name = f"{today}_分析.xlsx"
@@ -868,16 +643,36 @@ def generate_ai_summary(df: pd.DataFrame) -> str:
     )
 
 
-def generate_ai_summary_llm(df: pd.DataFrame, model_name: str = "gpt-4o-mini") -> str:
-    api_key = None
-    if hasattr(st, "secrets"):
-        try:
-            api_key = st.secrets.get("OPENAI_API_KEY", None)
-        except Exception:
-            api_key = None
-    if not api_key:
-        api_key = st.session_state.get("OPENAI_API_KEY", "")
-    if not api_key or OpenAI is None:
+def _ai_summary_cache_key(df: pd.DataFrame, tag: str = "") -> str:
+    """以資料指紋當快取鍵：資料沒變就不重新呼叫 API。"""
+    try:
+        fingerprint = pd.util.hash_pandas_object(
+            df[[c for c in ("問題類型", "問題細項", "部門") if c in df.columns]],
+            index=False,
+        ).sum()
+    except Exception:
+        fingerprint = len(df)
+    return f"_ai_summary_{tag}_{len(df)}_{fingerprint}"
+
+
+def get_ai_summary_cached(df: pd.DataFrame, tag: str = "") -> str:
+    """取得 AI 摘要（同一份資料只會呼叫一次 API）。
+
+    Streamlit 每次互動都會整頁重跑，若直接呼叫會每動一下就計費一次。
+    """
+    key = _ai_summary_cache_key(df, tag)
+    if key not in st.session_state:
+        with st.spinner("正在產生 AI 摘要…"):
+            st.session_state[key] = generate_ai_summary_llm(df)
+    return st.session_state[key]
+
+
+def generate_ai_summary_llm(df: pd.DataFrame, model_name: str = "") -> str:
+    """用 LLM 產生摘要；沒有 API key 或呼叫失敗時退回內建統計摘要。
+
+    注意：這個函式會產生 API 費用，呼叫端請走 get_ai_summary_cached()。
+    """
+    if not (auto_config.get_anthropic_key() or auto_config.get_openai_key()):
         return generate_ai_summary(df)
     sample = df[["問題類型", "問題細項", "部門"]].head(300).to_dict(orient="records")
     payload = {
@@ -892,13 +687,10 @@ def generate_ai_summary_llm(df: pd.DataFrame, model_name: str = "gpt-4o-mini") -
         f"{json.dumps(payload, ensure_ascii=False)}\n"
         "請特別列出：1. 站點城市分布熱點 (如果從內容看得出來) 2. 問題類型與細項的熱點(最高頻的異常)。"
     )
-    try:
-        client = OpenAI(api_key=api_key)
-        res = client.responses.create(model=model_name, input=prompt)
-        text = getattr(res, "output_text", "").strip()
-        return text if text else generate_ai_summary(df)
-    except Exception:
-        return generate_ai_summary(df)
+    from automation.llm import complete_text
+
+    text = complete_text(prompt, model=model_name or None, max_tokens=1200)
+    return text.strip() if text else generate_ai_summary(df)
 
 
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
@@ -1691,7 +1483,125 @@ def upload_to_google_sheet(df: pd.DataFrame, credentials_json: dict, spreadsheet
     return ws.url if hasattr(ws, 'url') else ""
 
 
+def apply_editor_changes(full_df: pd.DataFrame, edited: pd.DataFrame,
+                         show_index, editor_state: dict | None = None,
+                         drop_cols: list[str] | None = None) -> tuple[pd.DataFrame, list]:
+    """把 data_editor 的編輯結果寫回完整資料。
+
+    表格可能只顯示部分列（篩選、只看待複核），而 data_editor 回傳的 index
+    不保證與原始資料一致，只保證「順序與顯示順序相同、新增列排在最後」。
+    因此用 show_index（顯示中那些列的原始 id）依序對齊，
+    並參考 widget 狀態裡的 deleted_rows 排除被刪掉的列。
+    回傳 (更新後的完整資料, 實際被寫入的列 id)。
+    """
+    out = full_df.copy()
+    if edited is None or len(edited) == 0:
+        return out, []
+
+    work = edited.drop(columns=[c for c in (drop_cols or []) if c in edited.columns],
+                       errors="ignore")
+    state = editor_state or {}
+    deleted_pos = set(state.get("deleted_rows", []) or [])
+    kept_index = [idx for pos, idx in enumerate(list(show_index)) if pos not in deleted_pos]
+
+    n = min(len(kept_index), len(work))
+    existing = work.iloc[:n].copy()
+    existing.index = pd.Index(kept_index[:n])
+    existing = existing.loc[existing.index.intersection(out.index)]
+    if not existing.empty:
+        out.update(existing)
+
+    added = work.iloc[len(kept_index):].copy()
+    if not added.empty:
+        base = int(pd.to_numeric(pd.Series(out.index), errors="coerce").max() or -1) + 1
+        added.index = pd.Index(range(base, base + len(added)))
+        out = pd.concat([out, added])
+
+    return out, list(existing.index)
+
+
+def options_with_data_values(base: list[str], df: pd.DataFrame | None, column: str) -> list[str]:
+    """下拉選項＝內建清單＋資料裡實際出現的值。
+
+    分類法調整（新增細項、廢除類型）後，舊資料仍可能帶著舊標記；
+    若選項少了實際值，data_editor 那一格會顯示不出來甚至報錯。
+    """
+    options = list(base)
+    if df is not None and column in df.columns:
+        for v in df[column].dropna().unique():
+            name = str(v).strip()
+            if name and name not in options:
+                options.append(name)
+    return options
+
+
+def dept_options_for(df: pd.DataFrame | None = None) -> list[str]:
+    """部門選項＝內建清單＋知識庫學到的＋資料裡實際出現的。"""
+    options = list(DEPT_OPTIONS)
+    kb = get_knowledge(st.session_state.get("_knowledge_version", ""))
+    learned = list(getattr(kb, "dept_by_topic", {}).values()) if kb else []
+    in_data = []
+    if df is not None and "部門" in df.columns:
+        in_data = [str(v).strip() for v in df["部門"].dropna().unique() if str(v).strip()]
+    for name in learned + in_data:
+        if name and name not in options:
+            options.append(name)
+    return options
+
+
+def render_knowledge_panel() -> None:
+    """顯示分類知識庫狀態（從歷史紀錄學到什麼），並提供重建按鈕。"""
+    kb = get_knowledge(st.session_state.get("_knowledge_version", ""))
+    if kb is None:
+        with st.expander("🧠 分類知識庫（尚未建立）", expanded=False):
+            st.caption("目前只使用內建關鍵字規則。等歷史紀錄累積後，"
+                       "系統會自動從過往（尤其是人工修正過的）標記學出規則與相似案例池。")
+            msg = st.session_state.get("_knowledge_error")
+            if msg:
+                st.caption(f"讀取歷史時的訊息：{msg}")
+        return
+
+    s = kb.stats
+    with st.expander(
+        f"🧠 分類知識庫：已從 {s.get('history_rows', 0)} 筆歷史標記學到 "
+        f"{s.get('rules', 0)} 條規則、{s.get('fingerprints', 0)} 組指紋",
+        expanded=False,
+    ):
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("歷史標記", s.get("history_rows", 0))
+        k2.metric("人工確認", s.get("confirmed_rows", 0))
+        k3.metric("自動挖掘規則", s.get("rules", 0))
+        k4.metric("相似案例池", s.get("knn_examples", 0))
+        if kb.rules:
+            st.dataframe(
+                pd.DataFrame([
+                    {"問題類型": r.topic, "問題細項": r.detail,
+                     "關鍵字": "、".join(r.terms[:6]), "歷史筆數": r.support,
+                     "實測準確率": f"{r.precision:.0%}"}
+                    for r in kb.rules[:15]
+                ]),
+                use_container_width=True, hide_index=True,
+            )
+        if kb.dept_by_topic:
+            st.caption("從歷史學到的部門對應：" +
+                       "　".join(f"{t}→{d}" for t, d in kb.dept_by_topic.items()))
+            conflicts = {t: d for t, d in kb.dept_by_topic.items()
+                         if DEPT_MAP.get(t) and DEPT_MAP.get(t) != d}
+            if conflicts:
+                st.warning(
+                    "歷史實際填的部門與程式內建的 DEPT_MAP 不一致：" +
+                    "　".join(f"{t}：內建「{DEPT_MAP[t]}」／歷史「{d}」" for t, d in conflicts.items()) +
+                    "。目前以內建為準；若公司已改部門編制，把環境變數 "
+                    "PREFER_LEARNED_DEPT 設為 true 即可改以歷史名稱為準。"
+                )
+        if st.button("重建知識庫", key="kb_rebuild"):
+            get_knowledge.clear()
+            bump_knowledge_version()
+            st.rerun()
+
+
 def section_1():
+    render_knowledge_panel()
     st.markdown('<div class="feature-title">功能一：檔案上傳與分析區</div>', unsafe_allow_html=True)
     st.markdown("<div class='ecoco-card'>支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。</div>", unsafe_allow_html=True)
 
@@ -1744,29 +1654,105 @@ def section_1():
             st.warning("檔案沒有可用欄位。")
             return
 
-        st.markdown("##### 分析前篩選與欄位設定")
-        subject_col = st.selectbox("用戶填寫的主題欄位", options=cols, index=0)
-        content_col = st.selectbox("用戶內容欄位", options=cols, index=min(1, len(cols) - 1))
+        # ── 欄位自動偵測（偵測得到就不必人工指定）──
+        det = detect_columns(df_raw)
+        if det.ok:
+            st.markdown(
+                "<div class='ecoco-card' style='border-left:4px solid #060E9F;'>"
+                f"✅ 已自動判斷欄位　主題：<b>{det.subject}</b>　內容：<b>{det.content}</b>"
+                f"　日期：<b>{det.date or '（無）'}</b></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.warning("無法自動判斷欄位對應，請在下方手動指定。")
+
+        def _idx(name, options, fallback=0):
+            return options.index(name) if name in options else fallback
+
         date_opt = ["(無)"] + cols
-        date_col = st.selectbox("日期欄位（選填）", options=date_opt, index=0)
-        pre_keyword = st.text_input("分析前篩選關鍵字（主題/內容，選填）")
+        with st.expander("欄位對應與分析前篩選（自動判斷結果，可手動調整）", expanded=not det.ok):
+            subject_col = st.selectbox("用戶填寫的主題欄位", options=cols,
+                                       index=_idx(det.subject, cols, 0), key="col_subject")
+            content_col = st.selectbox("用戶內容欄位", options=cols,
+                                       index=_idx(det.content, cols, min(1, len(cols) - 1)),
+                                       key="col_content")
+            date_col = st.selectbox("日期欄位（選填）", options=date_opt,
+                                    index=_idx(det.date, date_opt, 0), key="col_date")
+            pre_keyword = st.text_input("分析前篩選關鍵字（主題/內容，選填）")
+            for field_name, label in (("subject", "主題"), ("content", "內容"), ("date", "日期")):
+                why = det.reasons.get(field_name)
+                if why:
+                    st.caption(f"{label}欄判斷依據：{why}"
+                               f"（信心 {det.confidence.get(field_name, 0):.0%}）")
+
         cfg = AnalysisConfig(subject_col=subject_col, content_col=content_col,
                              date_col=None if date_col == "(無)" else date_col)
 
-        if st.button("開始分析", type="primary"):
+        # ── 自動分析：同一份檔案與同一組設定只會跑一次 ──
+        run_sig = f"{uploaded_name}|{len(df_raw)}|{subject_col}|{content_col}|{date_col}|{pre_keyword}"
+        manual_run = st.button("重新分析", help="重新套用目前設定與最新分類規則")
+        auto_run = (auto_config.auto_analyze_on_upload() and det.ok
+                    and st.session_state.get("_auto_run_sig") != run_sig)
+        if manual_run or auto_run:
             work = df_raw.copy()
             if pre_keyword:
                 work = work[
                     work[subject_col].astype(str).str.contains(pre_keyword, case=False, na=False)
                     | work[content_col].astype(str).str.contains(pre_keyword, case=False, na=False)
                 ]
-            st.session_state["analysis_df"] = analyze_dataframe(work, cfg)
+            with st.spinner("正在自動分類，請稍候…"):
+                result = analyze_dataframe(work, cfg)
+            st.session_state["analysis_df"] = result
             st.session_state["source_name"] = uploaded_name
+            st.session_state["_auto_run_sig"] = run_sig
+            st.session_state.pop("editor_table", None)
+
+            summary = review_summary(result)
+            st.success(
+                f"已自動分析 {summary['total']} 筆：完全自動採用 {summary['auto']} 筆"
+                f"（{summary['auto_rate']:.0%}），待人工複核 {summary['review']} 筆"
+            )
+            if auto_config.auto_save_history():
+                existing_id = (st.session_state.get("_editing_history_id")
+                               or st.session_state.get("_saved_history_id", ""))
+                try:
+                    _, _, history_id = save_history(result, uploaded_name, existing_id=existing_id)
+                    st.session_state["_saved_history_id"] = history_id
+                    if st.session_state.get("_gsheet_error"):
+                        st.warning(st.session_state["_gsheet_error"])
+                    else:
+                        st.caption(f"已自動存入歷史紀錄（{history_id}）")
+                        bump_knowledge_version()
+                except Exception as exc:
+                    st.warning(f"自動存檔失敗，可稍後手動儲存：{str(exc)[:200]}")
 
     if "analysis_df" not in st.session_state:
         return
     df = st.session_state["analysis_df"]
-    c1, c2, c3 = st.columns([2, 2, 1])
+    subject_col = st.session_state.get("col_subject", "")
+    content_col = st.session_state.get("col_content", "")
+    if subject_col not in df.columns:
+        subject_col = next((c for c in df.columns if "主題" in str(c) or "主旨" in str(c)), df.columns[0])
+    if content_col not in df.columns:
+        content_col = next((c for c in df.columns if "內容" in str(c)), subject_col)
+
+    # ── 自動化與審核總覽 ──
+    summary = review_summary(df)
+    causes = summary.get("review_causes", {})
+    n_detail_only = causes.get("僅需確認細項", 0)
+    n_full = causes.get("信心不足", 0) + causes.get("各層判斷分歧", 0)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("總筆數", summary["total"])
+    m2.metric("完全自動採用", f"{summary['auto']} 筆", f"{summary['auto_rate']:.0%}")
+    m3.metric("僅需確認細項", f"{n_detail_only} 筆",
+              help="類型與部門系統有把握，只有細項要人工挑一個")
+    m4.metric("需完整判斷", f"{n_full} 筆", help="類型也沒把握或各層分歧")
+    if causes.get("稽核抽樣"):
+        st.caption(f"🔍 另有 {causes['稽核抽樣']} 筆是從自動採用中抽出的品質抽驗")
+    if summary.get("agreement"):
+        st.caption("交叉驗證：" + "　".join(f"{k} {v} 筆" for k, v in summary["agreement"].items()))
+
+    c1, c2, c3, c4 = st.columns([2, 2, 1, 1.4])
     keyword = c1.text_input("篩選：關鍵字（主題/內容）")
     filter_type = c2.multiselect("篩選：問題類型", options=TYPE_OPTIONS, default=[])
     
@@ -1778,10 +1764,19 @@ def section_1():
             
     filter_detail = c3.multiselect("篩選：問題細項", options=valid_details, default=[])
 
+    only_review = c4.checkbox("只看待複核", value=summary["review"] > 0,
+                              help="只顯示需要人工確認的資料列")
+
+    # 不重設 index：表格顯示由 hide_index 負責，
+    # 原始 index 必須保留，儲存時才知道每一列要寫回哪裡。
     show = make_unique_columns(df.copy())
-    # hide_index=True alone sometimes still shows original integer index;
-    # reset to guarantee no row numbers in data_editor
-    show = show.reset_index(drop=True)
+    if only_review and "_needs_review" in show.columns:
+        show = show[show["_needs_review"].fillna(False).astype(bool)]
+        # 排序：需完整判斷 → 只需挑細項 → 稽核抽樣；同組內最沒把握的優先
+        cause_order = {"信心不足": 0, "各層判斷分歧": 0, "僅需確認細項": 1, "稽核抽樣": 2}
+        if "_review_cause" in show.columns:
+            ordered = show.assign(_order=show["_review_cause"].map(cause_order).fillna(0))
+            show = ordered.sort_values(["_order", "_confidence"], kind="stable").drop(columns=["_order"])
     if keyword:
         show = show[
             show[subject_col].astype(str).str.contains(keyword, case=False, na=False)
@@ -1794,15 +1789,32 @@ def section_1():
 
     st.markdown('<div class="editor-toolbar-title">可編輯標記表（支援下拉 + 手動編輯）</div>', unsafe_allow_html=True)
 
-    # ---- AI填入標示 ---
+    # ---- 待複核標示 ---
     ai_col = "_ai_filled"
     MARKER_COL = "AI標記"  # kept for save compatibility only
     has_ai_col = ai_col in show.columns
-    n_ai = 0
-    if has_ai_col:
-        n_ai = int(show[ai_col].fillna(False).astype(bool).sum())
+    review_col = "_needs_review"
+    has_review_col = review_col in show.columns
+    n_review = int(show[review_col].fillna(False).astype(bool).sum()) if has_review_col else 0
+    n_ai = int(show[ai_col].fillna(False).astype(bool).sum()) if has_ai_col else 0
 
-    if n_ai > 0:
+    if has_review_col:
+        if n_review:
+            st.markdown(
+                f"""
+                <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
+                            padding:8px 14px; margin-bottom:8px; font-size:0.85rem;'>
+                  <b style='color:#cc0000;'>⚠ 待人工複核 {n_review} 筆</b>（已按信心由低到高排序）。三種原因：
+                  <b>信心不足</b>＝各層都沒把握；<b>各層判斷分歧</b>＝規則與相似案例給出不同答案
+                  （實測這類的細項正確率只有三成，務必看）；<b>🔍 稽核抽樣</b>＝系統其實有把握，
+                  抽出來抽驗品質用。其餘資料已自動採用，不需逐列檢查。
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.success("✅ 顯示中的資料都不需要人工複核。")
+    elif n_ai > 0:
         st.markdown(
             f"""
             <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
@@ -1829,7 +1841,7 @@ def section_1():
             st.session_state["analysis_df"][col_name] = ""
             st.session_state.pop("editor_table", None)
             st.rerun()
-    protected_cols = {"選取", MARKER_COL, ai_col}
+    protected_cols = {"選取", MARKER_COL, ai_col, *META_COLUMNS}
     deletable_cols = [c for c in st.session_state["analysis_df"].columns if c not in protected_cols]
     del_col_name = tool_del.selectbox("選取欄位", options=deletable_cols, key="editor_delete_col")
     if tool_del_btn.button("刪除整欄", key="editor_del_col", use_container_width=True):
@@ -1838,14 +1850,30 @@ def section_1():
             st.session_state.pop("editor_table", None)
             st.rerun()
 
-    # 重新處理要顯示的欄位，確保原本隱藏的 MARKER_COL 正確加入
-    display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
+    # 顯示用欄位：隱藏所有底線開頭的內部欄位（信心、判斷來源等稽核資訊）
+    display_cols = [c for c in visible_columns(show) if c != MARKER_COL]
+    editor_row_index = list(show.index)   # 顯示中每一列對應的原始資料列 id
+    # 表格本身用連續 index（否則 hide_index 在 num_rows="dynamic" 下會失效）
     show_display = show[display_cols].reset_index(drop=True)
 
-    # 新增一欄字號標記給 AI 填入的資料
-    if has_ai_col:
-        flags = show[ai_col].reset_index(drop=True)
-        marker_vals = flags.map(lambda x: "⭐(AI填寫)" if x else "")
+    # 備註欄：顯示複核原因與把握度，讓人知道為什麼這列要看
+    if has_review_col:
+        def _marker(row):
+            if not bool(row.get(review_col, False)):
+                return ""
+            conf = float(row.get("_confidence", 0) or 0)
+            tconf = float(row.get("_topic_confidence", 0) or 0)
+            cause = str(row.get("_review_cause", "") or "待複核")
+            if cause == "稽核抽樣":
+                return f"🔍 稽核抽樣（信心 {conf:.0%}）"
+            if cause == "僅需確認細項":
+                return f"✏ 只需挑細項（類型把握 {tconf:.0%}，細項把握 {conf:.0%}）"
+            agree = str(row.get("_agreement", "") or "")
+            extra = f"／{agree}" if agree else ""
+            return f"⚠ {cause}（信心 {conf:.0%}{extra}）"
+        marker_vals = list(show.apply(_marker, axis=1)) if len(show) else []
+    elif has_ai_col:
+        marker_vals = list(show[ai_col].map(lambda x: "⭐(AI填寫)" if x else ""))
     else:
         marker_vals = [""] * len(show_display)
         
@@ -1869,21 +1897,55 @@ def section_1():
         column_config={
             "選取": st.column_config.CheckboxColumn("選取", help="勾選要批次處理的列"),
             MARKER_COL: st.column_config.TextColumn("備註", disabled=True),
-            "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
-            "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
-            "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
+            "問題類型": st.column_config.SelectboxColumn(
+                options=options_with_data_values(TYPE_OPTIONS, df, "問題類型"), required=True),
+            "問題細項": st.column_config.SelectboxColumn(
+                options=options_with_data_values(DETAIL_OPTIONS, df, "問題細項"), required=True),
+            "部門": st.column_config.SelectboxColumn(options=dept_options_for(df)),
         },
         key="editor_table",
     )
 
     # 儲存按鈕在表格下方
     sv_col1, sv_col2, sv_col3 = st.columns([2, 2, 6])
+    if sv_col2.button("✔ 全部接受系統判斷", use_container_width=True,
+                      help="把目前顯示的列一次標記為已複核（不改內容），適合快速掠過沒問題的列"):
+        accepted = st.session_state["analysis_df"].copy()
+        idx = [i for i in editor_row_index if i in accepted.index]
+        for col, val in (("_needs_review", False), ("_confidence", 1.0),
+                         ("_source_layer", "人工確認"), ("_review_cause", "")):
+            if col in accepted.columns:
+                accepted.loc[idx, col] = val
+        if "_ai_filled" in accepted.columns:
+            accepted.loc[idx, "_ai_filled"] = False
+        st.session_state["analysis_df"] = accepted
+        st.session_state.pop("editor_table", None)
+        src_name = st.session_state.get("source_name", "未命名")
+        existing_id = (st.session_state.get("_editing_history_id")
+                       or st.session_state.get("_saved_history_id", ""))
+        try:
+            _, _, history_id = save_history(accepted, src_name, existing_id=existing_id)
+            st.session_state["_saved_history_id"] = history_id
+            bump_knowledge_version()
+        except Exception as exc:
+            st.warning(f"存檔失敗：{str(exc)[:200]}")
+        st.session_state["_accepted_n"] = len(idx)
+        st.rerun()
+
+    if st.session_state.pop("_accepted_n", 0):
+        st.success("已接受系統判斷並存檔，這些列已納入知識庫")
+
     if sv_col1.button("💾 儲存修改", use_container_width=True):
-        full_df = st.session_state["analysis_df"].copy()
-        # Drop the AI marker column and 選取 before saving back
-        save_edited = edited.drop(columns=["選取", MARKER_COL], errors="ignore")
-        full_df.update(save_edited)
-        # Clear _ai_filled flags for all saved rows (user has confirmed)
+        full_df, touched = apply_editor_changes(
+            st.session_state["analysis_df"], edited, editor_row_index,
+            editor_state=st.session_state.get("editor_table"),
+            drop_cols=["選取", MARKER_COL],
+        )
+        # 人工已看過這些列 → 解除待複核，記為人工確認（下次分類的黃金標註）
+        for col, val in (("_needs_review", False), ("_confidence", 1.0),
+                         ("_source_layer", "人工確認"), ("_review_cause", "")):
+            if col in full_df.columns:
+                full_df.loc[touched, col] = val
         if "_ai_filled" in full_df.columns:
             full_df["_ai_filled"] = False
         st.session_state["analysis_df"] = full_df
@@ -1905,7 +1967,8 @@ def section_1():
         if st.session_state.get("_gsheet_error"):
             st.warning(st.session_state["_gsheet_error"])
         else:
-            st.success(f"已儲存「{src_name}」，並已加入歷史紀錄")
+            bump_knowledge_version()   # 人工修正納入知識庫，下次分類更準
+            st.success(f"已儲存「{src_name}」，並已納入分類知識庫")
 
     # 已儲存草稿列表
     if st.session_state.get("_draft_list"):
@@ -1954,7 +2017,12 @@ def section_1():
                 lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], []) else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
                 axis=1,
             )
-            st.session_state["analysis_df"] = edited.copy()
+            merged, _ = apply_editor_changes(
+                st.session_state["analysis_df"], edited, editor_row_index,
+                editor_state=st.session_state.get("editor_table"),
+                drop_cols=[MARKER_COL],
+            )
+            st.session_state["analysis_df"] = merged
             st.session_state.pop("editor_table", None)
             st.session_state["_batch_applied"] = True
             st.rerun()
@@ -1966,7 +2034,10 @@ def section_1():
         if "選取" not in edited.columns or not edited["選取"].any():
             st.warning("請先在表格內勾選要刪除的資料列！")
         else:
-            st.session_state["analysis_df"] = edited[edited["選取"] != True].copy()
+            drop_ids = [rid for rid, flag in zip(editor_row_index, edited["選取"]) if bool(flag)]
+            st.session_state["analysis_df"] = (
+                st.session_state["analysis_df"].drop(index=drop_ids, errors="ignore").copy()
+            )
             st.session_state.pop("editor_table", None)
             st.success("已刪除勾選列。")
             st.rerun()
@@ -2274,15 +2345,16 @@ def section_2():
     render_charts_from_stats(chart_stats, df, key_prefix="sec2")
 
     st.markdown("#### AI 問題重點分析")
-    st.markdown("##### AI 設定（選填）")
-    col_ai_1, col_ai_2 = st.columns([3, 2])
-    key_input = col_ai_1.text_input("OpenAI API Key（若留空則使用內建規則摘要）", type="password")
-    model_name = col_ai_2.text_input("模型", value="gpt-4o-mini")
-    if key_input:
-        st.session_state["OPENAI_API_KEY"] = key_input
-
-    ai_text = generate_ai_summary_llm(df, model_name=model_name)
+    # 摘要依「資料指紋」快取：同一份資料只呼叫一次 API，
+    # 避免每次互動（Streamlit 會整頁重跑）都重新計費。
+    ai_text = get_ai_summary_cached(df, st.session_state.get("source_name", ""))
     st.text_area("分析摘要預覽", ai_text, height=140)
+    sum_c1, sum_c2 = st.columns([1.4, 6])
+    if sum_c1.button("重新產生摘要", key="sec2_regen_summary"):
+        st.session_state.pop(_ai_summary_cache_key(df, st.session_state.get("source_name", "")), None)
+        st.rerun()
+    if not (auto_config.get_anthropic_key() or auto_config.get_openai_key()):
+        sum_c2.caption("尚未設定 ANTHROPIC_API_KEY／OPENAI_API_KEY，目前使用內建統計摘要。")
 
     # ── 預先產生所有下載檔案（避免 Streamlit on_click 時檔案還未產生）──
     chart_colors = st.session_state.get("chart_colors_sec2", {})
@@ -3384,22 +3456,13 @@ def section_4():
         )
 
         with st.spinner("AI 正在撰寫口說報告..."):
-            try:
-                import anthropic as _anth, os
-                _api_key = (os.environ.get("ANTHROPIC_API_KEY","") or
-                            str(st.secrets.get("ANTHROPIC_API_KEY","")))
-                _client_ai = _anth.Anthropic(api_key=_api_key)
-                _msg = _client_ai.messages.create(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=2000,
-                    messages=[{"role":"user","content":prompt}],
-                )
-                report_text = _msg.content[0].text
-            except Exception as e:
+            from automation.llm import complete_text as _complete_text
+
+            report_text = _complete_text(prompt, max_tokens=2000)
+            if not report_text:
                 try:
-                    report_text = generate_ai_summary_llm(df_filt, model_name="haiku")
-                    report_text = f"【口說報告】\n\n{report_text}"
-                except Exception:
+                    report_text = f"【口說報告】\n\n{generate_ai_summary(df_filt)}"
+                except Exception as e:
                     report_text = f"⚠️ AI 暫時無法使用（{e}）\n\n數據摘要：\n\n{prompt}"
 
         st.text_area("📋 口說報告（可複製）", report_text, height=460, key="s4v3_report_out")
