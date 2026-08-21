@@ -25,3 +25,5 @@ history_reports/
 output/
 inbox/
 history_backup/
+logs/
+scripts/env.local.bat

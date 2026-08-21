@@ -230,41 +230,90 @@ cron job 需付費方案；若維持免費方案，改用 Windows 工作排程�
 
 ## 部署到公司內部主機
 
-內部主機有持久化磁碟，所以 `history_reports/` 會成為知識庫最穩定的學習來源
-（`build_knowledge()` 會同時讀本機 xlsx 與 Google Sheets）。
+內部主機有持久化磁碟，`history_reports/` 會成為知識庫最穩定的學習來源
+（`build_knowledge()` 會同時讀本機檔案與 Google Sheets）。
 
-1. **環境變數**：不要用 `.streamlit/secrets.toml` 存憑證（那是明文檔）。
-   在服務啟動環境設定 `GOOGLE_CREDENTIALS_JSON`、`HISTORY_SHEET_ID`、`ANTHROPIC_API_KEY`。
-   Windows 可用系統環境變數，或在啟動批次檔中 `set`。
+**Render 維持免費方案**，只跑網頁介面；排程分析改由內部主機的
+「Windows 工作排程器」執行（免費方案不支援 Render cron job）。
 
-2. **安裝**
+### 1. 安裝
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+```
 
-3. **啟動網頁介面**（供人工複核與查看報表）
+### 2. 設定憑證
 
-   ```bash
-   python -m streamlit run complaint_webapp.py --server.port 8501 --server.address 0.0.0.0
-   ```
+兩種做法，擇一：
 
-   要開機自動啟動，把上面這行包成批次檔，用「工作排程器」設為「開機時執行」，
-   或用 NSSM 之類的工具註冊成 Windows 服務。
+* **建議**：直接設成 Windows 系統環境變數（`GOOGLE_CREDENTIALS_JSON`、
+  `SOURCE_SHEET_ID`、選配的 `ANTHROPIC_API_KEY`），磁碟上不留明文憑證。
+* 或複製 `scripts\env.example.bat` 成 `scripts\env.local.bat` 填入實際值；
+  `run_analysis.bat` 執行時會自動載入。這個檔已列入 .gitignore。
 
-4. **排程分析**（真正的無人值守）：工作排程器新增每日任務，動作為
+`HISTORY_SHEET_ID` 留空會用程式內建的預設值，通常不必設。
 
-   ```bash
-   python -m automation.cli run --from-sheet --only-new --report --out output
-   ```
+### 3. 註冊排程工作
 
-   起始位置要設成專案目錄（`.automation_state.json` 會記在那裡）。
-   若客訴來源是共用資料夾裡的檔案，改用 `watch --dir "\\server\share\客訴收件"`。
+以**系統管理員**身分開 PowerShell：
 
-5. **上線前先跑一次自我檢查**
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1
+```
 
-   ```bash
-   python -m automation.cli doctor
-   ```
+預設每天 08:30 執行。可調整或移除：
 
-6. **備份**：`history_reports/` 是知識庫的本機來源，納入公司既有備份範圍。
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1 -Time "07:00"
+```
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1 -Remove
+```
+
+排程設定包含：錯過時間會補跑（StartWhenAvailable）、失敗自動重試 2 次
+（間隔 10 分鐘）、執行上限 2 小時。
+
+### 4. 驗證
+
+```bash
+powershell -Command "Start-ScheduledTask -TaskName 'ECOCO客訴分析'"
+```
+
+```bash
+powershell -Command "Get-ScheduledTaskInfo -TaskName 'ECOCO客訴分析'"
+```
+
+執行過程寫在 `logs\analysis_YYYYMMDD.log`。
+`run_analysis.bat` 的退出碼：0 完成、2 沒有新資料（批次檔會轉成 0，
+排程器不會誤判為失敗）、其他為失敗。
+
+### 5. 換成監看共用資料夾
+
+若客訴來源是共用資料夾裡的檔案而不是 Google Sheet，
+把 `run_analysis.bat` 裡的主指令換成（檔案內註解已寫好範例）：
+
+```bash
+python -m automation.cli watch --dir "\\server\share\客訴收件" --out output --report
+```
+
+處理進度記在 `.automation_state.json`，同一個檔案不會重複處理。
+
+### 6. 啟動網頁介面（供人工複核與查看報表）
+
+```bash
+python -m streamlit run complaint_webapp.py --server.port 8501 --server.address 0.0.0.0
+```
+
+要開機自動啟動，把這行包成批次檔並用工作排程器設為「開機時執行」，
+或用 NSSM 之類的工具註冊成 Windows 服務。
+
+### 7. 備份
+
+`history_reports/` 是知識庫的本機來源，納入公司既有備份範圍。
+
+### 注意：批次檔請保持純 ASCII
+
+Windows 以 OEM 編碼（中文版是 cp950）解析 `.bat`，
+UTF-8 中文註解會被拆成無效指令導致排程失敗。
+`run_analysis.bat` 因此只用英文註解，並在開頭 `chcp 65001` 讓日誌裡的中文正常。
