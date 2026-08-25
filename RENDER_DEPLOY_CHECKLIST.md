@@ -1,5 +1,9 @@
 # Render 部署檢查清單
 
+> **已停用**：Render 免費方案沒有額度了，線上服務不再運作。
+> 正式執行環境改為公司內部主機，請看 [DEPLOY_INTERNAL_HOST.md](DEPLOY_INTERNAL_HOST.md)。
+> 本檔保留作為日後恢復 Render 時的參考。
+
 ## 1) 必要檔案確認
 - `render.yaml` 存在，且 `buildCommand` 使用 `pip install -r requirements.txt`
 - `requirements.txt` 包含：

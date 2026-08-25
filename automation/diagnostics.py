@@ -224,6 +224,7 @@ def _taxonomy_with_merges(groups: dict[str, list[str]]):
 
     orig_map = {t: list(ds) for t, ds in tx.TOPIC_DETAIL_MAP.items()}
     orig_detail_topic = dict(tx.DETAIL_TO_TOPIC)
+    orig_loose = dict(tx._LOOSE_DETAIL_MAP)
     try:
         for group, details in groups.items():
             topic = tx.DETAIL_TO_TOPIC.get(details[0])
@@ -235,12 +236,19 @@ def _taxonomy_with_merges(groups: dict[str, list[str]]):
             tx.DETAIL_TO_TOPIC[group] = topic
             for d in details:
                 tx.DETAIL_TO_TOPIC.pop(d, None)
+                # 寬鬆比對表也要跟著搬，否則舊細項名稱會繞過合併被還原回來
+                tx._LOOSE_DETAIL_MAP.pop(tx._loose_key(d), None)
+            group_key = tx._loose_key(group)
+            if group_key:
+                tx._LOOSE_DETAIL_MAP[group_key] = group
         yield
     finally:
         tx.TOPIC_DETAIL_MAP.clear()
         tx.TOPIC_DETAIL_MAP.update(orig_map)
         tx.DETAIL_TO_TOPIC.clear()
         tx.DETAIL_TO_TOPIC.update(orig_detail_topic)
+        tx._LOOSE_DETAIL_MAP.clear()
+        tx._LOOSE_DETAIL_MAP.update(orig_loose)
 
 
 def simulate_merge(rows: list[LabeledRow], cut: pd.Timestamp,

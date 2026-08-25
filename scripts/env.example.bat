@@ -16,9 +16,13 @@ rem set GOOGLE_APPLICATION_CREDENTIALS=D:\info\0318_test\service-account.json
 rem -- History spreadsheet (blank = built-in default) --
 rem set HISTORY_SHEET_ID=1Sqh_8bXtFw7jvmCPufTpStKxfIafDzwYJRlgc0HFBSs
 
-rem -- Source spreadsheet the scheduler reads --
+rem -- Source spreadsheet the scheduler reads.
+rem    Leave SOURCE_SHEET_ID blank to watch a folder instead (see below). --
 rem set SOURCE_SHEET_ID=
 rem set SOURCE_WORKSHEET=
+
+rem -- Folder watched when SOURCE_SHEET_ID is blank (default: inbox) --
+rem set ECOCO_INBOX=\\server\share\complaints_inbox
 
 rem -- Optional: L2 LLM classification and AI reports --
 rem set ANTHROPIC_API_KEY=

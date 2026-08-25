@@ -210,7 +210,9 @@ def legalize_pair(topic: str, detail: str) -> tuple[str, str] | None:
     if detail in DETAIL_TO_TOPIC:          # 細項合法但掛錯類型 → 歸回細項真正的類型
         return DETAIL_TO_TOPIC[detail], detail
     loose = _LOOSE_DETAIL_MAP.get(_loose_key(detail))   # 只差分隔符寫法
-    if loose:
+    # 合併模擬會暫時把細項移出 DETAIL_TO_TOPIC，寬鬆比對表可能仍指向舊名稱，
+    # 這裡一律用 get()，對不到就當成不合法，不要讓評估整個中斷。
+    if loose and loose in DETAIL_TO_TOPIC:
         return DETAIL_TO_TOPIC[loose], loose
     return None
 
