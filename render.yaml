@@ -1,3 +1,6 @@
+# 已停用：Render 免費方案沒有額度，服務不再運作。
+# 正式執行環境改為公司內部主機，見 DEPLOY_INTERNAL_HOST.md。
+# 本檔保留作為日後恢復 Render 時的設定範本。
 services:
   - type: web
     name: ecoco-complaint-analyzer
@@ -10,3 +13,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
+
+# 註：排程分析不使用 Render cron job（免費方案不支援）。
+# 改由公司內部主機的「Windows 工作排程器」執行，設定與腳本見：
+#   scripts/run_analysis.bat      排程實際執行的批次檔
+#   scripts/register_task.ps1     一鍵註冊排程工作
+#   AUTOMATION.md                「部署到公司內部主機」章節

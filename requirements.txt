@@ -10,3 +10,4 @@ google-auth
 matplotlib
 reportlab
 fpdf2
+anthropic

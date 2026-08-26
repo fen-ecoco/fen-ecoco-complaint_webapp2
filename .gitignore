@@ -17,3 +17,13 @@ history_reports/
 *.pptx
 !簡報範本.pptx
 
+# 自動化流程與憑證（避免 service account 金鑰被誤推）
+*.json
+!template_analysis.json
+.streamlit/secrets.toml
+.automation_state.json
+output/
+inbox/
+history_backup/
+logs/
+scripts/env.local.bat

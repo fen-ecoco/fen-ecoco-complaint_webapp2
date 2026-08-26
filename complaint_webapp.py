@@ -35,90 +35,36 @@ except Exception:
 
 st.set_page_config(page_title="ECOCO 客訴分析平台", page_icon="📊", layout="wide")
 
-TOPIC_DETAIL_MAP = {
-    "APP使用問題類型": [
-        "APP畫面顯示與機台狀態不符",
-        "APP商家頁面空白",
-        "APP點數顯示異常",
-        "APP多重異常狀況",
-        "app畫面顯示與機台狀態不符",
-        "app多重異常狀況",
-        "app點數顯示異常",
-        "app商家頁面空白",
-    ],
-    "APP帳號設定問題類型": [
-        "忘記密碼/無法重設密碼",
-        "帳號資訊修改/設定",
-        "無法接收簡訊驗證碼",
-        "APP無法登入",
-        "app無法登入",
-    ],
-    "APP帳密登入問題": [
-        "APP無法登入",
-        "app無法登入",
-        "忘記密碼/無法重設密碼",
-    ],
-    "優惠券問題類型": [
-        "兌換失敗/顯示錯誤",
-        "無法進行兌換操作",
-        "使用規則/限制條件說明",
-        "查詢優惠券序號紀錄",
-    ],
-    "回收點數問題類型": [
-        "點數重複入點",
-        "點數未入帳號",
-        "投入後未獲點數/點數未記錄",
-    ],
-    "機台問題類型": [
-        "機台運作中斷/重啟",
-        "黑色分選門異常或卡瓶堵塞",
-        "重量偵測異常",
-        "操作流程異常/無法正常操作",
-        "螢幕異常顯示/畫面異常",
-        "履帶未作動或異常抖動",
-        "機台當機/無回應",
-        "機台需維護/故障提醒",
-        "機台網路連線失敗",
-        "機台髒污/需要清潔",
-        "網路中斷或不穩定",
-        "機台關閉/無法啟動",
-        "投口綠燈拒收容器",
-        "投入物卡住_瓶罐/電池",
-        "辨識失敗異常或錯誤",
-        "機台操作畫面無法登入",
-        "投入後未獲點數/點數未記錄",
-        "螢幕西曬導致黑屏或反光",
-        "瓶蓋桶已滿",
-        "回收艙門開啟",
-    ],
-    "顧客關係類型": [
-        "許願新增站點/設站建議",
-        "申請刪除帳號",
-        "更換帳號",
-        "其他建議",
-        "回收物使用規則",
-        "相關活動規則疑問",
-    ],
-}
+# ── 自動化核心（automation/ 套件；與無介面排程 automation/cli.py 共用同一套邏輯）──
+from automation import config as auto_config
+from automation.classifier import build_default as build_classifier
+from automation.columns import detect_columns
+from automation.core import (
+    META_COLUMNS,
+    AnalysisConfig,
+    analyze_dataframe as core_analyze_dataframe,
+    make_unique_columns,
+    review_summary,
+    visible_columns,
+)
+from automation.rules import _is_valid_pair, analyze_complaint
+from automation.taxonomy import (
+    DEPT_MAP,
+    DEPT_OPTIONS,
+    DETAIL_OPTIONS,
+    TOPIC_DETAIL_MAP,
+    TYPE_OPTIONS,
+)
+from automation.text import (
+    lower_english,
+    mask_phone_value,
+    mask_sensitive_df,
+    mask_sensitive_text,
+    normalize_problem_labels,
+    PHONE_COL_HINTS,
+)
 
-TYPE_OPTIONS = list(TOPIC_DETAIL_MAP.keys())
-DETAIL_OPTIONS = [d for lst in TOPIC_DETAIL_MAP.values() for d in lst]
 
-DEPT_OPTIONS = [
-    "營運部", "研發部", "廠務部", "人資部", "行銷部", 
-    "資訊部", "企劃部", "財務部", "開發部", "總經理室"
-]
-
-DEPT_MAP = {
-    "機台問題類型": "營運部",
-    "機台相關問題": "營運部",
-    "APP帳號設定問題類型": "資訊部",
-    "APP使用問題類型": "資訊部",
-    "APP帳密登入問題": "資訊部",
-    "回收點數問題類型": "",
-    "優惠券問題類型": "行銷部",
-    "顧客關係類型": "營運部",
-}
 
 # ── ECOCO 品牌色（Pantone 對應）──────────────────────────────
 BRAND_ORANGE  = "#FF5000"   # Pantone Orange 021 C  → 營運部
@@ -152,26 +98,91 @@ BRAND_PALETTE = [
 ]
 
 
+# ── 圖表圖例：緊貼圖面，並帶上件數 ─────────────────────────────
+# 圖例與圖之間留太寬會把圖擠小；r 只留放得下文字的寬度。
+PIE_LEGEND = dict(
+    orientation="v",
+    yanchor="middle", y=0.5,
+    xanchor="left", x=1.0,
+    font=dict(size=12),
+    itemsizing="constant",
+    tracegroupgap=2,
+    bgcolor="rgba(0,0,0,0)",
+    borderwidth=0,
+)
+PIE_MARGIN = dict(t=50, b=10, l=10, r=130)
+BAR_LEGEND = dict(
+    orientation="v",
+    yanchor="top", y=1.0,
+    xanchor="left", x=1.0,
+    font=dict(size=12),
+    tracegroupgap=2,
+    bgcolor="rgba(0,0,0,0)",
+    borderwidth=0,
+)
+
+
+def pie_legend_labels(counts) -> list[str]:
+    """圓餅圖圖例：「名稱 n件」。
+
+    圓餅圖整張只有一個 trace，圖例讀的是每個扇形的 label，
+    所以件數必須寫進 names，改 trace.name 是沒有作用的。
+    """
+    return [f"{k} {int(v)}件" for k, v in counts.items()]
+
+
+def add_counts_to_legend(fig, counts) -> None:
+    """長條圖等「一個系列一個 trace」的圖：把件數接在系列名稱後面。"""
+    mapping = {str(k): int(v) for k, v in counts.items()}
+
+    def _rename(tr):
+        n = mapping.get(str(tr.name))
+        if n is not None:
+            tr.update(name=f"{tr.name} {n}件")
+
+    fig.for_each_trace(_rename)
+
+
 # ── 啟動時確保 CJK 字型可用（下載備援）──────────────────────────
 @st.cache_resource(show_spinner=False)
 def _ensure_cjk_font() -> str:
-    """回傳可用的 CJK 字型路徑；若系統沒有則下載到 /tmp。"""
-    import os, glob
-    CANDIDATES = [
+    """回傳可用的中文字型路徑（PDF 與圖表共用這一個來源）。
+
+    順序：Noto Sans TC → 微軟正黑體 → 其他系統中文字型 → 下載 Noto。
+    原本只列 Linux 路徑，在 Windows 上一律找不到而退回 Helvetica，
+    匯出的 PDF 中文就整片變亂碼。
+    """
+    import os, glob, tempfile
+
+    win = os.environ.get("WINDIR", r"C:\Windows")
+    candidates = [
+        # Windows：優先 Noto Sans TC，其次微軟正黑體
+        os.path.join(win, "Fonts", "NotoSansTC-VF.ttf"),
+        os.path.join(win, "Fonts", "NotoSansTC-Regular.otf"),
+        os.path.join(win, "Fonts", "msjh.ttc"),      # 微軟正黑體
+        os.path.join(win, "Fonts", "msyh.ttc"),      # 微軟雅黑
+        os.path.join(win, "Fonts", "mingliu.ttc"),   # 細明體
+        # macOS
+        "/System/Library/Fonts/PingFang.ttc",
+        "/Library/Fonts/NotoSansTC-Regular.otf",
+        # Linux（Render / Debian / Ubuntu）
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/arphic/uming.ttc",
         "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-        "/tmp/NotoSansCJK.ttc",
     ]
-    CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
-    found = next((p for p in CANDIDATES if os.path.exists(p)), None)
+    candidates += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
+
+    cached = os.path.join(tempfile.gettempdir(), "NotoSansCJK.ttc")
+    candidates.append(cached)
+
+    found = next((p for p in candidates if os.path.exists(p)), None)
     if found:
         return found
-    # 下載到 /tmp
-    _dl = "/tmp/NotoSansCJK.ttc"
+
+    # 都沒有才下載（放系統暫存資料夾，Windows 沒有 /tmp）
     URLS = [
         "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc",
         "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc",
@@ -179,9 +190,9 @@ def _ensure_cjk_font() -> str:
     for url in URLS:
         try:
             import urllib.request
-            urllib.request.urlretrieve(url, _dl)
-            if os.path.exists(_dl) and os.path.getsize(_dl) > 100_000:
-                return _dl
+            urllib.request.urlretrieve(url, cached)
+            if os.path.exists(cached) and os.path.getsize(cached) > 100_000:
+                return cached
         except Exception:
             continue
     return ""
@@ -196,11 +207,6 @@ SHEET_CELL_CHAR_LIMIT = 49000
 TEMPLATE_PATH = Path(__file__).parent / "簡報範本.pptx"
 
 
-@dataclass
-class AnalysisConfig:
-    subject_col: str
-    content_col: str
-    date_col: Optional[str]
 
 
 def apply_brand_theme() -> None:
@@ -232,233 +238,289 @@ def apply_brand_theme() -> None:
             font-weight: 500 !important;
           }
 
+          /* ECOCO VI 品牌色票（Pantone 對應），介面只用這幾色 */
           :root{
-            --ecoco-orange:#FF5000;
-            --ecoco-blue:#060E9F;
-            --ecoco-yellow:#FFCE00;
-            --ecoco-lightblue:#8EB9C9;
-            --ecoco-beige:#FAE0B8;
-            --ecoco-deepteal:#0076A9;
+            --ecoco-orange:#FF5000;      /* Pantone Orange 021 C */
+            --ecoco-blue:#060E9F;        /* Pantone Blue 072 C   */
+            --ecoco-yellow:#FFCE00;      /* Pantone 116 C        */
+            --ecoco-lightblue:#8EB9C9;   /* Pantone 550 C        */
+            --ecoco-beige:#FAE0B8;       /* Pantone P17-2 C      */
+            --ecoco-deepteal:#0076A9;    /* Pantone 7690 C       */
+            --ecoco-white:#FFFFFF;       /* Pantone White C      */
+            /* Blue 072 C 混白約 25%，側邊欄用這個淡版才不會壓得太重 */
+            --ecoco-blue-light:#3B45BE;
+            /* 由品牌色衍生的介面用色：內文用深藍、次要文字用 7690、
+               分隔線與淺底用 550 的淡化版，不引入品牌外的灰階。 */
+            --ecoco-text:#060E9F;
+            --ecoco-text-muted:#0076A9;
+            --ecoco-line:rgba(142,185,201,.55);
+            --ecoco-surface:rgba(142,185,201,.12);
           }
-          .stApp {background: linear-gradient(135deg, #fff 0%, #f8fbff 40%, #fff8f1 100%);}
-          .ecoco-banner {
-            padding: 14px 18px; border-radius: 12px;
-            background: linear-gradient(90deg, var(--ecoco-orange), var(--ecoco-blue));
-            color:white; font-weight:500; margin-bottom: 12px;
-            font-size: 16px !important;
+          .stApp {background: var(--ecoco-white);}
+
+          /* ── 主標題：頂部橫條左上角 ─────────────────────────────
+             標題放在 Streamlit 的 header 區，才能像截圖那樣橫跨整個寬度、
+             並且待在側邊欄上方。 */
+          [data-testid="stHeader"] {
+            background: #FFFFFF !important;
+            border-bottom: 2px solid var(--ecoco-orange);
+            height: 62px !important;
           }
-          .feature-title {
-            color: #333333 !important;
-            font-size: 14px !important;
+          [data-testid="stHeader"]::before {
+            content: "ECOCO 客訴智能分析平台";
+            position: absolute;
+            left: 22px; top: 50%;
+            transform: translateY(-50%);
+            font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+            font-size: 30px;
+            font-weight: 700;
+            color: var(--ecoco-blue);
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+          }
+
+          /* ── 頁首：淺底大標 + 小字副標，不加色塊 ────────────────── */
+          .page-header {
+            background: none;
+            border: none;
+            padding: 0;
+            margin: 2px 0 22px;
+          }
+          [data-testid="stAppViewContainer"] .page-header .page-header-title,
+          .page-header .page-header-title {
+            font-size: 26px !important;
+            font-weight: 700 !important;
+            color: var(--ecoco-blue) !important;
+            letter-spacing: 0.3px;
+            margin: 0;
+            line-height: 1.25;
+          }
+          [data-testid="stAppViewContainer"] .page-header .page-header-sub,
+          .page-header .page-header-sub {
+            font-size: 17px !important;
             font-weight: 500 !important;
+            color: var(--ecoco-text-muted) !important;
+            margin: 5px 0 0;
+          }
+
+          /* ── 首頁功能卡（2×2 網格）───────────────────────────── */
+          .home-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+          }
+          /* 側邊欄佔掉 330px，視窗要夠寬雙欄才不會擠成一條 */
+          @media (max-width: 1200px) {
+            .home-grid { grid-template-columns: minmax(0, 1fr); }
+          }
+          .home-card {
+            background: var(--ecoco-white);
+            border: 1px solid var(--ecoco-line);
+            border-top: 4px solid var(--ecoco-orange);
+            border-radius: 14px;
+            padding: 22px 24px;
+            display: flex;
+            gap: 18px;
+            align-items: flex-start;
+          }
+          .home-card-icon {
+            flex: 0 0 auto;
+            width: 46px; height: 46px;
+            color: var(--ecoco-blue);
+          }
+          .home-card-icon svg { width: 46px; height: 46px; }
+          [data-testid="stAppViewContainer"] .home-card-title,
+          .home-card-title {
+            font-size: 24px !important;
+            font-weight: 700 !important;
+            color: var(--ecoco-blue) !important;
+            margin: 0 0 10px;
+            line-height: 1.3;
+          }
+          .home-card ul {
+            margin: 0; padding-left: 20px;
+          }
+          [data-testid="stAppViewContainer"] .home-card li,
+          .home-card li {
+            font-size: 17px !important;
+            font-weight: 500 !important;
+            color: var(--ecoco-text-muted) !important;
+            line-height: 1.8;
+          }
+          .home-card li b { color: var(--ecoco-blue) !important; font-weight: 700 !important; }
+
+          .feature-title {
+            color: var(--ecoco-blue) !important;
+            font-size: 20px !important;
+            font-weight: 700 !important;
             margin: 0 0 10px 0;
           }
           .ecoco-card{
-            border:1px solid #e7e7e7; border-left:6px solid var(--ecoco-orange);
-            border-radius:12px; padding:10px 14px; background:white; margin-bottom:10px;
-            color: #555555 !important;
+            border:1px solid var(--ecoco-line); border-left:6px solid var(--ecoco-orange);
+            border-radius:12px; padding:10px 14px; background:var(--ecoco-white);
+            margin-bottom:10px;
+            color: var(--ecoco-text-muted) !important;
           }
           [data-testid="stAppViewContainer"] .ecoco-card,
           [data-testid="stAppViewContainer"] .ecoco-card * {
+            font-size: 18px !important;
+          }
+          .ecoco-card b { color: var(--ecoco-blue) !important; }
+          .small-muted { color: var(--ecoco-text-muted) !important; font-size: 16px !important; }
+          /* Streamlit 的 caption 預設偏小，拉到看得舒服的大小 */
+          [data-testid="stCaptionContainer"],
+          [data-testid="stCaptionContainer"] * {
             font-size: 16px !important;
+            color: var(--ecoco-text-muted) !important;
           }
-          .ecoco-card b {
-            color: #333333 !important;
-          }
-          .small-muted { color:#666 !important; font-size: 0.9rem; }
-          
-          /* Sidebar background */
+          [data-testid="stMetricLabel"] * { font-size: 17px !important; }
+          [data-testid="stMetricValue"]   { font-size: 30px !important; }
+
+          /* ── 側邊欄導覽（Pantone Blue 072 C）────────────────────── */
           section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #0b3f78 0%, #083668 100%);
+            background: var(--ecoco-blue-light);
+            border-right: 3px solid var(--ecoco-orange);
+            /* 22px 的中文頁籤要排得下一行 */
+            width: 330px !important;
+            min-width: 330px !important;
           }
-          
-          /* Sidebar Text Overrides */
-          .side-title {
-            color: #ffffff !important;
-            font-weight: 500; font-size: 16px !important; margin-bottom: 8px;
+          section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+            padding-top: 6px;
           }
-          .side-sub {
-            color: #ffffff !important;
-            font-size: 16px !important; opacity: 0.85; margin-bottom: 14px;
+          /* 收合鈕不是導覽項目，不要套用下面的樣式，也不需要佔一整列 */
+          section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] {
+            padding: 0 8px;
+            min-height: 0;
           }
-          
-          /* Sidebar Buttons — default = lightblue */
+          section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {
+            color: var(--ecoco-white) !important;
+            background: transparent !important;
+            border: none !important;
+            min-height: 0 !important;
+          }
+          section[data-testid="stSidebar"] hr {
+            border: none;
+            border-top: 1px solid var(--ecoco-lightblue) !important;
+            opacity: .6;
+            margin: 12px 8px;
+          }
+
+          /* 導覽項目：整列可點、白字，選中/hover 才有底色 */
           section[data-testid="stSidebar"] .stButton > button {
-            background-color: var(--ecoco-lightblue) !important;
-            border-color: var(--ecoco-lightblue) !important;
-            color: #333333 !important;
-            border-radius: 12px;
-            min-height: 46px;
-            font-weight: 500;
-            text-align: left;
-            transition: background-color 0.12s ease, border-color 0.12s ease !important;
+            background-color: transparent !important;
+            border: none !important;
+            border-left: 4px solid transparent !important;
+            border-radius: 0 8px 8px 0;
+            color: var(--ecoco-white) !important;
+            font-size: 22px !important;
+            font-weight: 500 !important;
+            line-height: 1.3;
+            text-align: left !important;
+            justify-content: flex-start !important;
+            min-height: 50px;
+            padding: 9px 16px;
+            white-space: normal;
+            transition: background-color .12s ease, color .12s ease !important;
           }
           section[data-testid="stSidebar"] .stButton > button * {
-            color: #333333 !important;
+            color: var(--ecoco-white) !important;
+            font-size: 22px !important;
+            text-align: left !important;
+            width: 100%;
           }
-          /* Hover = white immediately */
           section[data-testid="stSidebar"] .stButton > button:hover,
           section[data-testid="stSidebar"] .stButton > button:focus,
           section[data-testid="stSidebar"] .stButton > button:focus-visible,
           section[data-testid="stSidebar"] .stButton > button:active,
-          section[data-testid="stSidebar"] .stButton > button[kind="primary"],
-          section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
-            background-color: #FFFFFF !important;
-            border-color: #FFFFFF !important;
-            color: #333333 !important;
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+            background-color: var(--ecoco-orange) !important;
+            border-left: 4px solid var(--ecoco-yellow) !important;
+            color: var(--ecoco-white) !important;
           }
           section[data-testid="stSidebar"] .stButton > button:hover *,
           section[data-testid="stSidebar"] .stButton > button:focus *,
           section[data-testid="stSidebar"] .stButton > button:focus-visible *,
           section[data-testid="stSidebar"] .stButton > button:active *,
-          section[data-testid="stSidebar"] .stButton > button[kind="primary"] *,
-          section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] * {
-            color: #333333 !important;
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"] * {
+            color: var(--ecoco-white) !important;
           }
-          
+
+          /* ── 表格工具列（欄位管理 / 自訂選項 / 批次問題處理）────── */
+          .toolbar-title {
+            font-size: 18px !important;
+            font-weight: 700 !important;
+            color: var(--ecoco-blue) !important;
+            margin: 0 0 2px;
+          }
+          .st-key-editor_toolbar {
+            background: var(--ecoco-surface);
+            border: 1px solid var(--ecoco-line);
+            border-radius: 12px;
+            padding: 14px 16px 6px;
+            margin-bottom: 12px;
+          }
+          .st-key-editor_toolbar [data-testid="stTextInput"] input,
+          .st-key-editor_toolbar [data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+            font-size: 17px !important;
+          }
+          .st-key-editor_toolbar .stButton > button {
+            min-height: 44px;
+            border-radius: 8px;
+            font-size: 17px !important;
+            font-weight: 700 !important;
+          }
+          /* 主要動作用品牌橘，破壞性動作用深藍（品牌色內沒有紅色） */
+          .st-key-editor_toolbar .stButton > button[kind="primary"] {
+            background-color: var(--ecoco-orange) !important;
+            border-color: var(--ecoco-orange) !important;
+            color: var(--ecoco-white) !important;
+          }
+          .st-key-editor_toolbar .stButton > button[kind="secondary"] {
+            background-color: var(--ecoco-white) !important;
+            border: 1.5px solid var(--ecoco-blue) !important;
+            color: var(--ecoco-blue) !important;
+          }
+          .st-key-editor_toolbar .stButton > button[kind="secondary"]:hover {
+            background-color: var(--ecoco-blue) !important;
+            color: var(--ecoco-white) !important;
+          }
+
           /* Thicker scrollbar */
           ::-webkit-scrollbar { width: 10px; height: 10px; }
-          ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
-          ::-webkit-scrollbar-thumb { background: #8EB9C9; border-radius: 6px; }
-          ::-webkit-scrollbar-thumb:hover { background: #060E9F; }
+          ::-webkit-scrollbar-track { background: var(--ecoco-surface); border-radius: 6px; }
+          ::-webkit-scrollbar-thumb { background: var(--ecoco-lightblue); border-radius: 6px; }
+          ::-webkit-scrollbar-thumb:hover { background: var(--ecoco-blue); }
 
           /* File badge */
           .file-badge {
             display:inline-block; max-width:100%; padding:3px 10px;
-            background:#eaf4fb; border:1px solid #8EB9C9; border-radius:20px;
-            font-size:0.82rem; color:#333; white-space:nowrap;
+            background:var(--ecoco-surface); border:1px solid var(--ecoco-lightblue);
+            border-radius:20px;
+            font-size:15px; color:var(--ecoco-blue); white-space:nowrap;
             overflow:hidden; text-overflow:ellipsis; vertical-align:middle;
           }
           .editor-toolbar-title {
-            font-size: 12px !important;
-            color: #333333 !important;
+            font-size: 19px !important;
+            font-weight: 700 !important;
+            color: var(--ecoco-blue) !important;
             margin: 6px 0 4px;
           }
           [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
-            border: 1.5px solid #555555 !important;
+            border: 1.5px solid var(--ecoco-lightblue) !important;
             border-radius: 6px !important;
             overflow-x: auto !important;
           }
-          
+
           /* 移除 arrow_down 及內建圖示，避免異常顯示純文字 */
           [data-testid="stExpanderToggleIcon"], .material-symbols-rounded {
               display: none !important;
           }
-          
+
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-
-def analyze_complaint(subject: str, content: str) -> tuple[str, str]:
-    s = subject if isinstance(subject, str) else ""
-    c = content if isinstance(content, str) else ""
-    t = (s + " " + c).lower()
-
-    # 顧客關係類型
-    if "註冊" in t and "無法" in t:
-        return "顧客關係類型", "其他建議"
-    if any(k in t for k in ["不處理", "態度", "搞什麼", "不願意"]):
-        return "顧客關係類型", "其他建議"
-    if any(k in t for k in ["刪除帳號", "註銷"]):
-        return "顧客關係類型", "申請刪除帳號"
-    if any(k in t for k in ["手機號碼", "原帳號"]) and any(k in t for k in ["變更", "更改", "修改"]):
-        return "顧客關係類型", "更換帳號"
-    if any(k in t for k in ["更換帳號", "換帳號"]):
-        return "顧客關係類型", "更換帳號"
-    if any(k in t for k in ["新增站點", "設站", "建議", "許願"]):
-        return "顧客關係類型", "許願新增站點/設站建議"
-    if any(k in t for k in ["回收規則", "材質", "可回收"]):
-        return "顧客關係類型", "回收物使用規則"
-
-    # APP帳號設定
-    if any(k in t for k in ["驗證碼", "認證碼", "otp", "簡訊"]):
-        if "忘記密碼" in t:
-            return "APP帳號設定問題類型", "忘記密碼/無法重設密碼"
-        return "APP帳號設定問題類型", "無法接收簡訊驗證碼"
-    if any(k in t for k in ["修改", "更改", "更換"]) and any(k in t for k in ["帳號", "手機", "電話", "號碼"]):
-        return "APP帳號設定問題類型", "帳號資訊修改/設定"
-
-    # 登入問題
-    if any(k in t for k in ["登入", "登不進去"]) and any(k in t for k in ["螢幕", "機台", "黑掉"]) and any(k in t for k in ["無法", "不能", "失敗", "不了"]):
-        return "機台問題類型", "機台操作畫面無法登入"
-    if any(k in t for k in ["無法登入", "不能登入", "登不進去", "登入失敗", "登入不了"]):
-        return "APP帳號設定問題類型", "APP無法登入"
-
-    # APP使用
-    if "可投數量" in t or ("app" in t and "顯示" in t and "0" not in t):
-        return "APP使用問題類型", "APP畫面顯示與機台狀態不符"
-    if "顯示" in t and "不符" in t:
-        return "APP使用問題類型", "APP畫面顯示與機台狀態不符"
-    if any(k in t for k in ["app異常", "閃退", "轉圈", "更新"]):
-        return "APP使用問題類型", "APP多重異常狀況"
-
-    # 點數
-    if "點數" in t and any(k in t for k in ["未累積", "未增加", "沒有入帳", "未入帳"]):
-        return "回收點數問題類型", "點數未入帳號"
-    if ("點數" in t or "沒入點" in t or "計點" in t) and any(k in t for k in ["未入", "沒入", "不見", "沒記", "沒收到"]):
-        return "回收點數問題類型", "點數未入帳號"
-    if "點數" in t and any(k in t for k in ["重複", "多給", "多入"]):
-        return "回收點數問題類型", "點數重複入點"
-
-    # 優惠券
-    if any(k in t for k in ["優惠券", "兌換券", "折價", "序號", "抵用", "對換券", "票卷", "票夾", "條碼", "換這個"]):
-        if any(k in t for k in ["提前按下", "操作錯誤", "系統還沒更新", "已更換", "限制", "期限", "規則"]):
-            return "優惠券問題類型", "使用規則/限制條件說明"
-        if any(k in t for k in ["過期", "還原", "點到", "沒按出條碼"]):
-            return "優惠券問題類型", "無法進行兌換操作"
-        if any(k in t for k in ["已使用", "失敗", "錯誤", "不能用", "刷不過", "沒有跑出條碼", "這怎麼一回事"]):
-            return "優惠券問題類型", "兌換失敗/顯示錯誤"
-        if any(k in t for k in ["查詢", "紀錄", "找不到", "在哪"]):
-            return "優惠券問題類型", "查詢優惠券序號紀錄"
-        return "優惠券問題類型", "無法進行兌換操作"
-
-    # 機台問題
-    if any(k in t for k in ["處理中", "卡住"]) and "暫停不動" in t:
-        return "機台問題類型", "機台當機/無回應"
-    if "寶特瓶卡住" in t or "卡在" in t or ("黑色門" in t and "卡住" in t) or "卡瓶" in t:
-        return "機台問題類型", "投入物卡住_瓶罐/電池"
-    if any(k in t for k in ["投很多次", "無法辨識", "一直顯示", "不顯示綠燈", "辨識失敗", "辨識異常"]):
-        return "機台問題類型", "辨識失敗異常或錯誤"
-    if any(k in t for k in ["顯示0都沒有更新", "通報維修"]):
-        return "機台問題類型", "機台需維護/故障提醒"
-    if any(k in t for k in ["關閉", "設備不動", "不能使用", "撤機", "故障快", "沒開", "未開啟", "關機"]):
-        return "機台問題類型", "機台關閉/無法啟動"
-    if any(k in t for k in ["髒污不收", "清潔", "髒污"]):
-        return "機台問題類型", "機台髒污/需要清潔"
-    if any(k in t for k in ["當機", "故障訊息", "沒反應", "lag", "機台異常"]):
-        return "機台問題類型", "機台當機/無回應"
-    if any(k in t for k in ["滿倉", "收滿", "滿台"]):
-        return "機台問題類型", "瓶蓋桶已滿"
-    if "運轉不會停止" in t:
-        return "機台問題類型", "操作流程異常/無法正常操作"
-
-    # 其他原手機台問題
-    if any(k in t for k in ["履帶", "輸送帶", "傳送帶"]) and any(k in t for k in ["不動", "不轉", "異常"]):
-        return "機台問題類型", "履帶未作動或異常抖動"
-    if any(k in t for k in ["黑屏", "黑畫面", "螢幕異常", "畫面異常", "反光", "黑掉"]):
-        return "機台問題類型", "螢幕異常顯示/畫面異常"
-    if any(k in t for k in ["維護", "維修", "需維修", "故障提醒"]):
-        return "機台問題類型", "機台需維護/故障提醒"
-    if any(k in t for k in ["網路連線失敗", "連不上", "連線失敗"]) and "機台" in t:
-        return "機台問題類型", "機台網路連線失敗"
-    if any(k in t for k in ["網路不穩", "網路中斷"]):
-        return "機台問題類型", "網路中斷或不穩定"
-    if any(k in t for k in ["重量", "秤重", "偵測重量"]):
-        return "機台問題類型", "重量偵測異常"
-    if any(k in t for k in ["無法操作", "流程異常", "不能操作"]):
-        return "機台問題類型", "操作流程異常/無法正常操作"
-    if any(k in t for k in ["投入後沒點", "未獲點數", "未記錄"]):
-        return "機台問題類型", "投入後未獲點數/點數未記錄"
-    if any(k in t for k in ["中斷", "重啟", "重開機"]):
-        return "機台問題類型", "機台運作中斷/重啟"
-    if any(k in t for k in ["艙門", "門沒關", "回收艙門"]):
-        return "機台問題類型", "回收艙門開啟"
-    if "綠燈" in t and "不能" in t:
-        return "機台問題類型", "投口綠燈拒收容器"
-
-    return "顧客關係類型", "其他建議"
 
 
 def parse_pdf_to_df(file_obj) -> pd.DataFrame:
@@ -495,91 +557,43 @@ def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
     raise ValueError(f"僅支援 excel / csv / pdf，收到：{suffix or name}")
 
 
-def make_unique_columns(df: pd.DataFrame) -> pd.DataFrame:
-    cols = []
-    seen = {}
-    for c in df.columns:
-        name = str(c)
-        if name not in seen:
-            seen[name] = 0
-            cols.append(name)
-        else:
-            seen[name] += 1
-            cols.append(f"{name}_{seen[name]}")
-    out = df.copy()
-    out.columns = cols
-    return out
 
 
-# ---- valid type set for fast lookup (all keys + known variant spellings from template) ----
-_VALID_TYPES = set(TOPIC_DETAIL_MAP.keys())
+@st.cache_resource(show_spinner="正在讀取歷史標記，建立分類知識庫…")
+def get_knowledge(version: str = ""):
+    """從歷史紀錄建立知識庫（指紋快取／挖掘規則／相似案例投票池）。
 
-# All valid details (flattened from TOPIC_DETAIL_MAP) for quick check
-_VALID_DETAILS_FLAT: set[str] = {d for lst in TOPIC_DETAIL_MAP.values() for d in lst}
+    version 只是 cache key：存檔後傳入新值即可讓知識庫重建。
+    讀不到歷史時回傳 None，分類自動退回內建規則。
+    """
+    try:
+        from automation.pipeline import build_knowledge
 
-
-def _is_valid_pair(t: str, d: str) -> bool:
-    """Return True if both type and detail are non-empty and the detail belongs to the type."""
-    t, d = t.strip(), d.strip()
-    if not t or not d:
-        return False
-    # Accept if type is valid AND detail is in that type's list
-    if t in TOPIC_DETAIL_MAP and d in TOPIC_DETAIL_MAP[t]:
-        return True
-    # Also accept if type exists but detail is in the FULL detail pool (legacy data)
-    if t in _VALID_TYPES and d in _VALID_DETAILS_FLAT:
-        return True
-    return False
+        return build_knowledge()   # 同時學習雲端歷史紀錄與本機 history_reports/
+    except Exception as exc:       # 知識庫是加分項，失敗不能擋住分析
+        st.session_state["_knowledge_error"] = str(exc)[:300]
+        return None
 
 
-def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
-    out = make_unique_columns(df.copy())
+def bump_knowledge_version() -> None:
+    """人工修正存檔後呼叫，讓下次取用時重建知識庫（回饋閉環）。"""
+    st.session_state["_knowledge_version"] = datetime.now().strftime("%Y%m%d%H%M%S")
 
-    # ------ Preserve existing valid 問題類型 + 問題細項 from source file ------
-    existing_type   = out["問題類型"].copy()   if "問題類型" in out.columns else pd.Series([""] * len(out))
-    existing_detail = out["問題細項"].copy()   if "問題細項" in out.columns else pd.Series([""] * len(out))
 
-    # Drop internal columns before re-adding
-    for c in ["問題類型", "問題細項", "選取", "部門", "日期", "_ai_filled"]:
-        if c in out.columns:
-            out = out.drop(columns=[c])
-
-    # Run auto-classification for every row
-    preds = out.apply(
-        lambda r: analyze_complaint(str(r.get(cfg.subject_col, "")), str(r.get(cfg.content_col, ""))),
-        axis=1,
-        result_type="expand",
+def get_classifier():
+    """組出分類器（依設定決定是否掛上選配的 LLM 層）。"""
+    return build_classifier(
+        knowledge=get_knowledge(st.session_state.get("_knowledge_version", ""))
     )
-    preds.columns = ["問題類型", "問題細項"]
-    out = pd.concat([out, preds], axis=1)
 
-    # ------ Merge: prefer original valid pair; fall back to AI prediction ------
-    ai_filled_flags = []
-    for idx in range(len(out)):
-        orig_type   = str(existing_type.iloc[idx]).strip()
-        orig_detail = str(existing_detail.iloc[idx]).strip()
-        if _is_valid_pair(orig_type, orig_detail):
-            # Original is valid → keep it, NOT AI-filled
-            out.iloc[idx, out.columns.get_loc("問題類型")] = orig_type
-            out.iloc[idx, out.columns.get_loc("問題細項")] = orig_detail
-            ai_filled_flags.append(False)
-        else:
-            # Original missing/invalid → use AI prediction, mark as AI-filled
-            ai_filled_flags.append(True)
 
-    out["_ai_filled"] = ai_filled_flags
+def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig,
+                      classifier=None, progress=None) -> pd.DataFrame:
+    """分析核心已移至 automation/core.py，此處保留同名包裝維持既有呼叫方式。"""
+    if classifier is None:
+        classifier = get_classifier()
+    return core_analyze_dataframe(df, cfg, classifier=classifier, progress=progress)
 
-    # Final guard: ensure detail always belongs to its topic
-    out["問題細項"] = out.apply(
-        lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], [])
-                  else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
-        axis=1,
-    )
-    out["選取"] = False
-    out["部門"] = out["問題類型"].map(DEPT_MAP).fillna("")
-    if cfg.date_col and cfg.date_col in out.columns:
-        out["日期"] = pd.to_datetime(out[cfg.date_col], errors="coerce")
-    return out
 
 
 # ── Google Sheets 歷史紀錄持久化 ────────────────────────────────────────────
@@ -588,26 +602,17 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig) -> pd.DataFrame:
 #   HISTORY_SHEET_ID = "<your_spreadsheet_id>"
 #   [google_credentials]   ← service account JSON 欄位
 
+@st.cache_resource(show_spinner=False)
 def _get_gsheet_client():
-    """從環境變數或 st.secrets 取得 gspread client。"""
+    """從環境變數或 st.secrets 取得 gspread client（快取；authorize 要 1 秒以上）。"""
     try:
         import gspread as _gs
         from google.oauth2.service_account import Credentials as _Creds
     except ImportError:
         return None
     try:
-        import os, json as _json
-        # ── 1. 優先讀 Render 環境變數 ──
-        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
-        if creds_json:
-            creds_dict = _json.loads(creds_json)
-        else:
-            # ── 2. 備用：本機 st.secrets（捕捉所有例外）──
-            try:
-                raw = st.secrets.get("google_credentials", {})
-                creds_dict = dict(raw) if raw else {}
-            except Exception:
-                creds_dict = {}
+        # 憑證來源統一由 automation/config.py 解析（環境變數 → secrets → JSON 檔）
+        creds_dict = auto_config.get_google_credentials()
         if not creds_dict:
             return None
         creds = _Creds.from_service_account_info(
@@ -616,6 +621,18 @@ def _get_gsheet_client():
                     "https://www.googleapis.com/auth/drive"],
         )
         return _gs.authorize(creds)
+    except Exception:
+        return None
+
+
+@st.cache_resource(show_spinner=False)
+def _open_spreadsheet_cached(sheet_id: str):
+    """open_by_key 也要一次網路往返，快取起來。"""
+    client = _get_gsheet_client()
+    if client is None or not sheet_id:
+        return None
+    try:
+        return client.open_by_key(sheet_id)
     except Exception:
         return None
 
@@ -641,15 +658,20 @@ def _history_sheet(log_error: bool = False):
             if log_error:
                 st.session_state["_gsheet_error"] = "未設定 HISTORY_SHEET_ID 環境變數"
             return None
-        ss = client.open_by_key(sid)
+        ss = _open_spreadsheet_cached(sid)
+        if ss is None:
+            return None
         try:
             ws = ss.worksheet("歷史紀錄")
-            try:
-                header = ws.row_values(1)
-                if header[:5] != ["id", "created_at", "source_name", "rows", "data_ref"]:
-                    ws.update(values=[["id", "created_at", "source_name", "rows", "data_ref"]], range_name="A1:E1")
-            except Exception:
-                pass
+            # 表頭檢查每次都做就是一次多餘的網路往返，一個 session 只做一次
+            if not st.session_state.get("_history_header_checked"):
+                try:
+                    header = ws.row_values(1)
+                    if header[:5] != ["id", "created_at", "source_name", "rows", "data_ref"]:
+                        ws.update(values=[["id", "created_at", "source_name", "rows", "data_ref"]], range_name="A1:E1")
+                except Exception:
+                    pass
+                st.session_state["_history_header_checked"] = True
             st.session_state.pop("_gsheet_error", None)
             return ws
         except Exception:
@@ -670,6 +692,49 @@ def _history_sheet(log_error: bool = False):
         if log_error:
             st.session_state["_gsheet_error"] = msg
         return None
+
+
+@st.cache_data(show_spinner="正在讀取歷史紀錄…", ttl=600)
+def load_history_frames_cached(version: str = "") -> list[pd.DataFrame]:
+    """讀回歷史紀錄的資料表（功能四用）。
+
+    version 只是 cache key，存檔後 bump_knowledge_version() 會讓它重讀。
+    先一次取回實際存在的分頁再比對索引：索引裡指向已刪除分頁的舊紀錄，
+    如果逐筆去 worksheet() 撈，每一筆都會發一次註定失敗的 API 請求
+    （實測 21 筆殘骸要 40 秒以上，每次切到功能四都重來一遍）。
+    """
+    import base64 as _b64
+
+    ws = _history_sheet()
+    if ws is None:
+        return []
+    try:
+        rows = ws.get_all_values()[1:]
+    except Exception:
+        return []
+    try:
+        existing = {w.title: w for w in ws.spreadsheet.worksheets()}
+    except Exception:
+        existing = {}
+
+    frames: list[pd.DataFrame] = []
+    for grow in rows:
+        if not grow or not grow[0]:
+            continue
+        data_ref = grow[4] if len(grow) > 4 else ""
+        if not data_ref:
+            continue
+        try:
+            if data_ref.startswith("sheet:"):
+                data_ws = existing.get(data_ref.split(":", 1)[1])
+                if data_ws is None:
+                    continue
+                frames.append(_worksheet_to_dataframe(data_ws))
+            else:
+                frames.append(pd.read_excel(io.BytesIO(_b64.b64decode(data_ref))))
+        except Exception:
+            continue
+    return frames
 
 
 def _sanitize_sheet_value(value, max_chars: int = SHEET_CELL_CHAR_LIMIT) -> str:
@@ -724,6 +789,10 @@ def _worksheet_to_dataframe(ws) -> pd.DataFrame:
 
 
 def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> tuple[Path, str, str]:
+    if auto_config.history_readonly():
+        # 唯讀模式（測試／示範用）：不寫雲端也不寫本機，避免污染正式歷史
+        st.session_state["_gsheet_error"] = "唯讀模式（HISTORY_READONLY=true），未寫入歷史紀錄"
+        return Path(), "", existing_id
     today = datetime.now().strftime("%Y%m%d")
     ts = existing_id if existing_id else datetime.now().strftime("%Y%m%d_%H%M%S")
     output_name = f"{today}_分析.xlsx"
@@ -767,52 +836,74 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
     return output_path, output_name, ts
 
 
-def load_history() -> list[dict]:
-    import base64
-    merged: dict[str, dict] = {}
+@st.cache_data(show_spinner="正在讀取歷史紀錄…", ttl=600)
+def _load_history_payload(version: str = "") -> tuple[list[dict], dict]:
+    """讀回歷史紀錄索引與各筆的 Excel bytes。
 
-    # 只從 Google Sheets 讀取歷史紀錄，避免雲端無紀錄但網頁殘留。
+    version 只是 cache key，存檔後 bump_knowledge_version() 會讓它重讀。
+    沒有快取時每次互動（Streamlit 會整頁重跑）都要重打 Google Sheets，
+    切到功能三就要等好幾秒。
+    """
+    import base64
+
     ws = _history_sheet()
     if ws is None:
-        st.session_state["_history_cache"] = {}
-        return []
+        return [], {}
     try:
-        for row in ws.get_all_values()[1:]:
-            if not row or not row[0]:
-                continue
-            rid = row[0]
-            created_at = row[1] if len(row) > 1 else ""
-            sname = row[2] if len(row) > 2 else ""
-            rows_str = row[3] if len(row) > 3 else "0"
-            data_ref = row[4] if len(row) > 4 else ""
-            meta = {
-                "id": rid, "created_at": created_at,
-                "source_name": sname,
-                "rows": int(rows_str) if rows_str.isdigit() else 0,
-                "output_name": f"{rid}_分析.xlsx", "output_path": "",
-            }
-            merged[rid] = meta
-            if "_history_cache" not in st.session_state:
-                st.session_state["_history_cache"] = {}
-            if rid not in st.session_state["_history_cache"] and data_ref:
-                try:
-                    if data_ref.startswith("sheet:"):
-                        data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
-                        hist_df = _worksheet_to_dataframe(data_ws)
-                        excel_bytes = to_excel_bytes(hist_df)
-                    else:
-                        excel_bytes = base64.b64decode(data_ref)
-                    st.session_state["_history_cache"][rid] = {
-                        "meta": meta,
-                        "excel_bytes": excel_bytes,
-                    }
-                except Exception:
-                    pass
+        rows = ws.get_all_values()[1:]
     except Exception:
-        st.session_state["_history_cache"] = {}
-        return []
+        return [], {}
 
-    return sorted(merged.values(), key=lambda x: x.get("created_at", ""), reverse=True)
+    # 一次取回實際存在的分頁，避免對已刪除的分頁逐筆發出註定失敗的 API 請求
+    try:
+        existing_ws = {w.title: w for w in ws.spreadsheet.worksheets()}
+    except Exception:
+        existing_ws = {}
+
+    metas: dict[str, dict] = {}
+    blobs: dict[str, bytes] = {}
+    for row in rows:
+        if not row or not row[0]:
+            continue
+        rid = row[0]
+        rows_str = row[3] if len(row) > 3 else "0"
+        meta = {
+            "id": rid,
+            "created_at": row[1] if len(row) > 1 else "",
+            "source_name": row[2] if len(row) > 2 else "",
+            "rows": int(rows_str) if rows_str.isdigit() else 0,
+            "output_name": f"{rid}_分析.xlsx",
+            "output_path": "",
+        }
+        metas[rid] = meta
+        data_ref = row[4] if len(row) > 4 else ""
+        if not data_ref:
+            continue
+        try:
+            if data_ref.startswith("sheet:"):
+                data_ws = existing_ws.get(data_ref.split(":", 1)[1])
+                if data_ws is None:
+                    continue
+                # 遮蔽功能上線前存的舊紀錄，讀回來時補遮一次
+                hist_df = mask_phone_columns(_worksheet_to_dataframe(data_ws))
+                blobs[rid] = to_excel_bytes(hist_df)
+            else:
+                blobs[rid] = base64.b64decode(data_ref)
+        except Exception:
+            continue
+
+    ordered = sorted(metas.values(), key=lambda x: x.get("created_at", ""), reverse=True)
+    return ordered, blobs
+
+
+def load_history() -> list[dict]:
+    metas, blobs = _load_history_payload(st.session_state.get("_knowledge_version", ""))
+    cache = st.session_state.setdefault("_history_cache", {})
+    by_id = {m["id"]: m for m in metas}
+    for rid, blob in blobs.items():
+        if rid not in cache:
+            cache[rid] = {"meta": by_id.get(rid, {}), "excel_bytes": blob}
+    return metas
 
 
 def safe_filename(text: str) -> str:
@@ -868,16 +959,36 @@ def generate_ai_summary(df: pd.DataFrame) -> str:
     )
 
 
-def generate_ai_summary_llm(df: pd.DataFrame, model_name: str = "gpt-4o-mini") -> str:
-    api_key = None
-    if hasattr(st, "secrets"):
-        try:
-            api_key = st.secrets.get("OPENAI_API_KEY", None)
-        except Exception:
-            api_key = None
-    if not api_key:
-        api_key = st.session_state.get("OPENAI_API_KEY", "")
-    if not api_key or OpenAI is None:
+def _ai_summary_cache_key(df: pd.DataFrame, tag: str = "") -> str:
+    """以資料指紋當快取鍵：資料沒變就不重新呼叫 API。"""
+    try:
+        fingerprint = pd.util.hash_pandas_object(
+            df[[c for c in ("問題類型", "問題細項", "部門") if c in df.columns]],
+            index=False,
+        ).sum()
+    except Exception:
+        fingerprint = len(df)
+    return f"_ai_summary_{tag}_{len(df)}_{fingerprint}"
+
+
+def get_ai_summary_cached(df: pd.DataFrame, tag: str = "") -> str:
+    """取得 AI 摘要（同一份資料只會呼叫一次 API）。
+
+    Streamlit 每次互動都會整頁重跑，若直接呼叫會每動一下就計費一次。
+    """
+    key = _ai_summary_cache_key(df, tag)
+    if key not in st.session_state:
+        with st.spinner("正在產生 AI 摘要…"):
+            st.session_state[key] = generate_ai_summary_llm(df)
+    return st.session_state[key]
+
+
+def generate_ai_summary_llm(df: pd.DataFrame, model_name: str = "") -> str:
+    """用 LLM 產生摘要；沒有 API key 或呼叫失敗時退回內建統計摘要。
+
+    注意：這個函式會產生 API 費用，呼叫端請走 get_ai_summary_cached()。
+    """
+    if not (auto_config.get_anthropic_key() or auto_config.get_openai_key()):
         return generate_ai_summary(df)
     sample = df[["問題類型", "問題細項", "部門"]].head(300).to_dict(orient="records")
     payload = {
@@ -892,24 +1003,26 @@ def generate_ai_summary_llm(df: pd.DataFrame, model_name: str = "gpt-4o-mini") -
         f"{json.dumps(payload, ensure_ascii=False)}\n"
         "請特別列出：1. 站點城市分布熱點 (如果從內容看得出來) 2. 問題類型與細項的熱點(最高頻的異常)。"
     )
-    try:
-        client = OpenAI(api_key=api_key)
-        res = client.responses.create(model=model_name, input=prompt)
-        text = getattr(res, "output_text", "").strip()
-        return text if text else generate_ai_summary(df)
-    except Exception:
-        return generate_ai_summary(df)
+    from automation.llm import complete_text
+
+    text = complete_text(prompt, model=model_name or None, max_tokens=1200)
+    return text.strip() if text else generate_ai_summary(df)
+
+
+def _drop_ui_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """「選取」只是表格上的勾選狀態，不該出現在下載檔裡。"""
+    return df.drop(columns=[c for c in ["選取"] if c in df.columns], errors="ignore")
 
 
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="analysis")
+        _drop_ui_columns(df).to_excel(writer, index=False, sheet_name="analysis")
     return buffer.getvalue()
 
 
 def to_csv_bytes(df: pd.DataFrame) -> bytes:
-    return df.to_csv(index=False).encode("utf-8-sig")
+    return _drop_ui_columns(df).to_csv(index=False).encode("utf-8-sig")
 
 
 def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 1) -> bytes:
@@ -918,23 +1031,8 @@ def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 
     from fpdf.enums import XPos, YPos
     import os, glob
 
-    # ── 找字型：多重備援路徑 ──
-    CJK_FONT_CANDIDATES = [
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf",
-        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJKtc-Regular.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/arphic/uming.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    ]
-    CJK_FONT_CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
-    CJK_FONT_CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.otf", recursive=True)
-    font_path = next((p for p in CJK_FONT_CANDIDATES if os.path.exists(p)), None)
-    # 使用 _ensure_cjk_font 確保有可用字型
-    if not font_path:
-        font_path = _ensure_cjk_font()
+    # 字型統一由 _ensure_cjk_font() 解析（Noto Sans TC → 微軟正黑體 → …）
+    font_path = _ensure_cjk_font()
 
     table_df = df.copy()
     drop_cols = [c for c in ["選取"] if c in table_df.columns]
@@ -1691,9 +1789,306 @@ def upload_to_google_sheet(df: pd.DataFrame, credentials_json: dict, spreadsheet
     return ws.url if hasattr(ws, 'url') else ""
 
 
+def apply_editor_changes(full_df: pd.DataFrame, edited: pd.DataFrame,
+                         show_index, editor_state: dict | None = None,
+                         drop_cols: list[str] | None = None) -> tuple[pd.DataFrame, list]:
+    """把 data_editor 的編輯結果寫回完整資料。
+
+    表格可能只顯示部分列（篩選、只看待複核），而 data_editor 回傳的 index
+    不保證與原始資料一致，只保證「順序與顯示順序相同、新增列排在最後」。
+    因此用 show_index（顯示中那些列的原始 id）依序對齊，
+    並參考 widget 狀態裡的 deleted_rows 排除被刪掉的列。
+    回傳 (更新後的完整資料, 實際被寫入的列 id)。
+    """
+    out = full_df.copy()
+    if edited is None or len(edited) == 0:
+        return out, []
+
+    work = edited.drop(columns=[c for c in (drop_cols or []) if c in edited.columns],
+                       errors="ignore")
+    state = editor_state or {}
+    deleted_pos = set(state.get("deleted_rows", []) or [])
+    kept_index = [idx for pos, idx in enumerate(list(show_index)) if pos not in deleted_pos]
+
+    n = min(len(kept_index), len(work))
+    existing = work.iloc[:n].copy()
+    existing.index = pd.Index(kept_index[:n])
+    existing = existing.loc[existing.index.intersection(out.index)]
+    if not existing.empty:
+        out.update(existing)
+
+    added = work.iloc[len(kept_index):].copy()
+    if not added.empty:
+        base = int(pd.to_numeric(pd.Series(out.index), errors="coerce").max() or -1) + 1
+        added.index = pd.Index(range(base, base + len(added)))
+        out = pd.concat([out, added])
+
+    return out, list(existing.index)
+
+
+def _toolbar_label(text: str) -> None:
+    st.markdown(f"<div class='toolbar-title'>{text}</div>", unsafe_allow_html=True)
+
+
+def render_editor_toolbar(df, edited, editor_row_index, marker_col, ai_col, summary) -> None:
+    """表格上方的整併工具列。
+
+    原本散在三處（表格上方的欄位管理、自訂選項，表格下方的「批次處理與儲存」，
+    以及篩選列的「只看待複核」）合成一塊，減少上下捲動。
+    這個函式是在 data_editor 之後才呼叫的（批次動作要讀 edited 的勾選狀態），
+    但畫面位置由外層先建立的容器決定，所以仍然顯示在表格上方。
+    """
+    st.checkbox("只看待複核", key="editor_only_review",
+                value=st.session_state.get("editor_only_review", summary["review"] > 0),
+                help="只顯示需要人工確認的資料列")
+
+    col_left, col_right = st.columns(2, gap="large")
+
+    # ── 欄位管理 ────────────────────────────────────────────────
+    with col_left:
+        _toolbar_label("欄位管理")
+        a1, a2 = st.columns([3, 1.2], vertical_alignment="bottom")
+        new_col_name = a1.text_input("新增直立欄位", value="", key="editor_new_col",
+                                     placeholder="輸入欄位名稱")
+        if a2.button("新增欄位", key="editor_add_col", use_container_width=True):
+            col_name = new_col_name.strip()
+            if not col_name:
+                st.warning("請輸入欄位名稱。")
+            elif col_name in st.session_state["analysis_df"].columns:
+                st.warning("欄位已存在。")
+            else:
+                st.session_state["analysis_df"][col_name] = ""
+                st.session_state.pop("editor_table", None)
+                st.rerun()
+
+        protected_cols = {"選取", marker_col, ai_col, *META_COLUMNS}
+        deletable_cols = [c for c in st.session_state["analysis_df"].columns
+                          if c not in protected_cols]
+        b1, b2 = st.columns([3, 1.2], vertical_alignment="bottom")
+        del_col_name = b1.selectbox("選取欄位", options=deletable_cols, key="editor_delete_col")
+        if b2.button("刪除整欄", key="editor_del_col", use_container_width=True):
+            if del_col_name:
+                st.session_state["analysis_df"] = st.session_state["analysis_df"].drop(
+                    columns=[del_col_name], errors="ignore")
+                st.session_state.pop("editor_table", None)
+                st.rerun()
+
+    # ── 批次問題處理 ────────────────────────────────────────────
+    with col_right:
+        _toolbar_label("批次問題處理")
+        c1, c2 = st.columns(2)
+        # accept_new_options：可從下拉選，也可以直接打字新增（combo box）
+        batch_type_opts = ["(不變更)"] + combo_options(TYPE_OPTIONS, df, "問題類型", "_custom_types")
+        batch_type = c1.selectbox("批次問題類型", batch_type_opts, key="batch_type_sel",
+                                  accept_new_options=True, help="清單沒有的可直接輸入新增")
+        valid_batch_det = ["(不變更)"]
+        if batch_type != "(不變更)":
+            valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
+        valid_batch_det += [d for d in st.session_state.get("_custom_details", [])
+                            if d not in valid_batch_det]
+        batch_detail = c2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel",
+                                    accept_new_options=True, help="清單沒有的可直接輸入新增")
+        if batch_detail and batch_detail != "(不變更)":
+            batch_detail = lower_english(batch_detail)
+
+        d1, d2 = st.columns(2)
+        apply_clicked = d1.button("套用勾選列", key="batch_apply", type="primary",
+                                  use_container_width=True,
+                                  help="把上面兩個下拉的設定寫進所有勾選的列")
+        delete_clicked = d2.button("刪除勾選列", key="batch_delete",
+                                   use_container_width=True)
+
+    # ── 自訂選項 ────────────────────────────────────────────────
+    _toolbar_label("自訂選項（下拉清單沒有的值先加進來，表格每一格就選得到）")
+    e1, e2, e3 = st.columns([3, 3, 1.4], vertical_alignment="bottom")
+    new_type_opt = e1.text_input("新增自訂問題類型", key="editor_new_type",
+                                 placeholder="下拉清單沒有時輸入新增")
+    new_detail_opt = e2.text_input("新增自訂問題細項", key="editor_new_detail",
+                                   placeholder="英文會自動轉小寫")
+    if e3.button("加入選項", key="editor_add_option", use_container_width=True):
+        added = []
+        if new_type_opt.strip():
+            st.session_state.setdefault("_custom_types", [])
+            name = new_type_opt.strip()
+            if name not in st.session_state["_custom_types"]:
+                st.session_state["_custom_types"].append(name)
+                added.append(name)
+        if new_detail_opt.strip():
+            st.session_state.setdefault("_custom_details", [])
+            name = lower_english(new_detail_opt.strip())
+            if name not in st.session_state["_custom_details"]:
+                st.session_state["_custom_details"].append(name)
+                added.append(name)
+        if added:
+            st.session_state.pop("editor_table", None)
+            st.rerun()
+        else:
+            st.warning("請先輸入要新增的選項名稱。")
+
+    # ── 批次動作 ────────────────────────────────────────────────
+    has_selection = "選取" in edited.columns and bool(edited["選取"].any())
+
+    if apply_clicked:
+        if not has_selection:
+            st.warning("請先在表格內勾選要處理的資料列！")
+        else:
+            mask = edited["選取"] == True
+            if batch_type != "(不變更)":
+                edited.loc[mask, "問題類型"] = batch_type
+                edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("")
+            if batch_detail != "(不變更)":
+                edited.loc[mask, "問題細項"] = batch_detail
+            # 細項與類型對不上時自動修正；使用者自行新增的細項不動它
+            custom_details = set(st.session_state.get("_custom_details", []))
+
+            def _fix_detail(r):
+                detail = r["問題細項"]
+                allowed = TOPIC_DETAIL_MAP.get(r["問題類型"], [])
+                if detail in allowed or detail in custom_details:
+                    return detail
+                return allowed[0] if allowed else detail
+
+            edited["問題細項"] = edited.apply(_fix_detail, axis=1)
+            merged, _ = apply_editor_changes(
+                st.session_state["analysis_df"], edited, editor_row_index,
+                editor_state=st.session_state.get("editor_table"),
+                drop_cols=[marker_col],
+            )
+            st.session_state["analysis_df"] = merged
+            st.session_state.pop("editor_table", None)
+            st.session_state["_batch_applied"] = True
+            st.rerun()
+
+    if st.session_state.pop("_batch_applied", False):
+        st.success("已套用批次編輯。")
+
+    if delete_clicked:
+        if not has_selection:
+            st.warning("請先在表格內勾選要刪除的資料列！")
+        else:
+            drop_ids = [rid for rid, flag in zip(editor_row_index, edited["選取"]) if bool(flag)]
+            st.session_state["analysis_df"] = (
+                st.session_state["analysis_df"].drop(index=drop_ids, errors="ignore").copy()
+            )
+            st.session_state.pop("editor_table", None)
+            st.success("已刪除勾選列。")
+            st.rerun()
+
+
+def mask_phone_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """遮蔽「帳號手機」這類整格號碼欄位。
+
+    新分析的資料在 core.analyze_dataframe 就已遮蔽，
+    這裡是給功能三／功能四讀進來的舊歷史紀錄補上。
+    """
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    for col in out.columns:
+        if any(k in str(col).lower() for k in PHONE_COL_HINTS):
+            out[col] = out[col].map(mask_phone_value)
+    return out
+
+
+def combo_options(base: list[str], df: pd.DataFrame | None, column: str,
+                  session_key: str) -> list[str]:
+    """下拉選項＝內建清單＋資料實際值＋使用者自行輸入過的值。
+
+    st.column_config.SelectboxColumn 不支援直接在格子裡打字，
+    所以自訂值改由表格上方的輸入框加入，加進來之後每一格都選得到，
+    效果等同可打字的 combo box。
+    """
+    options = options_with_data_values(base, df, column)
+    for name in st.session_state.get(session_key, []):
+        if name and name not in options:
+            options.append(name)
+    return options
+
+
+def options_with_data_values(base: list[str], df: pd.DataFrame | None, column: str) -> list[str]:
+    """下拉選項＝內建清單＋資料裡實際出現的值。
+
+    分類法調整（新增細項、廢除類型）後，舊資料仍可能帶著舊標記；
+    若選項少了實際值，data_editor 那一格會顯示不出來甚至報錯。
+    """
+    options = list(base)
+    if df is not None and column in df.columns:
+        for v in df[column].dropna().unique():
+            name = str(v).strip()
+            if name and name not in options:
+                options.append(name)
+    return options
+
+
+def dept_options_for(df: pd.DataFrame | None = None) -> list[str]:
+    """部門選項＝內建清單＋知識庫學到的＋資料裡實際出現的。"""
+    options = list(DEPT_OPTIONS)
+    kb = get_knowledge(st.session_state.get("_knowledge_version", ""))
+    learned = list(getattr(kb, "dept_by_topic", {}).values()) if kb else []
+    in_data = []
+    if df is not None and "部門" in df.columns:
+        in_data = [str(v).strip() for v in df["部門"].dropna().unique() if str(v).strip()]
+    for name in learned + in_data:
+        if name and name not in options:
+            options.append(name)
+    return options
+
+
+def render_knowledge_panel() -> None:
+    """顯示分類知識庫狀態（從歷史紀錄學到什麼），並提供重建按鈕。"""
+    kb = get_knowledge(st.session_state.get("_knowledge_version", ""))
+    if kb is None:
+        with st.expander("🧠 分類知識庫（尚未建立）", expanded=False):
+            st.caption("目前只使用內建關鍵字規則。等歷史紀錄累積後，"
+                       "系統會自動從過往（尤其是人工修正過的）標記學出規則與相似案例池。")
+            msg = st.session_state.get("_knowledge_error")
+            if msg:
+                st.caption(f"讀取歷史時的訊息：{msg}")
+        return
+
+    s = kb.stats
+    with st.expander(
+        f"🧠 分類知識庫：已從 {s.get('history_rows', 0)} 筆歷史標記學到 "
+        f"{s.get('rules', 0)} 條規則、{s.get('fingerprints', 0)} 組指紋",
+        expanded=False,
+    ):
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("歷史標記", s.get("history_rows", 0))
+        k2.metric("人工確認", s.get("confirmed_rows", 0))
+        k3.metric("自動挖掘規則", s.get("rules", 0))
+        k4.metric("相似案例池", s.get("knn_examples", 0))
+        if kb.rules:
+            st.dataframe(
+                pd.DataFrame([
+                    {"問題類型": r.topic, "問題細項": r.detail,
+                     "關鍵字": "、".join(r.terms[:6]), "歷史筆數": r.support,
+                     "實測準確率": f"{r.precision:.0%}"}
+                    for r in kb.rules[:15]
+                ]),
+                use_container_width=True, hide_index=True,
+            )
+        if kb.dept_by_topic:
+            st.caption("從歷史學到的部門對應：" +
+                       "　".join(f"{t}→{d}" for t, d in kb.dept_by_topic.items()))
+            conflicts = {t: d for t, d in kb.dept_by_topic.items()
+                         if DEPT_MAP.get(t) and DEPT_MAP.get(t) != d}
+            if conflicts:
+                st.warning(
+                    "歷史實際填的部門與程式內建的 DEPT_MAP 不一致：" +
+                    "　".join(f"{t}：內建「{DEPT_MAP[t]}」／歷史「{d}」" for t, d in conflicts.items()) +
+                    "。目前以內建為準；若公司已改部門編制，把環境變數 "
+                    "PREFER_LEARNED_DEPT 設為 true 即可改以歷史名稱為準。"
+                )
+        if st.button("重建知識庫", key="kb_rebuild"):
+            get_knowledge.clear()
+            bump_knowledge_version()
+            st.rerun()
+
+
 def section_1():
-    st.markdown('<div class="feature-title">功能一：檔案上傳與分析區</div>', unsafe_allow_html=True)
-    st.markdown("<div class='ecoco-card'>支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。</div>", unsafe_allow_html=True)
+    page_header("功能一：檔案上傳與分析區",
+                "支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。")
+    render_knowledge_panel()
 
     # File info badge — no long text, just a compact pill with truncated name
     if st.session_state.get("_uploaded_bytes") and st.session_state.get("_uploaded_name"):
@@ -1744,69 +2139,136 @@ def section_1():
             st.warning("檔案沒有可用欄位。")
             return
 
-        st.markdown("##### 分析前篩選與欄位設定")
-        subject_col = st.selectbox("用戶填寫的主題欄位", options=cols, index=0)
-        content_col = st.selectbox("用戶內容欄位", options=cols, index=min(1, len(cols) - 1))
-        date_opt = ["(無)"] + cols
-        date_col = st.selectbox("日期欄位（選填）", options=date_opt, index=0)
-        pre_keyword = st.text_input("分析前篩選關鍵字（主題/內容，選填）")
+        # ── 欄位自動偵測（偵測得到就不必人工指定）──
+        det = detect_columns(df_raw)
+        if det.ok:
+            st.markdown(
+                "<div class='ecoco-card' style='border-left:4px solid #060E9F;'>"
+                f"✅ 已自動判斷欄位　主題：<b>{det.subject}</b>　內容：<b>{det.content}</b>"
+                f"　日期：<b>{det.date or '（無）'}</b></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.warning("無法自動判斷欄位對應，請在下方手動指定。")
+
+        def _idx(name, options, fallback=0):
+            return options.index(name) if name in options else fallback
+
+        # 日期欄位不再讓人工指定，一律採用自動偵測結果（偵測不到就不帶日期）
+        date_col = det.date if det.date in cols else "(無)"
+        with st.expander("欄位對應（自動判斷結果，可手動調整）", expanded=not det.ok):
+            subject_col = st.selectbox("用戶填寫的主題欄位", options=cols,
+                                       index=_idx(det.subject, cols, 0), key="col_subject")
+            content_col = st.selectbox("用戶內容欄位", options=cols,
+                                       index=_idx(det.content, cols, min(1, len(cols) - 1)),
+                                       key="col_content")
+            for field_name, label in (("subject", "主題"), ("content", "內容"), ("date", "日期")):
+                why = det.reasons.get(field_name)
+                if why:
+                    st.caption(f"{label}欄判斷依據：{why}"
+                               f"（信心 {det.confidence.get(field_name, 0):.0%}）")
+
         cfg = AnalysisConfig(subject_col=subject_col, content_col=content_col,
                              date_col=None if date_col == "(無)" else date_col)
 
-        if st.button("開始分析", type="primary"):
+        # ── 自動分析：同一份檔案與同一組設定只會跑一次 ──
+        run_sig = f"{uploaded_name}|{len(df_raw)}|{subject_col}|{content_col}|{date_col}"
+        manual_run = st.button("重新分析", help="重新套用目前設定與最新分類規則")
+        auto_run = (auto_config.auto_analyze_on_upload() and det.ok
+                    and st.session_state.get("_auto_run_sig") != run_sig)
+        if manual_run or auto_run:
             work = df_raw.copy()
-            if pre_keyword:
-                work = work[
-                    work[subject_col].astype(str).str.contains(pre_keyword, case=False, na=False)
-                    | work[content_col].astype(str).str.contains(pre_keyword, case=False, na=False)
-                ]
-            st.session_state["analysis_df"] = analyze_dataframe(work, cfg)
+            with st.spinner("正在自動分類，請稍候…"):
+                result = analyze_dataframe(work, cfg)
+            st.session_state["analysis_df"] = result
             st.session_state["source_name"] = uploaded_name
+            st.session_state["_auto_run_sig"] = run_sig
+            st.session_state.pop("editor_table", None)
+
+            summary = review_summary(result)
+            st.success(
+                f"已自動分析 {summary['total']} 筆：完全自動採用 {summary['auto']} 筆"
+                f"（{summary['auto_rate']:.0%}），待人工複核 {summary['review']} 筆"
+            )
+            if auto_config.auto_save_history():
+                existing_id = (st.session_state.get("_editing_history_id")
+                               or st.session_state.get("_saved_history_id", ""))
+                try:
+                    _, _, history_id = save_history(result, uploaded_name, existing_id=existing_id)
+                    st.session_state["_saved_history_id"] = history_id
+                    if st.session_state.get("_gsheet_error"):
+                        st.warning(st.session_state["_gsheet_error"])
+                    else:
+                        st.caption(f"已自動存入歷史紀錄（{history_id}）")
+                        bump_knowledge_version()
+                except Exception as exc:
+                    st.warning(f"自動存檔失敗，可稍後手動儲存：{str(exc)[:200]}")
 
     if "analysis_df" not in st.session_state:
         return
     df = st.session_state["analysis_df"]
-    c1, c2, c3 = st.columns([2, 2, 1])
-    keyword = c1.text_input("篩選：關鍵字（主題/內容）")
-    filter_type = c2.multiselect("篩選：問題類型", options=TYPE_OPTIONS, default=[])
-    
-    valid_details = DETAIL_OPTIONS
-    if filter_type:
-        valid_details = []
-        for t in filter_type:
-            valid_details.extend(TOPIC_DETAIL_MAP.get(t, []))
-            
-    filter_detail = c3.multiselect("篩選：問題細項", options=valid_details, default=[])
+    # ── 自動化與審核總覽 ──
+    summary = review_summary(df)
+    causes = summary.get("review_causes", {})
+    n_detail_only = causes.get("僅需確認細項", 0)
+    n_full = causes.get("信心不足", 0) + causes.get("各層判斷分歧", 0)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("總筆數", summary["total"])
+    m2.metric("完全自動採用", f"{summary['auto']} 筆", f"{summary['auto_rate']:.0%}")
+    m3.metric("僅需確認細項", f"{n_detail_only} 筆",
+              help="類型與部門系統有把握，只有細項要人工挑一個")
+    m4.metric("需完整判斷", f"{n_full} 筆", help="類型也沒把握或各層分歧")
+    if causes.get("稽核抽樣"):
+        st.caption(f"🔍 另有 {causes['稽核抽樣']} 筆是從自動採用中抽出的品質抽驗")
+    if summary.get("agreement"):
+        st.caption("交叉驗證：" + "　".join(f"{k} {v} 筆" for k, v in summary["agreement"].items()))
 
+    # 篩選條件已整併到表格上方的工具列（只保留「只看待複核」）。
+    only_review = bool(st.session_state.get("editor_only_review", summary["review"] > 0))
+
+    # 不重設 index：表格顯示由 hide_index 負責，
+    # 原始 index 必須保留，儲存時才知道每一列要寫回哪裡。
     show = make_unique_columns(df.copy())
-    # hide_index=True alone sometimes still shows original integer index;
-    # reset to guarantee no row numbers in data_editor
-    show = show.reset_index(drop=True)
-    if keyword:
-        show = show[
-            show[subject_col].astype(str).str.contains(keyword, case=False, na=False)
-            | show[content_col].astype(str).str.contains(keyword, case=False, na=False)
-        ]
-    if filter_type:
-        show = show[show["問題類型"].isin(filter_type)]
-    if filter_detail:
-        show = show[show["問題細項"].isin(filter_detail)]
+    if only_review and "_needs_review" in show.columns:
+        show = show[show["_needs_review"].fillna(False).astype(bool)]
+        # 排序：需完整判斷 → 只需挑細項 → 稽核抽樣；同組內最沒把握的優先
+        cause_order = {"信心不足": 0, "各層判斷分歧": 0, "僅需確認細項": 1, "稽核抽樣": 2}
+        if "_review_cause" in show.columns:
+            ordered = show.assign(_order=show["_review_cause"].map(cause_order).fillna(0))
+            show = ordered.sort_values(["_order", "_confidence"], kind="stable").drop(columns=["_order"])
 
     st.markdown('<div class="editor-toolbar-title">可編輯標記表（支援下拉 + 手動編輯）</div>', unsafe_allow_html=True)
 
-    # ---- AI填入標示 ---
+    # ---- 待複核標示 ---
     ai_col = "_ai_filled"
     MARKER_COL = "AI標記"  # kept for save compatibility only
     has_ai_col = ai_col in show.columns
-    n_ai = 0
-    if has_ai_col:
-        n_ai = int(show[ai_col].fillna(False).astype(bool).sum())
+    review_col = "_needs_review"
+    has_review_col = review_col in show.columns
+    n_review = int(show[review_col].fillna(False).astype(bool).sum()) if has_review_col else 0
+    n_ai = int(show[ai_col].fillna(False).astype(bool).sum()) if has_ai_col else 0
 
-    if n_ai > 0:
+    if has_review_col:
+        if n_review:
+            st.markdown(
+                f"""
+                <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
+                            padding:10px 16px; margin-bottom:8px; font-size:17px;'>
+                  <b style='color:#cc0000;'>⚠ 待人工複核 {n_review} 筆</b>（已按信心由低到高排序）。三種原因：
+                  <b>信心不足</b>＝各層都沒把握；<b>各層判斷分歧</b>＝規則與相似案例給出不同答案
+                  （實測這類的細項正確率只有三成，務必看）；<b>🔍 稽核抽樣</b>＝系統其實有把握，
+                  抽出來抽驗品質用。其餘資料已自動採用，不需逐列檢查。
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.success("✅ 顯示中的資料都不需要人工複核。")
+    elif n_ai > 0:
         st.markdown(
             f"""
             <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
-                        padding:8px 14px; margin-bottom:8px; font-size:0.85rem;'>
+                        padding:10px 16px; margin-bottom:8px; font-size:17px;'>
               <b style='color:#cc0000;'>● AI 自動標記</b>：共 <b style='color:#cc0000;'>{n_ai} 筆</b> 原始欄位空白或無效，
               已由 AI 根據客訴內容自動分析填入。
               請針對這幾筆核對，如需修改請直接在表格中下拉選擇，再點「💾 儲存修改」確認。
@@ -1817,73 +2279,104 @@ def section_1():
 
     st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
 
-    tool_add, tool_add_btn, tool_del, tool_del_btn = st.columns([3, 1, 3, 1])
-    new_col_name = tool_add.text_input("新增直立欄位", value="", key="editor_new_col", placeholder="輸入欄位名稱")
-    if tool_add_btn.button("新增欄位", key="editor_add_col", use_container_width=True):
-        col_name = new_col_name.strip()
-        if not col_name:
-            st.warning("請輸入欄位名稱。")
-        elif col_name in st.session_state["analysis_df"].columns:
-            st.warning("欄位已存在。")
-        else:
-            st.session_state["analysis_df"][col_name] = ""
-            st.session_state.pop("editor_table", None)
-            st.rerun()
-    protected_cols = {"選取", MARKER_COL, ai_col}
-    deletable_cols = [c for c in st.session_state["analysis_df"].columns if c not in protected_cols]
-    del_col_name = tool_del.selectbox("選取欄位", options=deletable_cols, key="editor_delete_col")
-    if tool_del_btn.button("刪除整欄", key="editor_del_col", use_container_width=True):
-        if del_col_name:
-            st.session_state["analysis_df"] = st.session_state["analysis_df"].drop(columns=[del_col_name], errors="ignore")
-            st.session_state.pop("editor_table", None)
-            st.rerun()
+    # 工具列（檢視 / 欄位管理 / 批次問題處理 / 自訂選項）先佔位，
+    # 實際內容在 data_editor 之後才填入 —— 批次動作需要 edited 的勾選狀態，
+    # 但版面上它要出現在表格上方。
+    toolbar = st.container(key="editor_toolbar")
 
-    # 重新處理要顯示的欄位，確保原本隱藏的 MARKER_COL 正確加入
-    display_cols = [c for c in show.columns if c not in (ai_col, MARKER_COL)]
+    # 顯示用欄位：隱藏所有底線開頭的內部欄位（信心、判斷來源等稽核資訊）
+    display_cols = [c for c in visible_columns(show) if c not in (MARKER_COL, "選取")]
+    editor_row_index = list(show.index)   # 顯示中每一列對應的原始資料列 id
     show_display = show[display_cols].reset_index(drop=True)
 
-    # 新增一欄字號標記給 AI 填入的資料
-    if has_ai_col:
-        flags = show[ai_col].reset_index(drop=True)
-        marker_vals = flags.map(lambda x: "⭐(AI填寫)" if x else "")
+    # 備註欄：顯示複核原因與把握度，讓人知道為什麼這列要看
+    if has_review_col:
+        def _marker(row):
+            if not bool(row.get(review_col, False)):
+                return ""
+            conf = float(row.get("_confidence", 0) or 0)
+            tconf = float(row.get("_topic_confidence", 0) or 0)
+            cause = str(row.get("_review_cause", "") or "待複核")
+            if cause == "稽核抽樣":
+                return f"🔍 稽核抽樣（信心 {conf:.0%}）"
+            if cause == "僅需確認細項":
+                return f"✏ 只需挑細項（類型把握 {tconf:.0%}，細項把握 {conf:.0%}）"
+            agree = str(row.get("_agreement", "") or "")
+            extra = f"／{agree}" if agree else ""
+            return f"⚠ {cause}（信心 {conf:.0%}{extra}）"
+        marker_vals = list(show.apply(_marker, axis=1)) if len(show) else []
+    elif has_ai_col:
+        marker_vals = list(show[ai_col].map(lambda x: "⭐(AI填寫)" if x else ""))
     else:
         marker_vals = [""] * len(show_display)
         
-    insert_idx = 1
-    if "選取" in show_display.columns:
-        insert_idx = show_display.columns.get_loc("選取") + 1
-    show_display.insert(insert_idx, MARKER_COL, marker_vals)
-
-    # --- Select All Trigger ---
-    cols_h = st.columns([13, 2])
-    if cols_h[1].button("⬓ 選取 / 取消", key="toggle_all_btn", help="全選或取消全選"):
-        all_sel = bool(df["選取"].all()) if "選取" in df.columns and not df.empty else False
-        st.session_state["analysis_df"]["選取"] = not all_sel
-        st.rerun()
+    # 「選取」固定在第一欄，「備註」緊接其後。
+    # 原本沒有這一欄，批次套用／刪除勾選列因此永遠抓不到勾選狀態。
+    prev_sel = show["選取"] if "選取" in show.columns else None
+    sel_vals = list(prev_sel.fillna(False).astype(bool)) if prev_sel is not None else [False] * len(show_display)
+    show_display.insert(0, "選取", sel_vals)
+    show_display.insert(1, MARKER_COL, marker_vals)
 
     edited = st.data_editor(
         show_display,
         use_container_width=True,
-        num_rows="dynamic",
+        num_rows="fixed",
         hide_index=True,
         column_config={
-            "選取": st.column_config.CheckboxColumn("選取", help="勾選要批次處理的列"),
+            "選取": st.column_config.CheckboxColumn("選取", help="勾選要批次處理的列", pinned=True),
             MARKER_COL: st.column_config.TextColumn("備註", disabled=True),
-            "問題類型": st.column_config.SelectboxColumn(options=TYPE_OPTIONS, required=True),
-            "問題細項": st.column_config.SelectboxColumn(options=DETAIL_OPTIONS, required=True),
-            "部門": st.column_config.SelectboxColumn(options=DEPT_OPTIONS),
+            "問題類型": st.column_config.SelectboxColumn(
+                options=combo_options(TYPE_OPTIONS, df, "問題類型", "_custom_types"), required=True),
+            "問題細項": st.column_config.SelectboxColumn(
+                options=combo_options(DETAIL_OPTIONS, df, "問題細項", "_custom_details"), required=True),
+            "部門": st.column_config.SelectboxColumn(options=dept_options_for(df)),
         },
         key="editor_table",
     )
 
+    with toolbar:
+        render_editor_toolbar(df, edited, editor_row_index, MARKER_COL, ai_col, summary)
+
     # 儲存按鈕在表格下方
     sv_col1, sv_col2, sv_col3 = st.columns([2, 2, 6])
+    if sv_col2.button("✔ 全部接受系統判斷", use_container_width=True,
+                      help="把目前顯示的列一次標記為已複核（不改內容），適合快速掠過沒問題的列"):
+        accepted = st.session_state["analysis_df"].copy()
+        idx = [i for i in editor_row_index if i in accepted.index]
+        for col, val in (("_needs_review", False), ("_confidence", 1.0),
+                         ("_source_layer", "人工確認"), ("_review_cause", "")):
+            if col in accepted.columns:
+                accepted.loc[idx, col] = val
+        if "_ai_filled" in accepted.columns:
+            accepted.loc[idx, "_ai_filled"] = False
+        st.session_state["analysis_df"] = accepted
+        st.session_state.pop("editor_table", None)
+        src_name = st.session_state.get("source_name", "未命名")
+        existing_id = (st.session_state.get("_editing_history_id")
+                       or st.session_state.get("_saved_history_id", ""))
+        try:
+            _, _, history_id = save_history(accepted, src_name, existing_id=existing_id)
+            st.session_state["_saved_history_id"] = history_id
+            bump_knowledge_version()
+        except Exception as exc:
+            st.warning(f"存檔失敗：{str(exc)[:200]}")
+        st.session_state["_accepted_n"] = len(idx)
+        st.rerun()
+
+    if st.session_state.pop("_accepted_n", 0):
+        st.success("已接受系統判斷並存檔，這些列已納入知識庫")
+
     if sv_col1.button("💾 儲存修改", use_container_width=True):
-        full_df = st.session_state["analysis_df"].copy()
-        # Drop the AI marker column and 選取 before saving back
-        save_edited = edited.drop(columns=["選取", MARKER_COL], errors="ignore")
-        full_df.update(save_edited)
-        # Clear _ai_filled flags for all saved rows (user has confirmed)
+        full_df, touched = apply_editor_changes(
+            st.session_state["analysis_df"], edited, editor_row_index,
+            editor_state=st.session_state.get("editor_table"),
+            drop_cols=["選取", MARKER_COL],
+        )
+        # 人工已看過這些列 → 解除待複核，記為人工確認（下次分類的黃金標註）
+        for col, val in (("_needs_review", False), ("_confidence", 1.0),
+                         ("_source_layer", "人工確認"), ("_review_cause", "")):
+            if col in full_df.columns:
+                full_df.loc[touched, col] = val
         if "_ai_filled" in full_df.columns:
             full_df["_ai_filled"] = False
         st.session_state["analysis_df"] = full_df
@@ -1905,7 +2398,8 @@ def section_1():
         if st.session_state.get("_gsheet_error"):
             st.warning(st.session_state["_gsheet_error"])
         else:
-            st.success(f"已儲存「{src_name}」，並已加入歷史紀錄")
+            bump_knowledge_version()   # 人工修正納入知識庫，下次分類更準
+            st.success(f"已儲存「{src_name}」，並已納入分類知識庫")
 
     # 已儲存草稿列表
     if st.session_state.get("_draft_list"):
@@ -1929,47 +2423,6 @@ def section_1():
             if d_col4.button("[X]", key=f"draft_del_{idx}", use_container_width=True):
                 st.session_state["_draft_list"].pop(idx)
                 st.rerun()
-
-    st.markdown("##### 批次處理與儲存")
-    
-    b1, b2, b3, b4 = st.columns([2, 2, 2, 2])
-    batch_type = b1.selectbox("批次問題類型", ["(不變更)"] + TYPE_OPTIONS, key="batch_type_sel")
-    valid_batch_det = ["(不變更)"]
-    if batch_type != "(不變更)":
-        valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
-    batch_detail = b2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel")
-
-    if b3.button("將上方設定套用到所有勾選列", type="primary"):
-        if "選取" not in edited.columns or not edited["選取"].any():
-            st.warning("請先在表格內勾選要處理的資料列！")
-        else:
-            mask = edited["選取"] == True
-            if batch_type != "(不變更)":
-                edited.loc[mask, "問題類型"] = batch_type
-                edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("")
-            if batch_detail != "(不變更)":
-                edited.loc[mask, "問題細項"] = batch_detail
-            # Auto-fix rows whose detail mismatches topic
-            edited["問題細項"] = edited.apply(
-                lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], []) else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
-                axis=1,
-            )
-            st.session_state["analysis_df"] = edited.copy()
-            st.session_state.pop("editor_table", None)
-            st.session_state["_batch_applied"] = True
-            st.rerun()
-            
-    if st.session_state.pop("_batch_applied", False):
-        st.success("已套用批次編輯。")
-        
-    if b4.button("刪除勾選列"):
-        if "選取" not in edited.columns or not edited["選取"].any():
-            st.warning("請先在表格內勾選要刪除的資料列！")
-        else:
-            st.session_state["analysis_df"] = edited[edited["選取"] != True].copy()
-            st.session_state.pop("editor_table", None)
-            st.success("已刪除勾選列。")
-            st.rerun()
 
     final_df = st.session_state["analysis_df"]
     
@@ -2097,22 +2550,27 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
                       color="歸屬部門", text="百分比", title="問題類型分布",
                       color_discrete_map=DEPT_COLOR_MAP)
     fig1.update_traces(texttemplate="%{text}%", textposition="outside")
+    if not use_single_bar:
+        add_counts_to_legend(fig1, stats.groupby("歸屬部門")["件數"].sum())
     fig1.update_layout(height=420, yaxis=dict(tickformat="d", nticks=6),
-                       margin=dict(t=45, b=0))
+                       legend=BAR_LEGEND, margin=dict(t=45, b=0, r=110))
     c1.plotly_chart(fig1, use_container_width=True, key=f"{kp}_fig1")
 
     # ── 圖2：機台圓餅圖 ────────────────────────────────────────
     if m_stats is not None:
-        cmap = {row["機型"]: custom_pie[i % len(custom_pie)]
-                for i, row in m_stats.iterrows()}
-        fig2 = px.pie(m_stats, names="機型", values="件數",
+        m_counts = m_stats.set_index("機型")["件數"]
+        m_labels = pie_legend_labels(m_counts)
+        cmap = {label: custom_pie[i % len(custom_pie)] for i, label in enumerate(m_labels)}
+        fig2 = px.pie(names=m_labels, values=list(m_counts.values),
                       title="機台問題細分比較", hole=0.3,
-                      color="機型", color_discrete_map=cmap)
-        fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent+label")
-        fig2.update_layout(height=420, margin=dict(t=45, b=0, l=0, r=0))
+                      color=m_labels, color_discrete_map=cmap)
+        fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent")
+        fig2.update_layout(height=420, showlegend=True,
+                           legend=PIE_LEGEND, margin=dict(t=45, b=0, l=0, r=130))
         c2.plotly_chart(fig2, use_container_width=True, key=f"{kp}_fig2")
     else:
-        c2.info("無機台相關數據")
+        with c2:
+            empty_state("沒有資料紀錄　—　無機台相關數據")
 
     # ── 圖3：十大細項橫條圖 ────────────────────────────────────
     fig3 = px.bar(detail_stats, x="件數", y="問題細項",
@@ -2161,7 +2619,8 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
     )
     fig1.update_traces(texttemplate="%{text}%", textposition="outside")
-    fig1.update_layout(height=400)
+    add_counts_to_legend(fig1, stats.groupby("歸屬部門")["件數"].sum())
+    fig1.update_layout(height=400, legend=BAR_LEGEND, margin=dict(t=45, b=0, r=110))
     c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
 
     df_machine = df[df["問題類型"] == "機台問題類型"].copy()
@@ -2174,18 +2633,22 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         df_machine["機台機型"] = df_machine.apply(get_machine_type, axis=1)
         m_stats = df_machine["機台機型"].value_counts().reset_index()
         m_stats.columns = ["機型", "件數"]
-        color_map = {row["機型"]: BRAND_PALETTE[i % len(BRAND_PALETTE)]
-                     for i, row in m_stats.iterrows()}
+        m_counts = m_stats.set_index("機型")["件數"]
+        m_labels = pie_legend_labels(m_counts)
+        color_map = {label: BRAND_PALETTE[i % len(BRAND_PALETTE)]
+                     for i, label in enumerate(m_labels)}
         fig2 = px.pie(
-            m_stats, names="機型", values="件數",
+            names=m_labels, values=list(m_counts.values),
             title="機台問題細分比較", hole=0.3,
-            color="機型", color_discrete_map=color_map,
+            color=m_labels, color_discrete_map=color_map,
         )
-        fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent+label")
-        fig2.update_layout(height=400, margin=dict(t=40, b=0, l=0, r=0))
+        fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent")
+        fig2.update_layout(height=400, showlegend=True,
+                           legend=PIE_LEGEND, margin=dict(t=40, b=0, l=0, r=130))
         c2.plotly_chart(fig2, use_container_width=True, key=f"{key_prefix}_fig2" if key_prefix else None)
     else:
-        c2.info("無機台相關數據")
+        with c2:
+            empty_state("沒有資料紀錄　—　無機台相關數據")
 
     detail_stats = df["問題細項"].value_counts().reset_index().head(10)
     detail_stats.columns = ["問題細項", "件數"]
@@ -2205,7 +2668,8 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
 
 
 def section_2():
-    st.markdown('<div class="feature-title">功能二：圖表化與 AI 重點分析</div>', unsafe_allow_html=True)
+    page_header("功能二：圖表化與 AI 重點分析",
+                "各問題類型件數與百分比、歸屬部門，可預覽與下載 AI 重點分析。")
     if "analysis_df" not in st.session_state:
         st.info("請先在功能一完成分析。")
         return
@@ -2274,15 +2738,16 @@ def section_2():
     render_charts_from_stats(chart_stats, df, key_prefix="sec2")
 
     st.markdown("#### AI 問題重點分析")
-    st.markdown("##### AI 設定（選填）")
-    col_ai_1, col_ai_2 = st.columns([3, 2])
-    key_input = col_ai_1.text_input("OpenAI API Key（若留空則使用內建規則摘要）", type="password")
-    model_name = col_ai_2.text_input("模型", value="gpt-4o-mini")
-    if key_input:
-        st.session_state["OPENAI_API_KEY"] = key_input
-
-    ai_text = generate_ai_summary_llm(df, model_name=model_name)
+    # 摘要依「資料指紋」快取：同一份資料只呼叫一次 API，
+    # 避免每次互動（Streamlit 會整頁重跑）都重新計費。
+    ai_text = get_ai_summary_cached(df, st.session_state.get("source_name", ""))
     st.text_area("分析摘要預覽", ai_text, height=140)
+    sum_c1, sum_c2 = st.columns([1.4, 6])
+    if sum_c1.button("重新產生摘要", key="sec2_regen_summary"):
+        st.session_state.pop(_ai_summary_cache_key(df, st.session_state.get("source_name", "")), None)
+        st.rerun()
+    if not (auto_config.get_anthropic_key() or auto_config.get_openai_key()):
+        sum_c2.caption("尚未設定 ANTHROPIC_API_KEY／OPENAI_API_KEY，目前使用內建統計摘要。")
 
     # ── 預先產生所有下載檔案（避免 Streamlit on_click 時檔案還未產生）──
     chart_colors = st.session_state.get("chart_colors_sec2", {})
@@ -2364,7 +2829,7 @@ def section_2():
 
 
 def section_3():
-    st.markdown('<div class="feature-title">功能三：歷史分析紀錄</div>', unsafe_allow_html=True)
+    page_header("功能三：歷史分析紀錄", "歷史分析紀錄管理（最新置頂），可預覽與下載。")
 
     # ── Google Sheets 連線狀態 ──
     import os
@@ -2553,59 +3018,40 @@ def section_4():
 
     # ── ECOCO 品牌 CSS（對齊 HTML 範本風格）──────────────────────
     st.markdown("""<style>
-    .s4-header{background:#060E9F;color:#fff;padding:22px 26px;border-radius:12px;
-               border-bottom:6px solid #FF5000;margin-bottom:18px}
-    .s4-header h2{margin:0;font-size:14px;font-weight:700;letter-spacing:.3px}
-    .s4-header p{margin:4px 0 0;opacity:.85;font-size:13px}
     .s4-section{border-left:6px solid #FF5000;padding-left:14px;
-                color:#060E9F;font-size:17px;font-weight:700;margin:22px 0 14px}
+                color:#060E9F;margin:24px 0 14px}
+    [data-testid="stAppViewContainer"] .s4-section,
+    .s4-section{font-size:26px !important;font-weight:700 !important;line-height:1.3}
     .s4-card{background:#fff;border-radius:12px;padding:20px 24px;
              box-shadow:0 4px 10px rgba(0,0,0,.06);margin-bottom:16px}
     .s4-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
     .s4-kpi{background:#fff;border-radius:10px;padding:18px 16px;text-align:center;
             border-top:4px solid #FFCE00;box-shadow:0 2px 6px rgba(0,0,0,.05)}
-    .s4-kpi-val{font-size:30px;font-weight:700;color:#FF5000}
-    .s4-kpi-lbl{font-size:12px;color:#666;margin-top:4px}
-    .s4-kpi-delta{font-size:11px;margin-top:3px}
+    .s4-kpi-val{font-size:32px;font-weight:700;color:#FF5000}
+    .s4-kpi-lbl{font-size:16px;color:#0076A9;margin-top:4px}
+    .s4-kpi-delta{font-size:14px;margin-top:3px}
     .delta-up{color:#c03000} .delta-dn{color:#0a6e44} .delta-flat{color:#888}
     .s4-rank-table{width:100%;border-collapse:collapse}
-    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 14px;font-size:14px;text-align:center;font-weight:600}
-    .s4-rank-table td{padding:9px 14px;text-align:center;border-bottom:1px solid #eee;font-size:12px}
-    .s4-rank-val{color:#FF5000;font-weight:700;font-size:14px}
+    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 14px;font-size:17px;text-align:center;font-weight:700}
+    .s4-rank-table td{padding:10px 14px;text-align:center;border-bottom:1px solid rgba(142,185,201,.55);font-size:16px}
+    .s4-rank-val{color:#FF5000;font-weight:700;font-size:18px}
     .filter-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-    .filter-chip{padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
+    .filter-chip{padding:5px 16px;border-radius:20px;font-size:16px;font-weight:600;cursor:pointer;
                  border:1.5px solid #060E9F;background:#fff;color:#060E9F}
     .filter-chip.active{background:#060E9F;color:#fff}
     </style>""", unsafe_allow_html=True)
 
     # ── 頁首 ──────────────────────────────────────────────────────
-    st.markdown("""
-    <div class="s4-header">
-      <h2>📈 ECOCO 客訴趨勢分析儀表板</h2>
-      <p>城市・站點・部門・問題類型・機台比例 | 自訂日期區間 + 維度篩選</p>
-    </div>""", unsafe_allow_html=True)
+    page_header("📈 ECOCO 客訴趨勢分析儀表板",
+                "城市・站點・部門・問題類型・機台比例 | 自訂日期區間 + 維度篩選")
 
     # ── 資料來源 ──────────────────────────────────────────────────
     src_tab1, src_tab2 = st.tabs(["📂 歷史紀錄資料", "🔗 填入 Google Sheets 網址"])
     all_dfs: list[pd.DataFrame] = []
 
     with src_tab1:
-        ws = _history_sheet()
-        if ws:
-            import base64 as _b64
-            try:
-                for grow in ws.get_all_values()[1:]:
-                    if not grow or not grow[0]: continue
-                    data_ref = grow[4] if len(grow) > 4 else ""
-                    if data_ref:
-                        try:
-                            if data_ref.startswith("sheet:"):
-                                data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
-                                all_dfs.append(_worksheet_to_dataframe(data_ws))
-                            else:
-                                all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(data_ref))))
-                        except Exception: pass
-            except Exception: pass
+        all_dfs.extend(load_history_frames_cached(
+            st.session_state.get("_knowledge_version", "")))
         st.caption(f"已載入 {len(all_dfs)} 份歷史紀錄" if all_dfs else "尚無歷史資料")
 
     with src_tab2:
@@ -2634,12 +3080,12 @@ def section_4():
                                 st.session_state["_s4v3_gs_df"] = _df
                                 st.success(f"✅ 已讀取「{_ws.title}」，共 {len(_df)} 列")
                 except Exception as e:
-                    st.error(f"讀取失敗：{e}")
+                    st.warning("讀取失敗，請確認網址、工作表名稱與試算表共用權限。")
         if st.session_state.get("_s4v3_gs_df") is not None:
             all_dfs.append(st.session_state["_s4v3_gs_df"])
 
     if not all_dfs:
-        st.info("尚無資料，請先在功能一完成分析儲存，或填入 Google Sheets 網址。")
+        empty_state("沒有資料紀錄　—　請先在功能一完成分析儲存，或填入 Google Sheets 網址。")
         return
 
     # 合併前確保每份 df 欄位名稱唯一（避免重複欄位造成 InvalidIndexError）
@@ -2670,6 +3116,9 @@ def section_4():
     except Exception:
         df_all = df_all.reset_index(drop=True)
 
+    # 舊歷史紀錄可能是遮蔽功能上線前存的，顯示前補遮一次
+    df_all = mask_phone_columns(df_all)
+
     # ── 欄位自動偵測 ──────────────────────────────────────────────
     date_col   = next((c for c in df_all.columns if "日期" in c or "date" in c.lower()), None)
     type_col   = next((c for c in df_all.columns if "問題類型" in c), None)
@@ -2681,13 +3130,13 @@ def section_4():
     machine_col= next((c for c in df_all.columns if "機台類型" in c or "機台" in c), None)
 
     if not date_col:
-        st.warning("找不到日期欄位")
+        empty_state("沒有資料紀錄　—　來源資料找不到日期欄位。")
         return
 
     df_all[date_col] = pd.to_datetime(df_all[date_col], errors="coerce")
     df_all = df_all.dropna(subset=[date_col])
     if df_all.empty:
-        st.warning("無有效日期資料")
+        empty_state("沒有資料紀錄　—　來源資料沒有可辨識的日期。")
         return
 
     # ── 時間區間選擇（維度 + 自訂日期）────────────────────────────
@@ -2705,7 +3154,7 @@ def section_4():
         df_all["_period"] = df_all[date_col].dt.to_period(DIM_FREQ[dim]).astype(str)
         periods = sorted(df_all["_period"].unique(), reverse=True)
         if not periods:
-            st.warning("資料不足")
+            empty_state()
             return
         period_sel = filter_c3.selectbox(f"本期", periods, key="s4v3_period")
         p_idx = periods.index(period_sel)
@@ -2769,6 +3218,15 @@ def section_4():
             lambda v: "收瓶機" if ("方舟" in str(v) or "收瓶" in str(v)) else ("電池機" if "電池" in str(v) else str(v))
         )
 
+    # 篩選後沒有資料就到此為止，後面的 KPI／排行／圖表都沒有東西可畫，
+    # 硬跑下去只會噴出一堆紅色錯誤。
+    if df_filt.empty:
+        st.markdown(f'<div class="s4-section">📊 本期即時統計（{period_label}）</div>',
+                    unsafe_allow_html=True)
+        empty_state("沒有資料紀錄")
+        st.caption("請放寬日期區間或取消部分篩選條件。")
+        return
+
     # ── KPI 卡片（用 st.metric 避免 HTML escape 問題）────────────────
     st.markdown(f'<div class="s4-section">📊 本期即時統計（{period_label}）</div>', unsafe_allow_html=True)
     st.caption(f"📅 資料區間：{period_label}　篩選後共 **{n_cur}** 筆")
@@ -2799,7 +3257,7 @@ def section_4():
         rows = ""
         for idx, (k, v) in enumerate(series.head(5).items()):
             m = MEDAL[idx] if idx < len(MEDAL) else str(idx+1)
-            rows += (f'<tr><td style="text-align:left;font-size:12px">{m} {str(k)[:24]}</td>'
+            rows += (f'<tr><td style="text-align:left;font-size:16px">{m} {str(k)[:24]}</td>'
                      f'<td class="s4-rank-val">{int(v)}</td></tr>')
         return f'''<table class="s4-rank-table">
           <thead><tr><th>{header1}</th><th>{header2}</th></tr></thead>
@@ -2807,25 +3265,25 @@ def section_4():
         </table>'''
 
     with rank_cols[0]:
-        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">📍 區域排行</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-weight:700;color:#060E9F;font-size:19px;margin-bottom:8px">📍 區域排行</div>', unsafe_allow_html=True)
         if city_col and city_col in df_filt.columns and not df_filt[city_col].dropna().empty:
             st.markdown('<div class="s4-card">' + rank_table_html(df_filt[city_col].value_counts(), "城市/區域", "件數") + '</div>', unsafe_allow_html=True)
         else:
-            st.info("無城市資料")
+            empty_state()
 
     with rank_cols[1]:
-        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">🏬 站點排行</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-weight:700;color:#060E9F;font-size:19px;margin-bottom:8px">🏬 站點排行</div>', unsafe_allow_html=True)
         if station_col and station_col in df_filt.columns and not df_filt[station_col].dropna().empty:
             st.markdown('<div class="s4-card">' + rank_table_html(df_filt[station_col].value_counts(), "站點名稱", "件數") + '</div>', unsafe_allow_html=True)
         else:
-            st.info("無站點資料")
+            empty_state()
 
     with rank_cols[2]:
-        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">🔍 問題細項排行</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-weight:700;color:#060E9F;font-size:19px;margin-bottom:8px">🔍 問題細項排行</div>', unsafe_allow_html=True)
         if detail_col and detail_col in df_filt.columns and not df_filt[detail_col].dropna().empty:
             st.markdown('<div class="s4-card">' + rank_table_html(df_filt[detail_col].value_counts(), "問題細項", "件數") + '</div>', unsafe_allow_html=True)
         else:
-            st.info("無細項資料")
+            empty_state()
 
     # ── 圖表：問題類型 + 機台佔比（對齊 HTML 範本）─────────────────
     st.markdown(f'<div class="s4-section">📉 數據可視化分析 ── {period_label}</div>', unsafe_allow_html=True)
@@ -2836,8 +3294,10 @@ def section_4():
             _tc = df_filt[type_col].value_counts()
             _total = _tc.sum()
             COLORS_PIE = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"]
+            # 圖例文字直接寫進 names：圓餅圖只有一個 trace，
+            # 用 for_each_trace 改 name 是改不到圖例的（圖例讀的是 label）。
             fig_pie = px.pie(
-                values=_tc.values, names=_tc.index,
+                values=_tc.values, names=pie_legend_labels(_tc),
                 title=f"{period_label} 客訴類別分佈",
                 hole=0.38,
                 color_discrete_sequence=COLORS_PIE,
@@ -2849,28 +3309,9 @@ def section_4():
                 hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
                 showlegend=True,
             )
-            # 圖例：類別名 + % + 件數（對齊截圖格式）
-            _leg_labels = {
-                k: f"{k}  {int(v)/_total*100:.0f}%（{int(v)}件）"
-                for k, v in _tc.items()
-            }
-            fig_pie.for_each_trace(lambda t: t.update(name=_leg_labels.get(t.name, t.name)))
-            fig_pie.update_layout(
-                height=380,
-                showlegend=True,
-                legend=dict(
-                    orientation="v",
-                    yanchor="middle", y=0.5,
-                    xanchor="left", x=1.02,
-                    font=dict(size=12),
-                    itemsizing="constant",
-                    bgcolor="rgba(0,0,0,0)",
-                    borderwidth=0,
-                ),
-                margin=dict(t=50, b=10, l=10, r=220),
-                title_font_size=14,
-                title_x=0.0,
-            )
+            fig_pie.update_layout(height=380, showlegend=True,
+                                  legend=PIE_LEGEND, margin=PIE_MARGIN,
+                                  title_font_size=14, title_x=0.0)
             st.plotly_chart(fig_pie, use_container_width=True)
 
     with chart_col2:
@@ -2879,7 +3320,7 @@ def section_4():
             _mc_total = _mc.sum()
             COLORS_MAC = ["#FF5000","#060E9F","#8EB9C9","#FFCE00"]
             fig_mac = px.pie(
-                values=_mc.values, names=_mc.index,
+                values=_mc.values, names=pie_legend_labels(_mc),
                 title=f"{period_label} 機台客訴佔比",
                 color_discrete_sequence=COLORS_MAC,
             )
@@ -2889,25 +3330,9 @@ def section_4():
                 textfont=dict(size=14, color="white"),
                 hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
             )
-            _leg_labels_mac = {
-                k: f"{k}  {int(v)/_mc_total*100:.0f}%（{int(v)}件）"
-                for k, v in _mc.items()
-            }
-            fig_mac.for_each_trace(lambda t: t.update(name=_leg_labels_mac.get(t.name, t.name)))
-            fig_mac.update_layout(
-                height=380,
-                showlegend=True,
-                legend=dict(
-                    orientation="v",
-                    yanchor="middle", y=0.5,
-                    xanchor="left", x=1.02,
-                    font=dict(size=12),
-                    bgcolor="rgba(0,0,0,0)",
-                    borderwidth=0,
-                ),
-                margin=dict(t=50, b=10, l=10, r=200),
-                title_font_size=14,
-            )
+            fig_mac.update_layout(height=380, showlegend=True,
+                                  legend=PIE_LEGEND, margin=PIE_MARGIN,
+                                  title_font_size=14)
             st.plotly_chart(fig_mac, use_container_width=True)
         elif detail_col and detail_col in df_filt.columns:
             _dc = df_filt[detail_col].value_counts().head(8)
@@ -3025,17 +3450,7 @@ def section_4():
                 import os, glob, matplotlib.pyplot as _mplt
                 from matplotlib.ticker import MaxNLocator as _MNL
 
-                _FONT_CANDS = [
-                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
-                    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-                    "/usr/share/fonts/truetype/arphic/uming.ttc",
-                    "/tmp/NotoSansCJK.ttc",
-                ]
-                _FONT_CANDS += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
-                _font_path = _ensure_cjk_font()  # 使用已快取的字型路徑
-                if not _font_path:
-                    _font_path = next((p for p in _FONT_CANDS if os.path.exists(p)), None)
+                _font_path = _ensure_cjk_font()
 
                 _setup_cjk_font()
 
@@ -3384,22 +3799,13 @@ def section_4():
         )
 
         with st.spinner("AI 正在撰寫口說報告..."):
-            try:
-                import anthropic as _anth, os
-                _api_key = (os.environ.get("ANTHROPIC_API_KEY","") or
-                            str(st.secrets.get("ANTHROPIC_API_KEY","")))
-                _client_ai = _anth.Anthropic(api_key=_api_key)
-                _msg = _client_ai.messages.create(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=2000,
-                    messages=[{"role":"user","content":prompt}],
-                )
-                report_text = _msg.content[0].text
-            except Exception as e:
+            from automation.llm import complete_text as _complete_text
+
+            report_text = _complete_text(prompt, max_tokens=2000)
+            if not report_text:
                 try:
-                    report_text = generate_ai_summary_llm(df_filt, model_name="haiku")
-                    report_text = f"【口說報告】\n\n{report_text}"
-                except Exception:
+                    report_text = f"【口說報告】\n\n{generate_ai_summary(df_filt)}"
+                except Exception as e:
                     report_text = f"⚠️ AI 暫時無法使用（{e}）\n\n數據摘要：\n\n{prompt}"
 
         st.text_area("📋 口說報告（可複製）", report_text, height=460, key="s4v3_report_out")
@@ -3456,44 +3862,122 @@ def section_4():
 
 
 
+# (session key, 顯示標籤, 前面是否加分隔線)
+# 標籤用一般半形空格，不要用全形空格：26px 下全形空格就吃掉一個字的寬度，
+# 「客訴趨勢分析儀表板」會被擠到折行。
+NAV_ITEMS = [
+    ("首頁", "🏠 首頁", False),
+    ("上傳檔案區（分析區）", "⬆️ 上傳檔案區 (分析區)", False),
+    ("圖表與 AI 分析", "🔎 圖表與 AI 分析", False),
+    ("歷史紀錄", "🕘 歷史紀錄", False),
+    ("趨勢分析", "📈 客訴趨勢分析儀表板", True),
+]
+
+
+def render_sidebar_nav() -> str:
+    """左側導覽；主標題由 CSS 放在頂部橫條，不佔側邊欄空間。"""
+    if "menu" not in st.session_state:
+        st.session_state["menu"] = "首頁"
+    if st.session_state["menu"] == "功能列表區":   # 舊 session 的值
+        st.session_state["menu"] = "首頁"
+
+    with st.sidebar:
+        for key, label, divider in NAV_ITEMS:
+            if divider:
+                st.markdown("<hr>", unsafe_allow_html=True)
+            active = st.session_state["menu"] == key
+            if st.button(label, key=f"nav_{key}", use_container_width=True,
+                         type="primary" if active else "secondary"):
+                st.session_state["menu"] = key
+                st.rerun()
+    return st.session_state["menu"]
+
+
+# 首頁功能卡：(圖示 svg path, 標題, 條列內容)
+HOME_CARDS = [
+    (
+        "M14 4H8a2 2 0 0 0-2 2v20a2 2 0 0 0 2 2h9M14 4l6 6M14 4v6h6"
+        "M20 10v6M24 28l4-4-4-4M28 24h-9",
+        "多樣化檔案上傳與編輯",
+        [
+            "上傳 excel/csv/pdf，分析並標記問題<b>【問題類型、問題細項】</b>；",
+            "支援下拉選填、編輯、篩選；",
+            "批次勾選編輯/刪除；",
+            "下載 Excel、上傳 Google Sheet。",
+        ],
+    ),
+    (
+        "M16 4a12 12 0 1 0 12 12h-12V4Z M20 4a12 12 0 0 1 8 8h-8V4Z",
+        "視覺化圖表與部門分析",
+        [
+            "將分析結果圖表化；",
+            "顯示各類型件數與百分比；",
+            "並標示歸屬部門；",
+            "可預覽與下載 AI 重點分析。",
+        ],
+    ),
+    (
+        "M16 6a10 10 0 1 1-9.8 12M6 6v6h6M16 11v5l4 3",
+        "歷史紀錄管理",
+        [
+            "歷史分析紀錄管理 (最新置頂)，",
+            "可預覽與下載。",
+        ],
+    ),
+    (
+        "M4 24l7-8 5 4 7-9M23 11h5v5M4 28h24",
+        "多維度趨勢分析儀表板",
+        [
+            "週/月/季/年度趨勢分析；",
+            "從歷史紀錄聚合數據，趨勢對比；",
+            "AI 口說報告產生器。",
+        ],
+    ),
+]
+
+
+def render_home_cards() -> None:
+    cards = []
+    for path, title, bullets in HOME_CARDS:
+        items = "".join(f"<li>{b}</li>" for b in bullets)
+        cards.append(
+            "<div class='home-card'>"
+            "<div class='home-card-icon'>"
+            "<svg viewBox='0 0 32 32' fill='none' stroke='currentColor' "
+            "stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'>"
+            f"<path d='{path}'/></svg></div>"
+            f"<div><div class='home-card-title'>{title}</div><ul>{items}</ul></div>"
+            "</div>"
+        )
+    st.markdown(f"<div class='home-grid'>{''.join(cards)}</div>", unsafe_allow_html=True)
+
+
+def empty_state(message: str = "沒有資料紀錄") -> None:
+    """查無資料時的中性提示；不要用紅色錯誤框嚇人。"""
+    st.markdown(
+        "<div style='background:#f6f8fb;border:1px solid #dfe5ee;border-radius:10px;"
+        "padding:18px 22px;color:#5a6472;text-align:center;margin:10px 0;'>"
+        f"{message}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def page_header(title: str, subtitle: str = "") -> None:
+    """頁首：淺底大標題 + 小字副標，不加色塊。"""
+    sub = f"<div class='page-header-sub'>{subtitle}</div>" if subtitle else ""
+    st.markdown(
+        f"<div class='page-header'><div class='page-header-title'>{title}</div>{sub}</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def main():
     apply_brand_theme()
-    st.markdown("<div class='ecoco-banner'>ECOCO 客訴智能分析平台</div>", unsafe_allow_html=True)
-    with st.sidebar:
-        st.markdown("<div class='side-title'>ECOCO AI</div>", unsafe_allow_html=True)
-        st.markdown("<div class='side-sub'>客訴分析處理室</div>", unsafe_allow_html=True)
-        if "menu" not in st.session_state:
-            st.session_state["menu"] = "功能列表區"
-        if st.button("🧩 功能列表區", use_container_width=True, type="primary" if st.session_state["menu"] == "功能列表區" else "secondary"):
-            st.session_state["menu"] = "功能列表區"
-        if st.button("📤 上傳檔案區（分析區）", use_container_width=True, type="primary" if st.session_state["menu"] == "上傳檔案區（分析區）" else "secondary"):
-            st.session_state["menu"] = "上傳檔案區（分析區）"
-        if st.button("📊 圖表與 AI 分析", use_container_width=True, type="primary" if st.session_state["menu"] == "圖表與 AI 分析" else "secondary"):
-            st.session_state["menu"] = "圖表與 AI 分析"
-        if st.button("🗂️ 歷史紀錄", use_container_width=True, type="primary" if st.session_state["menu"] == "歷史紀錄" else "secondary"):
-            st.session_state["menu"] = "歷史紀錄"
-        if st.button("📈 週/月/季/年度分析", use_container_width=True, type="primary" if st.session_state["menu"] == "趨勢分析" else "secondary"):
-            st.session_state["menu"] = "趨勢分析"
-        menu = st.session_state["menu"]
+    menu = render_sidebar_nav()
 
-    if menu == "功能列表區":
-        st.markdown(
-            """
-            <div class="ecoco-card">
-              <b>功能 1</b>：上傳 excel/csv/pdf，分析並標記【問題類型、問題細項】；支援下拉選填、編輯、篩選、批次勾選編輯/刪除、下載 Excel、上傳 Google Sheet。
-            </div>
-            <div class="ecoco-card">
-              <b>功能 2</b>：將分析結果圖表化，顯示各類型件數與百分比，並標示歸屬部門；可預覽與下載 AI 重點分析。
-            </div>
-            <div class="ecoco-card">
-              <b>功能 3</b>：歷史分析紀錄管理（最新置頂），可預覽與下載。
-            </div>
-            <div class="ecoco-card">
-              <b>功能 4</b>：週/月/季/年度趨勢分析——從歷史紀錄聚合數據、趨勢對比、AI 口說報告產生器。
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    if menu == "首頁":
+        page_header("首頁", "客訴分析平台功能總覽")
+        render_home_cards()
     elif menu == "上傳檔案區（分析區）":
         section_1()
     elif menu == "圖表與 AI 分析":
@@ -3502,40 +3986,27 @@ def main():
         section_4()
     else:
         section_3()
-        
-    # Footer stays in normal document flow so it does not cover content.
+
+    # 版權頁尾已移除；只留回到頁首的按鈕。
     st.markdown(
         """
         <style>
-            .fixed-footer {
-                position: relative;
-                width: 100%;
-                text-align: center;
-                color: #888888;
-                font-size: 14px;
-                margin: 36px 0 12px;
-                padding: 12px 0;
-                pointer-events: none;
-            }
             .scroll-top-btn {
                 position: fixed;
-                right: 18px;
+                left: 18px;
                 bottom: 18px;
                 z-index: 1000;
                 border: 1px solid #8EB9C9;
                 background: #FFFFFF;
                 color: #060E9F;
                 border-radius: 999px;
-                padding: 8px 12px;
-                font-size: 13px;
+                padding: 10px 18px;
+                font-size: 15px;
                 cursor: pointer;
                 box-shadow: 0 2px 8px rgba(0,0,0,.12);
             }
         </style>
-        <div class="fixed-footer">
-            202603© ECOCO宜可可循環經濟 客服課 ※ 請尊重智慧財產權 ※
-        </div>
-        <button class="scroll-top-btn" onclick="window.parent.scrollTo({top:0, behavior:'smooth'});">置頂</button>
+        <button class="scroll-top-btn" onclick="window.parent.scrollTo({top:0, behavior:'smooth'});">⌃&nbsp; 置頂</button>
         """,
         unsafe_allow_html=True
     )
