@@ -15,6 +15,22 @@ def _normalize_english_runs(text: str, mode: str) -> str:
     return re.sub(r"[A-Za-z]+", repl, text)
 
 
+_GMT_PREFIX_RE = re.compile(r"^.*?\[\s*GMT\s*\+\s*8\s*\]\s*", re.DOTALL)
+
+
+def strip_gmt_prefix(value):
+    """去掉「…由 XXX 更新於 2026/2/4 19:02 [GMT+8] 」這種前綴。
+
+    那段是客服系統自動加的來源標記，含帳號與時間，
+    對分類沒有幫助，還會把使用者名稱帶進知識庫的關鍵字裡。
+    只有整段被切成空字串時保留原文，避免把有效內容清掉。
+    """
+    if not isinstance(value, str):
+        return value
+    stripped = _GMT_PREFIX_RE.sub("", value, count=1)
+    return stripped if stripped.strip() else value
+
+
 def lower_english(value):
     """把字串裡的英文字母轉小寫，中文與符號不動。
 

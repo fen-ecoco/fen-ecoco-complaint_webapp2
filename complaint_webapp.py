@@ -218,23 +218,31 @@ def apply_brand_theme() -> None:
             font-weight: 500 !important;
           }
 
+          /* ECOCO VI 品牌色票（Pantone 對應），介面只用這幾色 */
           :root{
-            --ecoco-orange:#FF5000;
-            --ecoco-blue:#060E9F;
-            --ecoco-yellow:#FFCE00;
-            --ecoco-lightblue:#8EB9C9;
-            --ecoco-beige:#FAE0B8;
-            --ecoco-deepteal:#0076A9;
+            --ecoco-orange:#FF5000;      /* Pantone Orange 021 C */
+            --ecoco-blue:#060E9F;        /* Pantone Blue 072 C   */
+            --ecoco-yellow:#FFCE00;      /* Pantone 116 C        */
+            --ecoco-lightblue:#8EB9C9;   /* Pantone 550 C        */
+            --ecoco-beige:#FAE0B8;       /* Pantone P17-2 C      */
+            --ecoco-deepteal:#0076A9;    /* Pantone 7690 C       */
+            --ecoco-white:#FFFFFF;       /* Pantone White C      */
+            /* 由品牌色衍生的介面用色：內文用深藍、次要文字用 7690、
+               分隔線與淺底用 550 的淡化版，不引入品牌外的灰階。 */
+            --ecoco-text:#060E9F;
+            --ecoco-text-muted:#0076A9;
+            --ecoco-line:rgba(142,185,201,.55);
+            --ecoco-surface:rgba(142,185,201,.12);
           }
-          .stApp {background: linear-gradient(135deg, #fff 0%, #f8fbff 40%, #fff8f1 100%);}
+          .stApp {background: var(--ecoco-white);}
 
           /* ── 主標題：頂部橫條左上角 ─────────────────────────────
              標題放在 Streamlit 的 header 區，才能像截圖那樣橫跨整個寬度、
              並且待在側邊欄上方。 */
           [data-testid="stHeader"] {
             background: #FFFFFF !important;
-            border-bottom: 1px solid #e6e9ef;
-            height: 58px !important;
+            border-bottom: 2px solid var(--ecoco-orange);
+            height: 62px !important;
           }
           [data-testid="stHeader"]::before {
             content: "ECOCO 客訴智能分析平台";
@@ -242,9 +250,9 @@ def apply_brand_theme() -> None:
             left: 22px; top: 50%;
             transform: translateY(-50%);
             font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
-            font-size: 24px;
+            font-size: 30px;
             font-weight: 700;
-            color: #111111;
+            color: var(--ecoco-blue);
             letter-spacing: 0.5px;
             white-space: nowrap;
           }
@@ -258,9 +266,9 @@ def apply_brand_theme() -> None:
           }
           [data-testid="stAppViewContainer"] .page-header .page-header-title,
           .page-header .page-header-title {
-            font-size: 34px !important;
+            font-size: 28px !important;
             font-weight: 700 !important;
-            color: #111111 !important;
+            color: var(--ecoco-blue) !important;
             letter-spacing: 0.3px;
             margin: 0;
             line-height: 1.25;
@@ -269,7 +277,7 @@ def apply_brand_theme() -> None:
           .page-header .page-header-sub {
             font-size: 15px !important;
             font-weight: 500 !important;
-            color: #6b7280 !important;
+            color: var(--ecoco-text-muted) !important;
             margin: 4px 0 0;
           }
 
@@ -283,8 +291,9 @@ def apply_brand_theme() -> None:
             .home-grid { grid-template-columns: minmax(0, 1fr); }
           }
           .home-card {
-            background: #FFFFFF;
-            border: 1px solid #e3e7ee;
+            background: var(--ecoco-white);
+            border: 1px solid var(--ecoco-line);
+            border-top: 4px solid var(--ecoco-orange);
             border-radius: 14px;
             padding: 22px 24px;
             display: flex;
@@ -301,7 +310,7 @@ def apply_brand_theme() -> None:
           .home-card-title {
             font-size: 22px !important;
             font-weight: 700 !important;
-            color: #111111 !important;
+            color: var(--ecoco-blue) !important;
             margin: 0 0 10px;
             line-height: 1.3;
           }
@@ -312,35 +321,37 @@ def apply_brand_theme() -> None:
           .home-card li {
             font-size: 15px !important;
             font-weight: 500 !important;
-            color: #3f4654 !important;
+            color: var(--ecoco-text-muted) !important;
             line-height: 1.75;
           }
-          .home-card li b { color: #111111 !important; font-weight: 700 !important; }
+          .home-card li b { color: var(--ecoco-blue) !important; font-weight: 700 !important; }
 
           .feature-title {
-            color: #333333 !important;
-            font-size: 14px !important;
-            font-weight: 500 !important;
+            color: var(--ecoco-blue) !important;
+            font-size: 18px !important;
+            font-weight: 700 !important;
             margin: 0 0 10px 0;
           }
           .ecoco-card{
-            border:1px solid #e7e7e7; border-left:6px solid var(--ecoco-orange);
-            border-radius:12px; padding:10px 14px; background:white; margin-bottom:10px;
-            color: #555555 !important;
+            border:1px solid var(--ecoco-line); border-left:6px solid var(--ecoco-orange);
+            border-radius:12px; padding:10px 14px; background:var(--ecoco-white);
+            margin-bottom:10px;
+            color: var(--ecoco-text-muted) !important;
           }
           [data-testid="stAppViewContainer"] .ecoco-card,
           [data-testid="stAppViewContainer"] .ecoco-card * {
             font-size: 16px !important;
           }
-          .ecoco-card b {
-            color: #333333 !important;
-          }
-          .small-muted { color:#666 !important; font-size: 0.9rem; }
-          
-          /* ── 側邊欄導覽（配色沿用原本的深藍漸層）──────────────── */
+          .ecoco-card b { color: var(--ecoco-blue) !important; }
+          .small-muted { color: var(--ecoco-text-muted) !important; font-size: 0.9rem; }
+
+          /* ── 側邊欄導覽（Pantone Blue 072 C）────────────────────── */
           section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #0b3f78 0%, #083668 100%);
-            border-right: 1px solid rgba(255,255,255,.08);
+            background: var(--ecoco-blue);
+            border-right: 3px solid var(--ecoco-orange);
+            /* 26px 的中文頁籤在預設 300px 寬會折行，加寬讓每個頁籤都排得下一行 */
+            width: 370px !important;
+            min-width: 370px !important;
           }
           section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
             padding-top: 6px;
@@ -351,35 +362,38 @@ def apply_brand_theme() -> None:
             min-height: 0;
           }
           section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {
-            color: #E8EEF6 !important;
+            color: var(--ecoco-white) !important;
             background: transparent !important;
             border: none !important;
             min-height: 0 !important;
           }
           section[data-testid="stSidebar"] hr {
             border: none;
-            border-top: 1px solid rgba(255,255,255,.20) !important;
+            border-top: 1px solid var(--ecoco-lightblue) !important;
+            opacity: .6;
             margin: 12px 8px;
           }
 
-          /* 導覽項目：整列可點、左側白字，選中/hover 才有底色 */
+          /* 導覽項目：整列可點、白字，選中/hover 才有底色 */
           section[data-testid="stSidebar"] .stButton > button {
             background-color: transparent !important;
             border: none !important;
             border-left: 4px solid transparent !important;
             border-radius: 0 8px 8px 0;
-            color: #E8EEF6 !important;
-            font-size: 18px !important;
+            color: var(--ecoco-white) !important;
+            font-size: 26px !important;
             font-weight: 500 !important;
+            line-height: 1.25;
             text-align: left;
             justify-content: flex-start;
-            min-height: 48px;
-            padding: 8px 14px;
+            min-height: 56px;
+            padding: 10px 14px;
+            white-space: normal;
             transition: background-color .12s ease, color .12s ease !important;
           }
           section[data-testid="stSidebar"] .stButton > button * {
-            color: #E8EEF6 !important;
-            font-size: 18px !important;
+            color: var(--ecoco-white) !important;
+            font-size: 26px !important;
             text-align: left;
           }
           section[data-testid="stSidebar"] .stButton > button:hover,
@@ -387,47 +401,89 @@ def apply_brand_theme() -> None:
           section[data-testid="stSidebar"] .stButton > button:focus-visible,
           section[data-testid="stSidebar"] .stButton > button:active,
           section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
-            background-color: rgba(255,255,255,.12) !important;
-            border-left: 4px solid var(--ecoco-orange) !important;
-            color: #FFFFFF !important;
+            background-color: var(--ecoco-orange) !important;
+            border-left: 4px solid var(--ecoco-yellow) !important;
+            color: var(--ecoco-white) !important;
           }
           section[data-testid="stSidebar"] .stButton > button:hover *,
           section[data-testid="stSidebar"] .stButton > button:focus *,
           section[data-testid="stSidebar"] .stButton > button:focus-visible *,
           section[data-testid="stSidebar"] .stButton > button:active *,
           section[data-testid="stSidebar"] .stButton > button[kind="primary"] * {
-            color: #FFFFFF !important;
+            color: var(--ecoco-white) !important;
+          }
+
+          /* ── 表格工具列（欄位管理 / 自訂選項 / 批次問題處理）────── */
+          .toolbar-title {
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            color: var(--ecoco-blue) !important;
+            margin: 0 0 2px;
+          }
+          .st-key-editor_toolbar {
+            background: var(--ecoco-surface);
+            border: 1px solid var(--ecoco-line);
+            border-radius: 12px;
+            padding: 14px 16px 6px;
+            margin-bottom: 12px;
+          }
+          .st-key-editor_toolbar [data-testid="stTextInput"] input,
+          .st-key-editor_toolbar [data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+            font-size: 15px !important;
+          }
+          .st-key-editor_toolbar .stButton > button {
+            min-height: 40px;
+            border-radius: 8px;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+          }
+          /* 主要動作用品牌橘，破壞性動作用深藍（品牌色內沒有紅色） */
+          .st-key-editor_toolbar .stButton > button[kind="primary"] {
+            background-color: var(--ecoco-orange) !important;
+            border-color: var(--ecoco-orange) !important;
+            color: var(--ecoco-white) !important;
+          }
+          .st-key-editor_toolbar .stButton > button[kind="secondary"] {
+            background-color: var(--ecoco-white) !important;
+            border: 1.5px solid var(--ecoco-blue) !important;
+            color: var(--ecoco-blue) !important;
+          }
+          .st-key-editor_toolbar .stButton > button[kind="secondary"]:hover {
+            background-color: var(--ecoco-blue) !important;
+            color: var(--ecoco-white) !important;
           }
 
           /* Thicker scrollbar */
           ::-webkit-scrollbar { width: 10px; height: 10px; }
-          ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
-          ::-webkit-scrollbar-thumb { background: #8EB9C9; border-radius: 6px; }
-          ::-webkit-scrollbar-thumb:hover { background: #060E9F; }
+          ::-webkit-scrollbar-track { background: var(--ecoco-surface); border-radius: 6px; }
+          ::-webkit-scrollbar-thumb { background: var(--ecoco-lightblue); border-radius: 6px; }
+          ::-webkit-scrollbar-thumb:hover { background: var(--ecoco-blue); }
 
           /* File badge */
           .file-badge {
             display:inline-block; max-width:100%; padding:3px 10px;
-            background:#eaf4fb; border:1px solid #8EB9C9; border-radius:20px;
-            font-size:0.82rem; color:#333; white-space:nowrap;
+            background:var(--ecoco-surface); border:1px solid var(--ecoco-lightblue);
+            border-radius:20px;
+            font-size:0.82rem; color:var(--ecoco-blue); white-space:nowrap;
             overflow:hidden; text-overflow:ellipsis; vertical-align:middle;
           }
           .editor-toolbar-title {
-            font-size: 12px !important;
-            color: #333333 !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            color: var(--ecoco-blue) !important;
             margin: 6px 0 4px;
           }
           [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
-            border: 1.5px solid #555555 !important;
+            border: 1.5px solid var(--ecoco-lightblue) !important;
             border-radius: 6px !important;
             overflow-x: auto !important;
           }
-          
+
           /* 移除 arrow_down 及內建圖示，避免異常顯示純文字 */
           [data-testid="stExpanderToggleIcon"], .material-symbols-rounded {
               display: none !important;
           }
-          
+
         </style>
         """,
         unsafe_allow_html=True,
@@ -1671,6 +1727,155 @@ def apply_editor_changes(full_df: pd.DataFrame, edited: pd.DataFrame,
     return out, list(existing.index)
 
 
+def _toolbar_label(text: str) -> None:
+    st.markdown(f"<div class='toolbar-title'>{text}</div>", unsafe_allow_html=True)
+
+
+def render_editor_toolbar(df, edited, editor_row_index, marker_col, ai_col, summary) -> None:
+    """表格上方的整併工具列。
+
+    原本散在三處（表格上方的欄位管理、自訂選項，表格下方的「批次處理與儲存」，
+    以及篩選列的「只看待複核」）合成一塊，減少上下捲動。
+    這個函式是在 data_editor 之後才呼叫的（批次動作要讀 edited 的勾選狀態），
+    但畫面位置由外層先建立的容器決定，所以仍然顯示在表格上方。
+    """
+    st.checkbox("只看待複核", key="editor_only_review",
+                value=st.session_state.get("editor_only_review", summary["review"] > 0),
+                help="只顯示需要人工確認的資料列")
+
+    col_left, col_right = st.columns(2, gap="large")
+
+    # ── 欄位管理 ────────────────────────────────────────────────
+    with col_left:
+        _toolbar_label("欄位管理")
+        a1, a2 = st.columns([3, 1.2], vertical_alignment="bottom")
+        new_col_name = a1.text_input("新增直立欄位", value="", key="editor_new_col",
+                                     placeholder="輸入欄位名稱")
+        if a2.button("新增欄位", key="editor_add_col", use_container_width=True):
+            col_name = new_col_name.strip()
+            if not col_name:
+                st.warning("請輸入欄位名稱。")
+            elif col_name in st.session_state["analysis_df"].columns:
+                st.warning("欄位已存在。")
+            else:
+                st.session_state["analysis_df"][col_name] = ""
+                st.session_state.pop("editor_table", None)
+                st.rerun()
+
+        protected_cols = {"選取", marker_col, ai_col, *META_COLUMNS}
+        deletable_cols = [c for c in st.session_state["analysis_df"].columns
+                          if c not in protected_cols]
+        b1, b2 = st.columns([3, 1.2], vertical_alignment="bottom")
+        del_col_name = b1.selectbox("選取欄位", options=deletable_cols, key="editor_delete_col")
+        if b2.button("刪除整欄", key="editor_del_col", use_container_width=True):
+            if del_col_name:
+                st.session_state["analysis_df"] = st.session_state["analysis_df"].drop(
+                    columns=[del_col_name], errors="ignore")
+                st.session_state.pop("editor_table", None)
+                st.rerun()
+
+    # ── 批次問題處理 ────────────────────────────────────────────
+    with col_right:
+        _toolbar_label("批次問題處理")
+        c1, c2 = st.columns(2)
+        # accept_new_options：可從下拉選，也可以直接打字新增（combo box）
+        batch_type_opts = ["(不變更)"] + combo_options(TYPE_OPTIONS, df, "問題類型", "_custom_types")
+        batch_type = c1.selectbox("批次問題類型", batch_type_opts, key="batch_type_sel",
+                                  accept_new_options=True, help="清單沒有的可直接輸入新增")
+        valid_batch_det = ["(不變更)"]
+        if batch_type != "(不變更)":
+            valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
+        valid_batch_det += [d for d in st.session_state.get("_custom_details", [])
+                            if d not in valid_batch_det]
+        batch_detail = c2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel",
+                                    accept_new_options=True, help="清單沒有的可直接輸入新增")
+        if batch_detail and batch_detail != "(不變更)":
+            batch_detail = lower_english(batch_detail)
+
+        d1, d2 = st.columns(2)
+        apply_clicked = d1.button("套用勾選列", key="batch_apply", type="primary",
+                                  use_container_width=True,
+                                  help="把上面兩個下拉的設定寫進所有勾選的列")
+        delete_clicked = d2.button("刪除勾選列", key="batch_delete",
+                                   use_container_width=True)
+
+    # ── 自訂選項 ────────────────────────────────────────────────
+    _toolbar_label("自訂選項（下拉清單沒有的值先加進來，表格每一格就選得到）")
+    e1, e2, e3 = st.columns([3, 3, 1.4], vertical_alignment="bottom")
+    new_type_opt = e1.text_input("新增自訂問題類型", key="editor_new_type",
+                                 placeholder="下拉清單沒有時輸入新增")
+    new_detail_opt = e2.text_input("新增自訂問題細項", key="editor_new_detail",
+                                   placeholder="英文會自動轉小寫")
+    if e3.button("加入選項", key="editor_add_option", use_container_width=True):
+        added = []
+        if new_type_opt.strip():
+            st.session_state.setdefault("_custom_types", [])
+            name = new_type_opt.strip()
+            if name not in st.session_state["_custom_types"]:
+                st.session_state["_custom_types"].append(name)
+                added.append(name)
+        if new_detail_opt.strip():
+            st.session_state.setdefault("_custom_details", [])
+            name = lower_english(new_detail_opt.strip())
+            if name not in st.session_state["_custom_details"]:
+                st.session_state["_custom_details"].append(name)
+                added.append(name)
+        if added:
+            st.session_state.pop("editor_table", None)
+            st.rerun()
+        else:
+            st.warning("請先輸入要新增的選項名稱。")
+
+    # ── 批次動作 ────────────────────────────────────────────────
+    has_selection = "選取" in edited.columns and bool(edited["選取"].any())
+
+    if apply_clicked:
+        if not has_selection:
+            st.warning("請先在表格內勾選要處理的資料列！")
+        else:
+            mask = edited["選取"] == True
+            if batch_type != "(不變更)":
+                edited.loc[mask, "問題類型"] = batch_type
+                edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("")
+            if batch_detail != "(不變更)":
+                edited.loc[mask, "問題細項"] = batch_detail
+            # 細項與類型對不上時自動修正；使用者自行新增的細項不動它
+            custom_details = set(st.session_state.get("_custom_details", []))
+
+            def _fix_detail(r):
+                detail = r["問題細項"]
+                allowed = TOPIC_DETAIL_MAP.get(r["問題類型"], [])
+                if detail in allowed or detail in custom_details:
+                    return detail
+                return allowed[0] if allowed else detail
+
+            edited["問題細項"] = edited.apply(_fix_detail, axis=1)
+            merged, _ = apply_editor_changes(
+                st.session_state["analysis_df"], edited, editor_row_index,
+                editor_state=st.session_state.get("editor_table"),
+                drop_cols=[marker_col],
+            )
+            st.session_state["analysis_df"] = merged
+            st.session_state.pop("editor_table", None)
+            st.session_state["_batch_applied"] = True
+            st.rerun()
+
+    if st.session_state.pop("_batch_applied", False):
+        st.success("已套用批次編輯。")
+
+    if delete_clicked:
+        if not has_selection:
+            st.warning("請先在表格內勾選要刪除的資料列！")
+        else:
+            drop_ids = [rid for rid, flag in zip(editor_row_index, edited["選取"]) if bool(flag)]
+            st.session_state["analysis_df"] = (
+                st.session_state["analysis_df"].drop(index=drop_ids, errors="ignore").copy()
+            )
+            st.session_state.pop("editor_table", None)
+            st.success("已刪除勾選列。")
+            st.rerun()
+
+
 def mask_phone_columns(df: pd.DataFrame) -> pd.DataFrame:
     """遮蔽「帳號手機」這類整格號碼欄位。
 
@@ -1852,13 +2057,12 @@ def section_1():
 
         # 日期欄位不再讓人工指定，一律採用自動偵測結果（偵測不到就不帶日期）
         date_col = det.date if det.date in cols else "(無)"
-        with st.expander("欄位對應與分析前篩選（自動判斷結果，可手動調整）", expanded=not det.ok):
+        with st.expander("欄位對應（自動判斷結果，可手動調整）", expanded=not det.ok):
             subject_col = st.selectbox("用戶填寫的主題欄位", options=cols,
                                        index=_idx(det.subject, cols, 0), key="col_subject")
             content_col = st.selectbox("用戶內容欄位", options=cols,
                                        index=_idx(det.content, cols, min(1, len(cols) - 1)),
                                        key="col_content")
-            pre_keyword = st.text_input("分析前篩選關鍵字（主題/內容，選填）")
             for field_name, label in (("subject", "主題"), ("content", "內容"), ("date", "日期")):
                 why = det.reasons.get(field_name)
                 if why:
@@ -1869,17 +2073,12 @@ def section_1():
                              date_col=None if date_col == "(無)" else date_col)
 
         # ── 自動分析：同一份檔案與同一組設定只會跑一次 ──
-        run_sig = f"{uploaded_name}|{len(df_raw)}|{subject_col}|{content_col}|{date_col}|{pre_keyword}"
+        run_sig = f"{uploaded_name}|{len(df_raw)}|{subject_col}|{content_col}|{date_col}"
         manual_run = st.button("重新分析", help="重新套用目前設定與最新分類規則")
         auto_run = (auto_config.auto_analyze_on_upload() and det.ok
                     and st.session_state.get("_auto_run_sig") != run_sig)
         if manual_run or auto_run:
             work = df_raw.copy()
-            if pre_keyword:
-                work = work[
-                    work[subject_col].astype(str).str.contains(pre_keyword, case=False, na=False)
-                    | work[content_col].astype(str).str.contains(pre_keyword, case=False, na=False)
-                ]
             with st.spinner("正在自動分類，請稍候…"):
                 result = analyze_dataframe(work, cfg)
             st.session_state["analysis_df"] = result
@@ -1909,13 +2108,6 @@ def section_1():
     if "analysis_df" not in st.session_state:
         return
     df = st.session_state["analysis_df"]
-    subject_col = st.session_state.get("col_subject", "")
-    content_col = st.session_state.get("col_content", "")
-    if subject_col not in df.columns:
-        subject_col = next((c for c in df.columns if "主題" in str(c) or "主旨" in str(c)), df.columns[0])
-    if content_col not in df.columns:
-        content_col = next((c for c in df.columns if "內容" in str(c)), subject_col)
-
     # ── 自動化與審核總覽 ──
     summary = review_summary(df)
     causes = summary.get("review_causes", {})
@@ -1932,25 +2124,8 @@ def section_1():
     if summary.get("agreement"):
         st.caption("交叉驗證：" + "　".join(f"{k} {v} 筆" for k, v in summary["agreement"].items()))
 
-    c1, c2, c3, c4 = st.columns([2, 2, 1, 1.4])
-    keyword = c1.text_input("篩選：關鍵字（主題/內容）")
-    filter_type = c2.multiselect("篩選：問題類型", options=TYPE_OPTIONS, default=[])
-    
-    valid_details = DETAIL_OPTIONS
-    if filter_type:
-        valid_details = []
-        for t in filter_type:
-            valid_details.extend(TOPIC_DETAIL_MAP.get(t, []))
-            
-    # 問題細項的英文一律轉小寫：選項、手動輸入、比對三邊都走同一個正規化，
-    # 否則 "APP無法登入" 與 "app無法登入" 會被當成兩個不同的細項而篩不到。
-    detail_opts_lower = list(dict.fromkeys(lower_english(d) for d in valid_details))
-    filter_detail = c3.multiselect("篩選：問題細項", options=detail_opts_lower, default=[],
-                                   accept_new_options=True,
-                                   help="英文字母會自動轉為小寫")
-
-    only_review = c4.checkbox("只看待複核", value=summary["review"] > 0,
-                              help="只顯示需要人工確認的資料列")
+    # 篩選條件已整併到表格上方的工具列（只保留「只看待複核」）。
+    only_review = bool(st.session_state.get("editor_only_review", summary["review"] > 0))
 
     # 不重設 index：表格顯示由 hide_index 負責，
     # 原始 index 必須保留，儲存時才知道每一列要寫回哪裡。
@@ -1962,16 +2137,6 @@ def section_1():
         if "_review_cause" in show.columns:
             ordered = show.assign(_order=show["_review_cause"].map(cause_order).fillna(0))
             show = ordered.sort_values(["_order", "_confidence"], kind="stable").drop(columns=["_order"])
-    if keyword:
-        show = show[
-            show[subject_col].astype(str).str.contains(keyword, case=False, na=False)
-            | show[content_col].astype(str).str.contains(keyword, case=False, na=False)
-        ]
-    if filter_type:
-        show = show[show["問題類型"].isin(filter_type)]
-    if filter_detail:
-        wanted = {lower_english(str(v)) for v in filter_detail}
-        show = show[show["問題細項"].astype(str).map(lower_english).isin(wanted)]
 
     st.markdown('<div class="editor-toolbar-title">可編輯標記表（支援下拉 + 手動編輯）</div>', unsafe_allow_html=True)
 
@@ -2015,54 +2180,10 @@ def section_1():
 
     st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
 
-    tool_add, tool_add_btn, tool_del, tool_del_btn = st.columns([3, 1, 3, 1])
-    new_col_name = tool_add.text_input("新增直立欄位", value="", key="editor_new_col", placeholder="輸入欄位名稱")
-    if tool_add_btn.button("新增欄位", key="editor_add_col", use_container_width=True):
-        col_name = new_col_name.strip()
-        if not col_name:
-            st.warning("請輸入欄位名稱。")
-        elif col_name in st.session_state["analysis_df"].columns:
-            st.warning("欄位已存在。")
-        else:
-            st.session_state["analysis_df"][col_name] = ""
-            st.session_state.pop("editor_table", None)
-            st.rerun()
-    protected_cols = {"選取", MARKER_COL, ai_col, *META_COLUMNS}
-    deletable_cols = [c for c in st.session_state["analysis_df"].columns if c not in protected_cols]
-    del_col_name = tool_del.selectbox("選取欄位", options=deletable_cols, key="editor_delete_col")
-    if tool_del_btn.button("刪除整欄", key="editor_del_col", use_container_width=True):
-        if del_col_name:
-            st.session_state["analysis_df"] = st.session_state["analysis_df"].drop(columns=[del_col_name], errors="ignore")
-            st.session_state.pop("editor_table", None)
-            st.rerun()
-
-    # ── 自訂選項：讓「問題類型 / 問題細項」的格子等同可打字的 combo box ──
-    # data_editor 的下拉格不支援直接輸入，所以在這裡把手動輸入的值加進選項清單，
-    # 加完之後每一格都選得到，也會一併帶進批次處理的下拉。
-    opt_c1, opt_c2, opt_c3 = st.columns([3, 3, 2])
-    new_type_opt = opt_c1.text_input("新增自訂問題類型", key="editor_new_type",
-                                     placeholder="下拉清單沒有時輸入新增")
-    new_detail_opt = opt_c2.text_input("新增自訂問題細項", key="editor_new_detail",
-                                       placeholder="英文會自動轉小寫")
-    if opt_c3.button("加入選項", key="editor_add_option", use_container_width=True):
-        added = []
-        if new_type_opt.strip():
-            st.session_state.setdefault("_custom_types", [])
-            name = new_type_opt.strip()
-            if name not in st.session_state["_custom_types"]:
-                st.session_state["_custom_types"].append(name)
-                added.append(name)
-        if new_detail_opt.strip():
-            st.session_state.setdefault("_custom_details", [])
-            name = lower_english(new_detail_opt.strip())
-            if name not in st.session_state["_custom_details"]:
-                st.session_state["_custom_details"].append(name)
-                added.append(name)
-        if added:
-            st.session_state.pop("editor_table", None)
-            st.rerun()
-        else:
-            st.warning("請先輸入要新增的選項名稱。")
+    # 工具列（檢視 / 欄位管理 / 批次問題處理 / 自訂選項）先佔位，
+    # 實際內容在 data_editor 之後才填入 —— 批次動作需要 edited 的勾選狀態，
+    # 但版面上它要出現在表格上方。
+    toolbar = st.container(key="editor_toolbar")
 
     # 顯示用欄位：隱藏所有底線開頭的內部欄位（信心、判斷來源等稽核資訊）
     display_cols = [c for c in visible_columns(show) if c not in (MARKER_COL, "選取")]
@@ -2097,13 +2218,6 @@ def section_1():
     show_display.insert(0, "選取", sel_vals)
     show_display.insert(1, MARKER_COL, marker_vals)
 
-    # --- Select All Trigger ---
-    cols_h = st.columns([13, 2])
-    if cols_h[1].button("⬓ 選取 / 取消", key="toggle_all_btn", help="全選或取消全選"):
-        all_sel = bool(df["選取"].all()) if "選取" in df.columns and not df.empty else False
-        st.session_state["analysis_df"]["選取"] = not all_sel
-        st.rerun()
-
     edited = st.data_editor(
         show_display,
         use_container_width=True,
@@ -2120,6 +2234,9 @@ def section_1():
         },
         key="editor_table",
     )
+
+    with toolbar:
+        render_editor_toolbar(df, edited, editor_row_index, MARKER_COL, ai_col, summary)
 
     # 儲存按鈕在表格下方
     sv_col1, sv_col2, sv_col3 = st.columns([2, 2, 6])
@@ -2207,69 +2324,6 @@ def section_1():
             if d_col4.button("[X]", key=f"draft_del_{idx}", use_container_width=True):
                 st.session_state["_draft_list"].pop(idx)
                 st.rerun()
-
-    st.markdown("##### 批次處理與儲存")
-    
-    b1, b2, b3, b4 = st.columns([2, 2, 2, 2])
-    # accept_new_options：可從下拉選，也可以直接打字新增（combo box）
-    batch_type_opts = ["(不變更)"] + combo_options(TYPE_OPTIONS, df, "問題類型", "_custom_types")
-    batch_type = b1.selectbox("批次問題類型", batch_type_opts, key="batch_type_sel",
-                              accept_new_options=True, help="清單沒有的可直接輸入新增")
-    valid_batch_det = ["(不變更)"]
-    if batch_type != "(不變更)":
-        valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
-    valid_batch_det += [d for d in st.session_state.get("_custom_details", [])
-                        if d not in valid_batch_det]
-    batch_detail = b2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel",
-                                accept_new_options=True, help="清單沒有的可直接輸入新增")
-    if batch_detail and batch_detail != "(不變更)":
-        batch_detail = lower_english(batch_detail)
-
-    if b3.button("將上方設定套用到所有勾選列", type="primary"):
-        if "選取" not in edited.columns or not edited["選取"].any():
-            st.warning("請先在表格內勾選要處理的資料列！")
-        else:
-            mask = edited["選取"] == True
-            if batch_type != "(不變更)":
-                edited.loc[mask, "問題類型"] = batch_type
-                edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("")
-            if batch_detail != "(不變更)":
-                edited.loc[mask, "問題細項"] = batch_detail
-            # 細項與類型對不上時自動修正；使用者自行新增的細項不動它
-            custom_details = set(st.session_state.get("_custom_details", []))
-
-            def _fix_detail(r):
-                detail = r["問題細項"]
-                allowed = TOPIC_DETAIL_MAP.get(r["問題類型"], [])
-                if detail in allowed or detail in custom_details:
-                    return detail
-                return allowed[0] if allowed else detail
-
-            edited["問題細項"] = edited.apply(_fix_detail, axis=1)
-            merged, _ = apply_editor_changes(
-                st.session_state["analysis_df"], edited, editor_row_index,
-                editor_state=st.session_state.get("editor_table"),
-                drop_cols=[MARKER_COL],
-            )
-            st.session_state["analysis_df"] = merged
-            st.session_state.pop("editor_table", None)
-            st.session_state["_batch_applied"] = True
-            st.rerun()
-            
-    if st.session_state.pop("_batch_applied", False):
-        st.success("已套用批次編輯。")
-        
-    if b4.button("刪除勾選列"):
-        if "選取" not in edited.columns or not edited["選取"].any():
-            st.warning("請先在表格內勾選要刪除的資料列！")
-        else:
-            drop_ids = [rid for rid, flag in zip(editor_row_index, edited["選取"]) if bool(flag)]
-            st.session_state["analysis_df"] = (
-                st.session_state["analysis_df"].drop(index=drop_ids, errors="ignore").copy()
-            )
-            st.session_state.pop("editor_table", None)
-            st.success("已刪除勾選列。")
-            st.rerun()
 
     final_df = st.session_state["analysis_df"]
     
@@ -3734,12 +3788,14 @@ def section_4():
 
 
 # (session key, 顯示標籤, 前面是否加分隔線)
+# 標籤用一般半形空格，不要用全形空格：26px 下全形空格就吃掉一個字的寬度，
+# 「客訴趨勢分析儀表板」會被擠到折行。
 NAV_ITEMS = [
-    ("首頁", "🏠　首頁", False),
-    ("上傳檔案區（分析區）", "⬆️　上傳檔案區 (分析區)", False),
-    ("圖表與 AI 分析", "🔎　圖表與 AI 分析", False),
-    ("歷史紀錄", "🕘　歷史紀錄", False),
-    ("趨勢分析", "📈　客訴趨勢分析儀表板", True),
+    ("首頁", "🏠 首頁", False),
+    ("上傳檔案區（分析區）", "⬆️ 上傳檔案區 (分析區)", False),
+    ("圖表與 AI 分析", "🔎 圖表與 AI 分析", False),
+    ("歷史紀錄", "🕘 歷史紀錄", False),
+    ("趨勢分析", "📈 客訴趨勢分析儀表板", True),
 ]
 
 

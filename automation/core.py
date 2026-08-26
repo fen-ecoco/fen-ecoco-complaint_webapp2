@@ -15,7 +15,7 @@ from . import config
 from .classifier import AGREE_CONFLICT, CascadeClassifier, LAYER_SOURCE, Prediction
 from .rules import _is_valid_pair
 from .taxonomy import DEPT_MAP, TOPIC_DETAIL_MAP, default_detail_for
-from .text import mask_sensitive_df, normalize_problem_labels
+from .text import mask_sensitive_df, normalize_problem_labels, strip_gmt_prefix
 
 # 分析結果的內部欄位（介面上不顯示，但會隨結果一起儲存，作為稽核軌跡）
 META_COLUMNS = [
@@ -59,6 +59,11 @@ def analyze_dataframe(
     其餘由 classifier 決定；信心低於門檻者標記 _needs_review=True。
     """
     out = make_unique_columns(mask_sensitive_df(df.copy()))
+
+    # 客服系統會在內容前面加上「由 XXX 更新於 2026/2/4 19:02 [GMT+8]」，
+    # 那是來源標記不是客訴內容，先去掉再分類與存檔。
+    if cfg.content_col in out.columns:
+        out[cfg.content_col] = out[cfg.content_col].map(strip_gmt_prefix)
     if classifier is None:
         classifier = CascadeClassifier()
 
