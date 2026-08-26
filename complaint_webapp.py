@@ -258,12 +258,10 @@ def apply_brand_theme() -> None:
             --ecoco-beige:#FAE0B8;       /* Pantone P17-2 C      */
             --ecoco-deepteal:#0076A9;    /* Pantone 7690 C       */
             --ecoco-white:#FFFFFF;       /* Pantone White C      */
-            /* Blue 072 C 混白約 25%，側邊欄用這個淡版才不會壓得太重 */
-            --ecoco-blue-light:#3B45BE;
             /* 由品牌色衍生的介面用色：內文用深藍、次要文字用 7690、
                分隔線與淺底用 550 的淡化版，不引入品牌外的灰階。 */
             --ecoco-text:#060E9F;
-            --ecoco-text-muted:#0076A9;
+            --ecoco-text-muted:#77787b;   /* 內文次要文字（原本的淡藍改成灰） */
             --ecoco-line:rgba(142,185,201,.55);
             --ecoco-surface:rgba(142,185,201,.12);
           }
@@ -389,7 +387,7 @@ def apply_brand_theme() -> None:
 
           /* ── 側邊欄導覽（Pantone Blue 072 C）────────────────────── */
           section[data-testid="stSidebar"] {
-            background: var(--ecoco-blue-light);
+            background: var(--ecoco-blue);
             border-right: 3px solid var(--ecoco-orange);
             /* 22px 的中文頁籤要排得下一行 */
             width: 330px !important;
@@ -439,21 +437,22 @@ def apply_brand_theme() -> None:
             text-align: left !important;
             width: 100%;
           }
+          /* 滑過／按下／選中：米色底。米色底上白字看不見，文字改用品牌深藍 */
           section[data-testid="stSidebar"] .stButton > button:hover,
           section[data-testid="stSidebar"] .stButton > button:focus,
           section[data-testid="stSidebar"] .stButton > button:focus-visible,
           section[data-testid="stSidebar"] .stButton > button:active,
           section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
-            background-color: var(--ecoco-orange) !important;
-            border-left: 4px solid var(--ecoco-yellow) !important;
-            color: var(--ecoco-white) !important;
+            background-color: var(--ecoco-beige) !important;
+            border-left: 4px solid var(--ecoco-orange) !important;
+            color: var(--ecoco-blue) !important;
           }
           section[data-testid="stSidebar"] .stButton > button:hover *,
           section[data-testid="stSidebar"] .stButton > button:focus *,
           section[data-testid="stSidebar"] .stButton > button:focus-visible *,
           section[data-testid="stSidebar"] .stButton > button:active *,
           section[data-testid="stSidebar"] .stButton > button[kind="primary"] * {
-            color: var(--ecoco-white) !important;
+            color: var(--ecoco-blue) !important;
           }
 
           /* ── 表格工具列（欄位管理 / 自訂選項 / 批次問題處理）────── */
@@ -3051,7 +3050,7 @@ def section_4():
     .s4-kpi{background:#fff;border-radius:10px;padding:18px 16px;text-align:center;
             border-top:4px solid #FFCE00;box-shadow:0 2px 6px rgba(0,0,0,.05)}
     .s4-kpi-val{font-size:32px;font-weight:700;color:#FF5000}
-    .s4-kpi-lbl{font-size:16px;color:#0076A9;margin-top:4px}
+    .s4-kpi-lbl{font-size:16px;color:#77787b;margin-top:4px}
     .s4-kpi-delta{font-size:14px;margin-top:3px}
     .delta-up{color:#c03000} .delta-dn{color:#0a6e44} .delta-flat{color:#888}
     .s4-rank-table{width:100%;border-collapse:collapse}
@@ -3977,7 +3976,7 @@ def empty_state(message: str = "沒有資料紀錄") -> None:
     """查無資料時的中性提示；不要用紅色錯誤框嚇人。"""
     st.markdown(
         "<div style='background:#f6f8fb;border:1px solid #dfe5ee;border-radius:10px;"
-        "padding:18px 22px;color:#5a6472;text-align:center;margin:10px 0;'>"
+        "padding:18px 22px;color:#77787b;text-align:center;margin:10px 0;'>"
         f"{message}</div>",
         unsafe_allow_html=True,
     )
