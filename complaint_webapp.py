@@ -100,17 +100,28 @@ BRAND_PALETTE = [
 
 # ── 圖表圖例：緊貼圖面，並帶上件數 ─────────────────────────────
 # 圖例與圖之間留太寬會把圖擠小；r 只留放得下文字的寬度。
+# 圓餅圖：把餅的範圍壓在左側，圖例緊接在右邊，中間不留大片空白。
+# 圓餅是圓的，若讓它佔滿整個寬矩形，左右會各留一塊白，看起來就像圖例離很遠。
+PIE_DOMAIN = dict(x=[0.0, 0.52], y=[0.0, 1.0])
 PIE_LEGEND = dict(
     orientation="v",
     yanchor="middle", y=0.5,
-    xanchor="left", x=1.0,
-    font=dict(size=12),
+    xanchor="left", x=0.54,
+    font=dict(size=16),
     itemsizing="constant",
-    tracegroupgap=2,
+    tracegroupgap=1,
+    itemwidth=30,
     bgcolor="rgba(0,0,0,0)",
     borderwidth=0,
 )
-PIE_MARGIN = dict(t=50, b=10, l=10, r=130)
+PIE_MARGIN = dict(t=50, b=10, l=10, r=10)
+
+
+def style_pie(fig, height: int = 380) -> None:
+    """套用一致的圓餅圖版面：餅在左、圖例貼右，圖例字放大。"""
+    fig.update_traces(domain=PIE_DOMAIN)
+    fig.update_layout(height=height, showlegend=True,
+                      legend=PIE_LEGEND, margin=PIE_MARGIN)
 BAR_LEGEND = dict(
     orientation="v",
     yanchor="top", y=1.0,
@@ -1066,6 +1077,12 @@ def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 
         FONT = "Helvetica"
 
     ROW_H = 7.0; HDR_H = 8.0; FS_HDR = 8; FS_CELL = 7
+    CELL_PAD = 0.5          # 每格左右內縮
+    MAX_LINES_PER_ROW = 20  # 單列最多幾行，避免一格撐破整頁
+
+    # multi_cell 預設左右各留 1mm，會讓實際可用寬度比估算的窄而多換一行。
+    # 統一改成與下面 padding 一致的 0.5mm，量測與繪製才會對得起來。
+    pdf.c_margin = CELL_PAD
 
     def safe_text(s):
         if FONT == "Helvetica":
@@ -1079,6 +1096,24 @@ def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 
             if pdf_obj.get_string_width(text) <= max_width - 1:
                 return fs
         return min_size
+
+    def wrap_lines(text: str, width: float) -> list[str]:
+        """問 fpdf2 這段文字在這個寬度會斷成幾行。
+
+        原本是自己逐字累加寬度去估行數，但 multi_cell 的內縮與斷行規則不同，
+        估少了就會有文字掉到框線外面（跑版）。改成用 dry_run 讓 fpdf2 自己算，
+        量測與繪製用同一組參數，行高一定對得上。
+        wrapmode="CHAR" 讓 Screenshot_20260803_094952 這種不含空白的長字串
+        也能在格子裡斷行，不會橫向溢出。
+        """
+        if not text:
+            return [""]
+        try:
+            lines = pdf.multi_cell(width, ROW_H, text, dry_run=True, output="LINES",
+                                   align="L", max_line_height=ROW_H, wrapmode="CHAR")
+            return list(lines) or [""]
+        except Exception:
+            return [text]
 
     def draw_page_label():
         label = f"{source_name or '分析檔案'}  {datetime.now().strftime('%Y/%m/%d')}  第 {download_count} 次"
@@ -1118,29 +1153,16 @@ def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 
             for col in col_list
         }
 
-        # ── 精確計算每欄行數 ──
+        # ── 行數：交給 fpdf2 量，與繪製時用同一組參數 ──
         col_lines: dict[str, int] = {}
         for col in col_list:
-            cw = col_widths[col] - 2
-            text = cell_texts[col]
-            if not text:
-                col_lines[col] = 1
-                continue
-            n = 0
-            for para in text.replace("\r", "").split("\n"):
-                if not para:
-                    n += 1
-                    continue
-                line_w = 0.0
-                for ch in para:
-                    ch_w = pdf.get_string_width(ch)
-                    if line_w + ch_w > cw:
-                        n += 1
-                        line_w = ch_w
-                    else:
-                        line_w += ch_w
-                n += 1
-            col_lines[col] = max(1, n)
+            cw = col_widths[col] - 2 * CELL_PAD
+            wrapped = wrap_lines(cell_texts[col], cw)
+            if len(wrapped) > MAX_LINES_PER_ROW:
+                # 太長就截斷，否則單一格會超過一整頁而畫到框線外
+                cell_texts[col] = "".join(wrapped[:MAX_LINES_PER_ROW]).rstrip() + "…"
+                wrapped = wrap_lines(cell_texts[col], cw)
+            col_lines[col] = max(1, len(wrapped))
 
         max_lines = max(col_lines.values())
         row_h = max_lines * ROW_H
@@ -1182,14 +1204,15 @@ def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 
         for col in col_list:
             cw = col_widths[col]
             val = cell_texts[col]
-            pdf.set_xy(x_cursor + 0.5, y0 + 0.5)   # 0.5mm 內縮 padding
+            pdf.set_xy(x_cursor, y0)
             pdf.set_fill_color(*fill_rgb)
             pdf.multi_cell(
-                cw - 1, ROW_H, val,
+                cw - 2 * CELL_PAD, ROW_H, val,
                 border=0,          # 不畫框線（已在 Step 1 畫好）
                 align="L", fill=False,
                 new_x=XPos.RIGHT, new_y=YPos.TOP,
                 max_line_height=ROW_H,
+                wrapmode="CHAR",   # 長字串（檔名、網址）也要能在格內斷行
             )
             x_cursor += cw
 
@@ -2565,8 +2588,8 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
                       title="機台問題細分比較", hole=0.3,
                       color=m_labels, color_discrete_map=cmap)
         fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent")
-        fig2.update_layout(height=420, showlegend=True,
-                           legend=PIE_LEGEND, margin=dict(t=45, b=0, l=0, r=130))
+        style_pie(fig2, height=420)
+        fig2.update_layout(margin=dict(t=45, b=0, l=0, r=10))
         c2.plotly_chart(fig2, use_container_width=True, key=f"{kp}_fig2")
     else:
         with c2:
@@ -2643,8 +2666,8 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
             color=m_labels, color_discrete_map=color_map,
         )
         fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent")
-        fig2.update_layout(height=400, showlegend=True,
-                           legend=PIE_LEGEND, margin=dict(t=40, b=0, l=0, r=130))
+        style_pie(fig2, height=400)
+        fig2.update_layout(margin=dict(t=40, b=0, l=0, r=10))
         c2.plotly_chart(fig2, use_container_width=True, key=f"{key_prefix}_fig2" if key_prefix else None)
     else:
         with c2:
@@ -3309,9 +3332,8 @@ def section_4():
                 hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
                 showlegend=True,
             )
-            fig_pie.update_layout(height=380, showlegend=True,
-                                  legend=PIE_LEGEND, margin=PIE_MARGIN,
-                                  title_font_size=14, title_x=0.0)
+            style_pie(fig_pie, height=380)
+            fig_pie.update_layout(title_font_size=14, title_x=0.0)
             st.plotly_chart(fig_pie, use_container_width=True)
 
     with chart_col2:
@@ -3330,9 +3352,8 @@ def section_4():
                 textfont=dict(size=14, color="white"),
                 hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
             )
-            fig_mac.update_layout(height=380, showlegend=True,
-                                  legend=PIE_LEGEND, margin=PIE_MARGIN,
-                                  title_font_size=14)
+            style_pie(fig_mac, height=380)
+            fig_mac.update_layout(title_font_size=14)
             st.plotly_chart(fig_mac, use_container_width=True)
         elif detail_col and detail_col in df_filt.columns:
             _dc = df_filt[detail_col].value_counts().head(8)
