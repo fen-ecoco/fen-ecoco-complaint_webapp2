@@ -414,13 +414,39 @@ def _calibrate_knn(kb: "KnowledgeBase", sample: int = 800) -> None:
     }
 
 
+def _dedupe_rows(rows: Iterable[tuple]) -> list[tuple]:
+    """同一筆客訴只算一次。
+
+    save_history() 會同時寫本機 history_reports/ 與 Google Sheets，
+    而 build_knowledge() 兩邊都讀，所以每筆存過檔的資料都會出現兩次。
+    指紋是用文字當 key 不受影響，但規則挖掘的支持度與 kNN 票數會被灌水一倍，
+    連帶讓 min_support 的門檻形同減半。
+    以「正規化後文字 + 標記」為鍵去重；同一段文字若被標成不同答案，
+    那是真正的標記分歧，要保留下來讓後面的多數決處理。
+    """
+    pos: dict[tuple, int] = {}
+    out: list[tuple] = []
+    for row in rows:
+        text, topic, detail, dept, confirmed = row
+        key = (normalize_text(text), topic, detail, dept)
+        i = pos.get(key)
+        if i is not None:
+            # 重複列裡只要有一筆是人工確認的，就保留確認狀態
+            if confirmed and not out[i][4]:
+                out[i] = out[i][:4] + (True,)
+            continue
+        pos[key] = len(out)
+        out.append(row)
+    return out
+
+
 def build_from_history(
     frames: Iterable[pd.DataFrame],
     min_support: Optional[int] = None,
     max_examples: int = 4000,
 ) -> Optional[KnowledgeBase]:
     """從歷史 DataFrame 清單建立知識庫；資料太少時回傳 None。"""
-    rows = list(_iter_labeled_rows(frames))
+    rows = _dedupe_rows(_iter_labeled_rows(frames))
     if not rows:
         return None
 

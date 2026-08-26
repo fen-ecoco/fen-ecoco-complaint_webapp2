@@ -87,14 +87,25 @@ def read_history_frames(max_items: int = 60) -> list[pd.DataFrame]:
         rows = ws.get_all_values()[1:]
     except Exception:
         return []
+
+    # 先一次取回實際存在的分頁，再比對索引。
+    # 索引裡常留著指向已刪除分頁的舊紀錄，逐筆去 worksheet() 撈會每筆噴一次
+    # 失敗的 API 請求（實測 21 筆殘骸就要 40 秒以上）。
+    try:
+        existing = {w.title: w for w in ws.spreadsheet.worksheets()}
+    except Exception:
+        existing = {}
+
     rows = sorted(rows, key=lambda r: (r[1] if len(r) > 1 else ""), reverse=True)[:max_items]
     frames: list[pd.DataFrame] = []
     for row in rows:
         data_ref = row[4] if len(row) > 4 else ""
         if not data_ref.startswith("sheet:"):
             continue
+        data_ws = existing.get(data_ref.split(":", 1)[1])
+        if data_ws is None:
+            continue
         try:
-            data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
             df = worksheet_to_dataframe(data_ws)
             if not df.empty:
                 frames.append(df)

@@ -146,23 +146,43 @@ def add_counts_to_legend(fig, counts) -> None:
 # ── 啟動時確保 CJK 字型可用（下載備援）──────────────────────────
 @st.cache_resource(show_spinner=False)
 def _ensure_cjk_font() -> str:
-    """回傳可用的 CJK 字型路徑；若系統沒有則下載到 /tmp。"""
-    import os, glob
-    CANDIDATES = [
+    """回傳可用的中文字型路徑（PDF 與圖表共用這一個來源）。
+
+    順序：Noto Sans TC → 微軟正黑體 → 其他系統中文字型 → 下載 Noto。
+    原本只列 Linux 路徑，在 Windows 上一律找不到而退回 Helvetica，
+    匯出的 PDF 中文就整片變亂碼。
+    """
+    import os, glob, tempfile
+
+    win = os.environ.get("WINDIR", r"C:\Windows")
+    candidates = [
+        # Windows：優先 Noto Sans TC，其次微軟正黑體
+        os.path.join(win, "Fonts", "NotoSansTC-VF.ttf"),
+        os.path.join(win, "Fonts", "NotoSansTC-Regular.otf"),
+        os.path.join(win, "Fonts", "msjh.ttc"),      # 微軟正黑體
+        os.path.join(win, "Fonts", "msyh.ttc"),      # 微軟雅黑
+        os.path.join(win, "Fonts", "mingliu.ttc"),   # 細明體
+        # macOS
+        "/System/Library/Fonts/PingFang.ttc",
+        "/Library/Fonts/NotoSansTC-Regular.otf",
+        # Linux（Render / Debian / Ubuntu）
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/arphic/uming.ttc",
         "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-        "/tmp/NotoSansCJK.ttc",
     ]
-    CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
-    found = next((p for p in CANDIDATES if os.path.exists(p)), None)
+    candidates += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
+
+    cached = os.path.join(tempfile.gettempdir(), "NotoSansCJK.ttc")
+    candidates.append(cached)
+
+    found = next((p for p in candidates if os.path.exists(p)), None)
     if found:
         return found
-    # 下載到 /tmp
-    _dl = "/tmp/NotoSansCJK.ttc"
+
+    # 都沒有才下載（放系統暫存資料夾，Windows 沒有 /tmp）
     URLS = [
         "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc",
         "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc",
@@ -170,9 +190,9 @@ def _ensure_cjk_font() -> str:
     for url in URLS:
         try:
             import urllib.request
-            urllib.request.urlretrieve(url, _dl)
-            if os.path.exists(_dl) and os.path.getsize(_dl) > 100_000:
-                return _dl
+            urllib.request.urlretrieve(url, cached)
+            if os.path.exists(cached) and os.path.getsize(cached) > 100_000:
+                return cached
         except Exception:
             continue
     return ""
@@ -227,6 +247,8 @@ def apply_brand_theme() -> None:
             --ecoco-beige:#FAE0B8;       /* Pantone P17-2 C      */
             --ecoco-deepteal:#0076A9;    /* Pantone 7690 C       */
             --ecoco-white:#FFFFFF;       /* Pantone White C      */
+            /* Blue 072 C 混白約 25%，側邊欄用這個淡版才不會壓得太重 */
+            --ecoco-blue-light:#3B45BE;
             /* 由品牌色衍生的介面用色：內文用深藍、次要文字用 7690、
                分隔線與淺底用 550 的淡化版，不引入品牌外的灰階。 */
             --ecoco-text:#060E9F;
@@ -266,7 +288,7 @@ def apply_brand_theme() -> None:
           }
           [data-testid="stAppViewContainer"] .page-header .page-header-title,
           .page-header .page-header-title {
-            font-size: 28px !important;
+            font-size: 26px !important;
             font-weight: 700 !important;
             color: var(--ecoco-blue) !important;
             letter-spacing: 0.3px;
@@ -275,10 +297,10 @@ def apply_brand_theme() -> None:
           }
           [data-testid="stAppViewContainer"] .page-header .page-header-sub,
           .page-header .page-header-sub {
-            font-size: 15px !important;
+            font-size: 17px !important;
             font-weight: 500 !important;
             color: var(--ecoco-text-muted) !important;
-            margin: 4px 0 0;
+            margin: 5px 0 0;
           }
 
           /* ── 首頁功能卡（2×2 網格）───────────────────────────── */
@@ -287,7 +309,8 @@ def apply_brand_theme() -> None:
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 18px;
           }
-          @media (max-width: 900px) {
+          /* 側邊欄佔掉 330px，視窗要夠寬雙欄才不會擠成一條 */
+          @media (max-width: 1200px) {
             .home-grid { grid-template-columns: minmax(0, 1fr); }
           }
           .home-card {
@@ -308,7 +331,7 @@ def apply_brand_theme() -> None:
           .home-card-icon svg { width: 46px; height: 46px; }
           [data-testid="stAppViewContainer"] .home-card-title,
           .home-card-title {
-            font-size: 22px !important;
+            font-size: 24px !important;
             font-weight: 700 !important;
             color: var(--ecoco-blue) !important;
             margin: 0 0 10px;
@@ -319,16 +342,16 @@ def apply_brand_theme() -> None:
           }
           [data-testid="stAppViewContainer"] .home-card li,
           .home-card li {
-            font-size: 15px !important;
+            font-size: 17px !important;
             font-weight: 500 !important;
             color: var(--ecoco-text-muted) !important;
-            line-height: 1.75;
+            line-height: 1.8;
           }
           .home-card li b { color: var(--ecoco-blue) !important; font-weight: 700 !important; }
 
           .feature-title {
             color: var(--ecoco-blue) !important;
-            font-size: 18px !important;
+            font-size: 20px !important;
             font-weight: 700 !important;
             margin: 0 0 10px 0;
           }
@@ -340,18 +363,26 @@ def apply_brand_theme() -> None:
           }
           [data-testid="stAppViewContainer"] .ecoco-card,
           [data-testid="stAppViewContainer"] .ecoco-card * {
-            font-size: 16px !important;
+            font-size: 18px !important;
           }
           .ecoco-card b { color: var(--ecoco-blue) !important; }
-          .small-muted { color: var(--ecoco-text-muted) !important; font-size: 0.9rem; }
+          .small-muted { color: var(--ecoco-text-muted) !important; font-size: 16px !important; }
+          /* Streamlit 的 caption 預設偏小，拉到看得舒服的大小 */
+          [data-testid="stCaptionContainer"],
+          [data-testid="stCaptionContainer"] * {
+            font-size: 16px !important;
+            color: var(--ecoco-text-muted) !important;
+          }
+          [data-testid="stMetricLabel"] * { font-size: 17px !important; }
+          [data-testid="stMetricValue"]   { font-size: 30px !important; }
 
           /* ── 側邊欄導覽（Pantone Blue 072 C）────────────────────── */
           section[data-testid="stSidebar"] {
-            background: var(--ecoco-blue);
+            background: var(--ecoco-blue-light);
             border-right: 3px solid var(--ecoco-orange);
-            /* 26px 的中文頁籤在預設 300px 寬會折行，加寬讓每個頁籤都排得下一行 */
-            width: 370px !important;
-            min-width: 370px !important;
+            /* 22px 的中文頁籤要排得下一行 */
+            width: 330px !important;
+            min-width: 330px !important;
           }
           section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
             padding-top: 6px;
@@ -381,20 +412,21 @@ def apply_brand_theme() -> None:
             border-left: 4px solid transparent !important;
             border-radius: 0 8px 8px 0;
             color: var(--ecoco-white) !important;
-            font-size: 26px !important;
+            font-size: 22px !important;
             font-weight: 500 !important;
-            line-height: 1.25;
-            text-align: left;
-            justify-content: flex-start;
-            min-height: 56px;
-            padding: 10px 14px;
+            line-height: 1.3;
+            text-align: left !important;
+            justify-content: flex-start !important;
+            min-height: 50px;
+            padding: 9px 16px;
             white-space: normal;
             transition: background-color .12s ease, color .12s ease !important;
           }
           section[data-testid="stSidebar"] .stButton > button * {
             color: var(--ecoco-white) !important;
-            font-size: 26px !important;
-            text-align: left;
+            font-size: 22px !important;
+            text-align: left !important;
+            width: 100%;
           }
           section[data-testid="stSidebar"] .stButton > button:hover,
           section[data-testid="stSidebar"] .stButton > button:focus,
@@ -415,7 +447,7 @@ def apply_brand_theme() -> None:
 
           /* ── 表格工具列（欄位管理 / 自訂選項 / 批次問題處理）────── */
           .toolbar-title {
-            font-size: 15px !important;
+            font-size: 18px !important;
             font-weight: 700 !important;
             color: var(--ecoco-blue) !important;
             margin: 0 0 2px;
@@ -429,12 +461,12 @@ def apply_brand_theme() -> None:
           }
           .st-key-editor_toolbar [data-testid="stTextInput"] input,
           .st-key-editor_toolbar [data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-            font-size: 15px !important;
+            font-size: 17px !important;
           }
           .st-key-editor_toolbar .stButton > button {
-            min-height: 40px;
+            min-height: 44px;
             border-radius: 8px;
-            font-size: 15px !important;
+            font-size: 17px !important;
             font-weight: 700 !important;
           }
           /* 主要動作用品牌橘，破壞性動作用深藍（品牌色內沒有紅色） */
@@ -464,11 +496,11 @@ def apply_brand_theme() -> None:
             display:inline-block; max-width:100%; padding:3px 10px;
             background:var(--ecoco-surface); border:1px solid var(--ecoco-lightblue);
             border-radius:20px;
-            font-size:0.82rem; color:var(--ecoco-blue); white-space:nowrap;
+            font-size:15px; color:var(--ecoco-blue); white-space:nowrap;
             overflow:hidden; text-overflow:ellipsis; vertical-align:middle;
           }
           .editor-toolbar-title {
-            font-size: 15px !important;
+            font-size: 19px !important;
             font-weight: 700 !important;
             color: var(--ecoco-blue) !important;
             margin: 6px 0 4px;
@@ -570,8 +602,9 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig,
 #   HISTORY_SHEET_ID = "<your_spreadsheet_id>"
 #   [google_credentials]   ← service account JSON 欄位
 
+@st.cache_resource(show_spinner=False)
 def _get_gsheet_client():
-    """從環境變數或 st.secrets 取得 gspread client。"""
+    """從環境變數或 st.secrets 取得 gspread client（快取；authorize 要 1 秒以上）。"""
     try:
         import gspread as _gs
         from google.oauth2.service_account import Credentials as _Creds
@@ -588,6 +621,18 @@ def _get_gsheet_client():
                     "https://www.googleapis.com/auth/drive"],
         )
         return _gs.authorize(creds)
+    except Exception:
+        return None
+
+
+@st.cache_resource(show_spinner=False)
+def _open_spreadsheet_cached(sheet_id: str):
+    """open_by_key 也要一次網路往返，快取起來。"""
+    client = _get_gsheet_client()
+    if client is None or not sheet_id:
+        return None
+    try:
+        return client.open_by_key(sheet_id)
     except Exception:
         return None
 
@@ -613,15 +658,20 @@ def _history_sheet(log_error: bool = False):
             if log_error:
                 st.session_state["_gsheet_error"] = "未設定 HISTORY_SHEET_ID 環境變數"
             return None
-        ss = client.open_by_key(sid)
+        ss = _open_spreadsheet_cached(sid)
+        if ss is None:
+            return None
         try:
             ws = ss.worksheet("歷史紀錄")
-            try:
-                header = ws.row_values(1)
-                if header[:5] != ["id", "created_at", "source_name", "rows", "data_ref"]:
-                    ws.update(values=[["id", "created_at", "source_name", "rows", "data_ref"]], range_name="A1:E1")
-            except Exception:
-                pass
+            # 表頭檢查每次都做就是一次多餘的網路往返，一個 session 只做一次
+            if not st.session_state.get("_history_header_checked"):
+                try:
+                    header = ws.row_values(1)
+                    if header[:5] != ["id", "created_at", "source_name", "rows", "data_ref"]:
+                        ws.update(values=[["id", "created_at", "source_name", "rows", "data_ref"]], range_name="A1:E1")
+                except Exception:
+                    pass
+                st.session_state["_history_header_checked"] = True
             st.session_state.pop("_gsheet_error", None)
             return ws
         except Exception:
@@ -642,6 +692,49 @@ def _history_sheet(log_error: bool = False):
         if log_error:
             st.session_state["_gsheet_error"] = msg
         return None
+
+
+@st.cache_data(show_spinner="正在讀取歷史紀錄…", ttl=600)
+def load_history_frames_cached(version: str = "") -> list[pd.DataFrame]:
+    """讀回歷史紀錄的資料表（功能四用）。
+
+    version 只是 cache key，存檔後 bump_knowledge_version() 會讓它重讀。
+    先一次取回實際存在的分頁再比對索引：索引裡指向已刪除分頁的舊紀錄，
+    如果逐筆去 worksheet() 撈，每一筆都會發一次註定失敗的 API 請求
+    （實測 21 筆殘骸要 40 秒以上，每次切到功能四都重來一遍）。
+    """
+    import base64 as _b64
+
+    ws = _history_sheet()
+    if ws is None:
+        return []
+    try:
+        rows = ws.get_all_values()[1:]
+    except Exception:
+        return []
+    try:
+        existing = {w.title: w for w in ws.spreadsheet.worksheets()}
+    except Exception:
+        existing = {}
+
+    frames: list[pd.DataFrame] = []
+    for grow in rows:
+        if not grow or not grow[0]:
+            continue
+        data_ref = grow[4] if len(grow) > 4 else ""
+        if not data_ref:
+            continue
+        try:
+            if data_ref.startswith("sheet:"):
+                data_ws = existing.get(data_ref.split(":", 1)[1])
+                if data_ws is None:
+                    continue
+                frames.append(_worksheet_to_dataframe(data_ws))
+            else:
+                frames.append(pd.read_excel(io.BytesIO(_b64.b64decode(data_ref))))
+        except Exception:
+            continue
+    return frames
 
 
 def _sanitize_sheet_value(value, max_chars: int = SHEET_CELL_CHAR_LIMIT) -> str:
@@ -743,53 +836,74 @@ def save_history(df: pd.DataFrame, source_name: str, existing_id: str = "") -> t
     return output_path, output_name, ts
 
 
-def load_history() -> list[dict]:
-    import base64
-    merged: dict[str, dict] = {}
+@st.cache_data(show_spinner="正在讀取歷史紀錄…", ttl=600)
+def _load_history_payload(version: str = "") -> tuple[list[dict], dict]:
+    """讀回歷史紀錄索引與各筆的 Excel bytes。
 
-    # 只從 Google Sheets 讀取歷史紀錄，避免雲端無紀錄但網頁殘留。
+    version 只是 cache key，存檔後 bump_knowledge_version() 會讓它重讀。
+    沒有快取時每次互動（Streamlit 會整頁重跑）都要重打 Google Sheets，
+    切到功能三就要等好幾秒。
+    """
+    import base64
+
     ws = _history_sheet()
     if ws is None:
-        st.session_state["_history_cache"] = {}
-        return []
+        return [], {}
     try:
-        for row in ws.get_all_values()[1:]:
-            if not row or not row[0]:
-                continue
-            rid = row[0]
-            created_at = row[1] if len(row) > 1 else ""
-            sname = row[2] if len(row) > 2 else ""
-            rows_str = row[3] if len(row) > 3 else "0"
-            data_ref = row[4] if len(row) > 4 else ""
-            meta = {
-                "id": rid, "created_at": created_at,
-                "source_name": sname,
-                "rows": int(rows_str) if rows_str.isdigit() else 0,
-                "output_name": f"{rid}_分析.xlsx", "output_path": "",
-            }
-            merged[rid] = meta
-            if "_history_cache" not in st.session_state:
-                st.session_state["_history_cache"] = {}
-            if rid not in st.session_state["_history_cache"] and data_ref:
-                try:
-                    if data_ref.startswith("sheet:"):
-                        data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
-                        # 遮蔽功能上線前存的舊紀錄，讀回來時補遮一次
-                        hist_df = mask_phone_columns(_worksheet_to_dataframe(data_ws))
-                        excel_bytes = to_excel_bytes(hist_df)
-                    else:
-                        excel_bytes = base64.b64decode(data_ref)
-                    st.session_state["_history_cache"][rid] = {
-                        "meta": meta,
-                        "excel_bytes": excel_bytes,
-                    }
-                except Exception:
-                    pass
+        rows = ws.get_all_values()[1:]
     except Exception:
-        st.session_state["_history_cache"] = {}
-        return []
+        return [], {}
 
-    return sorted(merged.values(), key=lambda x: x.get("created_at", ""), reverse=True)
+    # 一次取回實際存在的分頁，避免對已刪除的分頁逐筆發出註定失敗的 API 請求
+    try:
+        existing_ws = {w.title: w for w in ws.spreadsheet.worksheets()}
+    except Exception:
+        existing_ws = {}
+
+    metas: dict[str, dict] = {}
+    blobs: dict[str, bytes] = {}
+    for row in rows:
+        if not row or not row[0]:
+            continue
+        rid = row[0]
+        rows_str = row[3] if len(row) > 3 else "0"
+        meta = {
+            "id": rid,
+            "created_at": row[1] if len(row) > 1 else "",
+            "source_name": row[2] if len(row) > 2 else "",
+            "rows": int(rows_str) if rows_str.isdigit() else 0,
+            "output_name": f"{rid}_分析.xlsx",
+            "output_path": "",
+        }
+        metas[rid] = meta
+        data_ref = row[4] if len(row) > 4 else ""
+        if not data_ref:
+            continue
+        try:
+            if data_ref.startswith("sheet:"):
+                data_ws = existing_ws.get(data_ref.split(":", 1)[1])
+                if data_ws is None:
+                    continue
+                # 遮蔽功能上線前存的舊紀錄，讀回來時補遮一次
+                hist_df = mask_phone_columns(_worksheet_to_dataframe(data_ws))
+                blobs[rid] = to_excel_bytes(hist_df)
+            else:
+                blobs[rid] = base64.b64decode(data_ref)
+        except Exception:
+            continue
+
+    ordered = sorted(metas.values(), key=lambda x: x.get("created_at", ""), reverse=True)
+    return ordered, blobs
+
+
+def load_history() -> list[dict]:
+    metas, blobs = _load_history_payload(st.session_state.get("_knowledge_version", ""))
+    cache = st.session_state.setdefault("_history_cache", {})
+    by_id = {m["id"]: m for m in metas}
+    for rid, blob in blobs.items():
+        if rid not in cache:
+            cache[rid] = {"meta": by_id.get(rid, {}), "excel_bytes": blob}
+    return metas
 
 
 def safe_filename(text: str) -> str:
@@ -917,23 +1031,8 @@ def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 
     from fpdf.enums import XPos, YPos
     import os, glob
 
-    # ── 找字型：多重備援路徑 ──
-    CJK_FONT_CANDIDATES = [
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf",
-        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJKtc-Regular.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/arphic/uming.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    ]
-    CJK_FONT_CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
-    CJK_FONT_CANDIDATES += glob.glob("/usr/share/fonts/**/NotoSansCJK*.otf", recursive=True)
-    font_path = next((p for p in CJK_FONT_CANDIDATES if os.path.exists(p)), None)
-    # 使用 _ensure_cjk_font 確保有可用字型
-    if not font_path:
-        font_path = _ensure_cjk_font()
+    # 字型統一由 _ensure_cjk_font() 解析（Noto Sans TC → 微軟正黑體 → …）
+    font_path = _ensure_cjk_font()
 
     table_df = df.copy()
     drop_cols = [c for c in ["選取"] if c in table_df.columns]
@@ -2154,7 +2253,7 @@ def section_1():
             st.markdown(
                 f"""
                 <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
-                            padding:8px 14px; margin-bottom:8px; font-size:0.85rem;'>
+                            padding:10px 16px; margin-bottom:8px; font-size:17px;'>
                   <b style='color:#cc0000;'>⚠ 待人工複核 {n_review} 筆</b>（已按信心由低到高排序）。三種原因：
                   <b>信心不足</b>＝各層都沒把握；<b>各層判斷分歧</b>＝規則與相似案例給出不同答案
                   （實測這類的細項正確率只有三成，務必看）；<b>🔍 稽核抽樣</b>＝系統其實有把握，
@@ -2169,7 +2268,7 @@ def section_1():
         st.markdown(
             f"""
             <div style='background:#fff5f5; border:1px solid #ffb3b3; border-radius:8px;
-                        padding:8px 14px; margin-bottom:8px; font-size:0.85rem;'>
+                        padding:10px 16px; margin-bottom:8px; font-size:17px;'>
               <b style='color:#cc0000;'>● AI 自動標記</b>：共 <b style='color:#cc0000;'>{n_ai} 筆</b> 原始欄位空白或無效，
               已由 AI 根據客訴內容自動分析填入。
               請針對這幾筆核對，如需修改請直接在表格中下拉選擇，再點「💾 儲存修改」確認。
@@ -2928,16 +3027,16 @@ def section_4():
     .s4-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
     .s4-kpi{background:#fff;border-radius:10px;padding:18px 16px;text-align:center;
             border-top:4px solid #FFCE00;box-shadow:0 2px 6px rgba(0,0,0,.05)}
-    .s4-kpi-val{font-size:30px;font-weight:700;color:#FF5000}
-    .s4-kpi-lbl{font-size:12px;color:#666;margin-top:4px}
-    .s4-kpi-delta{font-size:11px;margin-top:3px}
+    .s4-kpi-val{font-size:32px;font-weight:700;color:#FF5000}
+    .s4-kpi-lbl{font-size:16px;color:#0076A9;margin-top:4px}
+    .s4-kpi-delta{font-size:14px;margin-top:3px}
     .delta-up{color:#c03000} .delta-dn{color:#0a6e44} .delta-flat{color:#888}
     .s4-rank-table{width:100%;border-collapse:collapse}
-    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 14px;font-size:14px;text-align:center;font-weight:600}
-    .s4-rank-table td{padding:9px 14px;text-align:center;border-bottom:1px solid #eee;font-size:12px}
-    .s4-rank-val{color:#FF5000;font-weight:700;font-size:14px}
+    .s4-rank-table th{background:#060E9F;color:#fff;padding:10px 14px;font-size:17px;text-align:center;font-weight:700}
+    .s4-rank-table td{padding:10px 14px;text-align:center;border-bottom:1px solid rgba(142,185,201,.55);font-size:16px}
+    .s4-rank-val{color:#FF5000;font-weight:700;font-size:18px}
     .filter-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-    .filter-chip{padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
+    .filter-chip{padding:5px 16px;border-radius:20px;font-size:16px;font-weight:600;cursor:pointer;
                  border:1.5px solid #060E9F;background:#fff;color:#060E9F}
     .filter-chip.active{background:#060E9F;color:#fff}
     </style>""", unsafe_allow_html=True)
@@ -2951,22 +3050,8 @@ def section_4():
     all_dfs: list[pd.DataFrame] = []
 
     with src_tab1:
-        ws = _history_sheet()
-        if ws:
-            import base64 as _b64
-            try:
-                for grow in ws.get_all_values()[1:]:
-                    if not grow or not grow[0]: continue
-                    data_ref = grow[4] if len(grow) > 4 else ""
-                    if data_ref:
-                        try:
-                            if data_ref.startswith("sheet:"):
-                                data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
-                                all_dfs.append(_worksheet_to_dataframe(data_ws))
-                            else:
-                                all_dfs.append(pd.read_excel(io.BytesIO(_b64.b64decode(data_ref))))
-                        except Exception: pass
-            except Exception: pass
+        all_dfs.extend(load_history_frames_cached(
+            st.session_state.get("_knowledge_version", "")))
         st.caption(f"已載入 {len(all_dfs)} 份歷史紀錄" if all_dfs else "尚無歷史資料")
 
     with src_tab2:
@@ -3172,7 +3257,7 @@ def section_4():
         rows = ""
         for idx, (k, v) in enumerate(series.head(5).items()):
             m = MEDAL[idx] if idx < len(MEDAL) else str(idx+1)
-            rows += (f'<tr><td style="text-align:left;font-size:12px">{m} {str(k)[:24]}</td>'
+            rows += (f'<tr><td style="text-align:left;font-size:16px">{m} {str(k)[:24]}</td>'
                      f'<td class="s4-rank-val">{int(v)}</td></tr>')
         return f'''<table class="s4-rank-table">
           <thead><tr><th>{header1}</th><th>{header2}</th></tr></thead>
@@ -3180,21 +3265,21 @@ def section_4():
         </table>'''
 
     with rank_cols[0]:
-        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">📍 區域排行</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-weight:700;color:#060E9F;font-size:19px;margin-bottom:8px">📍 區域排行</div>', unsafe_allow_html=True)
         if city_col and city_col in df_filt.columns and not df_filt[city_col].dropna().empty:
             st.markdown('<div class="s4-card">' + rank_table_html(df_filt[city_col].value_counts(), "城市/區域", "件數") + '</div>', unsafe_allow_html=True)
         else:
             empty_state()
 
     with rank_cols[1]:
-        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">🏬 站點排行</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-weight:700;color:#060E9F;font-size:19px;margin-bottom:8px">🏬 站點排行</div>', unsafe_allow_html=True)
         if station_col and station_col in df_filt.columns and not df_filt[station_col].dropna().empty:
             st.markdown('<div class="s4-card">' + rank_table_html(df_filt[station_col].value_counts(), "站點名稱", "件數") + '</div>', unsafe_allow_html=True)
         else:
             empty_state()
 
     with rank_cols[2]:
-        st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">🔍 問題細項排行</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-weight:700;color:#060E9F;font-size:19px;margin-bottom:8px">🔍 問題細項排行</div>', unsafe_allow_html=True)
         if detail_col and detail_col in df_filt.columns and not df_filt[detail_col].dropna().empty:
             st.markdown('<div class="s4-card">' + rank_table_html(df_filt[detail_col].value_counts(), "問題細項", "件數") + '</div>', unsafe_allow_html=True)
         else:
@@ -3365,17 +3450,7 @@ def section_4():
                 import os, glob, matplotlib.pyplot as _mplt
                 from matplotlib.ticker import MaxNLocator as _MNL
 
-                _FONT_CANDS = [
-                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
-                    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-                    "/usr/share/fonts/truetype/arphic/uming.ttc",
-                    "/tmp/NotoSansCJK.ttc",
-                ]
-                _FONT_CANDS += glob.glob("/usr/share/fonts/**/NotoSansCJK*.ttc", recursive=True)
-                _font_path = _ensure_cjk_font()  # 使用已快取的字型路徑
-                if not _font_path:
-                    _font_path = next((p for p in _FONT_CANDS if os.path.exists(p)), None)
+                _font_path = _ensure_cjk_font()
 
                 _setup_cjk_font()
 
