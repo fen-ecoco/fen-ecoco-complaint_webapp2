@@ -56,9 +56,12 @@ from automation.taxonomy import (
     TYPE_OPTIONS,
 )
 from automation.text import (
+    lower_english,
+    mask_phone_value,
     mask_sensitive_df,
     mask_sensitive_text,
     normalize_problem_labels,
+    PHONE_COL_HINTS,
 )
 
 
@@ -93,6 +96,51 @@ BRAND_PALETTE = [
     BRAND_BLUE, BRAND_ORANGE, BRAND_YELLOW,
     BRAND_LBLUE, BRAND_BEIGE, BRAND_TEAL,
 ]
+
+
+# ── 圖表圖例：緊貼圖面，並帶上件數 ─────────────────────────────
+# 圖例與圖之間留太寬會把圖擠小；r 只留放得下文字的寬度。
+PIE_LEGEND = dict(
+    orientation="v",
+    yanchor="middle", y=0.5,
+    xanchor="left", x=1.0,
+    font=dict(size=12),
+    itemsizing="constant",
+    tracegroupgap=2,
+    bgcolor="rgba(0,0,0,0)",
+    borderwidth=0,
+)
+PIE_MARGIN = dict(t=50, b=10, l=10, r=130)
+BAR_LEGEND = dict(
+    orientation="v",
+    yanchor="top", y=1.0,
+    xanchor="left", x=1.0,
+    font=dict(size=12),
+    tracegroupgap=2,
+    bgcolor="rgba(0,0,0,0)",
+    borderwidth=0,
+)
+
+
+def pie_legend_labels(counts) -> list[str]:
+    """圓餅圖圖例：「名稱 n件」。
+
+    圓餅圖整張只有一個 trace，圖例讀的是每個扇形的 label，
+    所以件數必須寫進 names，改 trace.name 是沒有作用的。
+    """
+    return [f"{k} {int(v)}件" for k, v in counts.items()]
+
+
+def add_counts_to_legend(fig, counts) -> None:
+    """長條圖等「一個系列一個 trace」的圖：把件數接在系列名稱後面。"""
+    mapping = {str(k): int(v) for k, v in counts.items()}
+
+    def _rename(tr):
+        n = mapping.get(str(tr.name))
+        if n is not None:
+            tr.update(name=f"{tr.name} {n}件")
+
+    fig.for_each_trace(_rename)
 
 
 # ── 啟動時確保 CJK 字型可用（下載備援）──────────────────────────
@@ -179,12 +227,96 @@ def apply_brand_theme() -> None:
             --ecoco-deepteal:#0076A9;
           }
           .stApp {background: linear-gradient(135deg, #fff 0%, #f8fbff 40%, #fff8f1 100%);}
-          .ecoco-banner {
-            padding: 14px 18px; border-radius: 12px;
-            background: linear-gradient(90deg, var(--ecoco-orange), var(--ecoco-blue));
-            color:white; font-weight:500; margin-bottom: 12px;
-            font-size: 16px !important;
+
+          /* ── 主標題：頂部橫條左上角 ─────────────────────────────
+             標題放在 Streamlit 的 header 區，才能像截圖那樣橫跨整個寬度、
+             並且待在側邊欄上方。 */
+          [data-testid="stHeader"] {
+            background: #FFFFFF !important;
+            border-bottom: 1px solid #e6e9ef;
+            height: 58px !important;
           }
+          [data-testid="stHeader"]::before {
+            content: "ECOCO 客訴智能分析平台";
+            position: absolute;
+            left: 22px; top: 50%;
+            transform: translateY(-50%);
+            font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+            font-size: 24px;
+            font-weight: 700;
+            color: #111111;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+          }
+
+          /* ── 頁首：淺底大標 + 小字副標，不加色塊 ────────────────── */
+          .page-header {
+            background: none;
+            border: none;
+            padding: 0;
+            margin: 2px 0 22px;
+          }
+          [data-testid="stAppViewContainer"] .page-header .page-header-title,
+          .page-header .page-header-title {
+            font-size: 34px !important;
+            font-weight: 700 !important;
+            color: #111111 !important;
+            letter-spacing: 0.3px;
+            margin: 0;
+            line-height: 1.25;
+          }
+          [data-testid="stAppViewContainer"] .page-header .page-header-sub,
+          .page-header .page-header-sub {
+            font-size: 15px !important;
+            font-weight: 500 !important;
+            color: #6b7280 !important;
+            margin: 4px 0 0;
+          }
+
+          /* ── 首頁功能卡（2×2 網格）───────────────────────────── */
+          .home-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+          }
+          @media (max-width: 900px) {
+            .home-grid { grid-template-columns: minmax(0, 1fr); }
+          }
+          .home-card {
+            background: #FFFFFF;
+            border: 1px solid #e3e7ee;
+            border-radius: 14px;
+            padding: 22px 24px;
+            display: flex;
+            gap: 18px;
+            align-items: flex-start;
+          }
+          .home-card-icon {
+            flex: 0 0 auto;
+            width: 46px; height: 46px;
+            color: var(--ecoco-blue);
+          }
+          .home-card-icon svg { width: 46px; height: 46px; }
+          [data-testid="stAppViewContainer"] .home-card-title,
+          .home-card-title {
+            font-size: 22px !important;
+            font-weight: 700 !important;
+            color: #111111 !important;
+            margin: 0 0 10px;
+            line-height: 1.3;
+          }
+          .home-card ul {
+            margin: 0; padding-left: 20px;
+          }
+          [data-testid="stAppViewContainer"] .home-card li,
+          .home-card li {
+            font-size: 15px !important;
+            font-weight: 500 !important;
+            color: #3f4654 !important;
+            line-height: 1.75;
+          }
+          .home-card li b { color: #111111 !important; font-weight: 700 !important; }
+
           .feature-title {
             color: #333333 !important;
             font-size: 14px !important;
@@ -205,55 +337,68 @@ def apply_brand_theme() -> None:
           }
           .small-muted { color:#666 !important; font-size: 0.9rem; }
           
-          /* Sidebar background */
+          /* ── 側邊欄導覽（配色沿用原本的深藍漸層）──────────────── */
           section[data-testid="stSidebar"] {
             background: linear-gradient(180deg, #0b3f78 0%, #083668 100%);
+            border-right: 1px solid rgba(255,255,255,.08);
           }
-          
-          /* Sidebar Text Overrides */
-          .side-title {
-            color: #ffffff !important;
-            font-weight: 500; font-size: 16px !important; margin-bottom: 8px;
+          section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+            padding-top: 6px;
           }
-          .side-sub {
-            color: #ffffff !important;
-            font-size: 16px !important; opacity: 0.85; margin-bottom: 14px;
+          /* 收合鈕不是導覽項目，不要套用下面的樣式，也不需要佔一整列 */
+          section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] {
+            padding: 0 8px;
+            min-height: 0;
           }
-          
-          /* Sidebar Buttons — default = lightblue */
+          section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {
+            color: #E8EEF6 !important;
+            background: transparent !important;
+            border: none !important;
+            min-height: 0 !important;
+          }
+          section[data-testid="stSidebar"] hr {
+            border: none;
+            border-top: 1px solid rgba(255,255,255,.20) !important;
+            margin: 12px 8px;
+          }
+
+          /* 導覽項目：整列可點、左側白字，選中/hover 才有底色 */
           section[data-testid="stSidebar"] .stButton > button {
-            background-color: var(--ecoco-lightblue) !important;
-            border-color: var(--ecoco-lightblue) !important;
-            color: #333333 !important;
-            border-radius: 12px;
-            min-height: 46px;
-            font-weight: 500;
+            background-color: transparent !important;
+            border: none !important;
+            border-left: 4px solid transparent !important;
+            border-radius: 0 8px 8px 0;
+            color: #E8EEF6 !important;
+            font-size: 18px !important;
+            font-weight: 500 !important;
             text-align: left;
-            transition: background-color 0.12s ease, border-color 0.12s ease !important;
+            justify-content: flex-start;
+            min-height: 48px;
+            padding: 8px 14px;
+            transition: background-color .12s ease, color .12s ease !important;
           }
           section[data-testid="stSidebar"] .stButton > button * {
-            color: #333333 !important;
+            color: #E8EEF6 !important;
+            font-size: 18px !important;
+            text-align: left;
           }
-          /* Hover = white immediately */
           section[data-testid="stSidebar"] .stButton > button:hover,
           section[data-testid="stSidebar"] .stButton > button:focus,
           section[data-testid="stSidebar"] .stButton > button:focus-visible,
           section[data-testid="stSidebar"] .stButton > button:active,
-          section[data-testid="stSidebar"] .stButton > button[kind="primary"],
-          section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
-            background-color: #FFFFFF !important;
-            border-color: #FFFFFF !important;
-            color: #333333 !important;
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+            background-color: rgba(255,255,255,.12) !important;
+            border-left: 4px solid var(--ecoco-orange) !important;
+            color: #FFFFFF !important;
           }
           section[data-testid="stSidebar"] .stButton > button:hover *,
           section[data-testid="stSidebar"] .stButton > button:focus *,
           section[data-testid="stSidebar"] .stButton > button:focus-visible *,
           section[data-testid="stSidebar"] .stButton > button:active *,
-          section[data-testid="stSidebar"] .stButton > button[kind="primary"] *,
-          section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] * {
-            color: #333333 !important;
+          section[data-testid="stSidebar"] .stButton > button[kind="primary"] * {
+            color: #FFFFFF !important;
           }
-          
+
           /* Thicker scrollbar */
           ::-webkit-scrollbar { width: 10px; height: 10px; }
           ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
@@ -573,7 +718,8 @@ def load_history() -> list[dict]:
                 try:
                     if data_ref.startswith("sheet:"):
                         data_ws = ws.spreadsheet.worksheet(data_ref.split(":", 1)[1])
-                        hist_df = _worksheet_to_dataframe(data_ws)
+                        # 遮蔽功能上線前存的舊紀錄，讀回來時補遮一次
+                        hist_df = mask_phone_columns(_worksheet_to_dataframe(data_ws))
                         excel_bytes = to_excel_bytes(hist_df)
                     else:
                         excel_bytes = base64.b64decode(data_ref)
@@ -693,15 +839,20 @@ def generate_ai_summary_llm(df: pd.DataFrame, model_name: str = "") -> str:
     return text.strip() if text else generate_ai_summary(df)
 
 
+def _drop_ui_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """「選取」只是表格上的勾選狀態，不該出現在下載檔裡。"""
+    return df.drop(columns=[c for c in ["選取"] if c in df.columns], errors="ignore")
+
+
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="analysis")
+        _drop_ui_columns(df).to_excel(writer, index=False, sheet_name="analysis")
     return buffer.getvalue()
 
 
 def to_csv_bytes(df: pd.DataFrame) -> bytes:
-    return df.to_csv(index=False).encode("utf-8-sig")
+    return _drop_ui_columns(df).to_csv(index=False).encode("utf-8-sig")
 
 
 def to_pdf_bytes(df: pd.DataFrame, source_name: str = "", download_count: int = 1) -> bytes:
@@ -1520,6 +1671,36 @@ def apply_editor_changes(full_df: pd.DataFrame, edited: pd.DataFrame,
     return out, list(existing.index)
 
 
+def mask_phone_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """遮蔽「帳號手機」這類整格號碼欄位。
+
+    新分析的資料在 core.analyze_dataframe 就已遮蔽，
+    這裡是給功能三／功能四讀進來的舊歷史紀錄補上。
+    """
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    for col in out.columns:
+        if any(k in str(col).lower() for k in PHONE_COL_HINTS):
+            out[col] = out[col].map(mask_phone_value)
+    return out
+
+
+def combo_options(base: list[str], df: pd.DataFrame | None, column: str,
+                  session_key: str) -> list[str]:
+    """下拉選項＝內建清單＋資料實際值＋使用者自行輸入過的值。
+
+    st.column_config.SelectboxColumn 不支援直接在格子裡打字，
+    所以自訂值改由表格上方的輸入框加入，加進來之後每一格都選得到，
+    效果等同可打字的 combo box。
+    """
+    options = options_with_data_values(base, df, column)
+    for name in st.session_state.get(session_key, []):
+        if name and name not in options:
+            options.append(name)
+    return options
+
+
 def options_with_data_values(base: list[str], df: pd.DataFrame | None, column: str) -> list[str]:
     """下拉選項＝內建清單＋資料裡實際出現的值。
 
@@ -1601,9 +1782,9 @@ def render_knowledge_panel() -> None:
 
 
 def section_1():
+    page_header("功能一：檔案上傳與分析區",
+                "支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。")
     render_knowledge_panel()
-    st.markdown('<div class="feature-title">功能一：檔案上傳與分析區</div>', unsafe_allow_html=True)
-    st.markdown("<div class='ecoco-card'>支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。</div>", unsafe_allow_html=True)
 
     # File info badge — no long text, just a compact pill with truncated name
     if st.session_state.get("_uploaded_bytes") and st.session_state.get("_uploaded_name"):
@@ -1669,15 +1850,14 @@ def section_1():
         def _idx(name, options, fallback=0):
             return options.index(name) if name in options else fallback
 
-        date_opt = ["(無)"] + cols
+        # 日期欄位不再讓人工指定，一律採用自動偵測結果（偵測不到就不帶日期）
+        date_col = det.date if det.date in cols else "(無)"
         with st.expander("欄位對應與分析前篩選（自動判斷結果，可手動調整）", expanded=not det.ok):
             subject_col = st.selectbox("用戶填寫的主題欄位", options=cols,
                                        index=_idx(det.subject, cols, 0), key="col_subject")
             content_col = st.selectbox("用戶內容欄位", options=cols,
                                        index=_idx(det.content, cols, min(1, len(cols) - 1)),
                                        key="col_content")
-            date_col = st.selectbox("日期欄位（選填）", options=date_opt,
-                                    index=_idx(det.date, date_opt, 0), key="col_date")
             pre_keyword = st.text_input("分析前篩選關鍵字（主題/內容，選填）")
             for field_name, label in (("subject", "主題"), ("content", "內容"), ("date", "日期")):
                 why = det.reasons.get(field_name)
@@ -1762,7 +1942,12 @@ def section_1():
         for t in filter_type:
             valid_details.extend(TOPIC_DETAIL_MAP.get(t, []))
             
-    filter_detail = c3.multiselect("篩選：問題細項", options=valid_details, default=[])
+    # 問題細項的英文一律轉小寫：選項、手動輸入、比對三邊都走同一個正規化，
+    # 否則 "APP無法登入" 與 "app無法登入" 會被當成兩個不同的細項而篩不到。
+    detail_opts_lower = list(dict.fromkeys(lower_english(d) for d in valid_details))
+    filter_detail = c3.multiselect("篩選：問題細項", options=detail_opts_lower, default=[],
+                                   accept_new_options=True,
+                                   help="英文字母會自動轉為小寫")
 
     only_review = c4.checkbox("只看待複核", value=summary["review"] > 0,
                               help="只顯示需要人工確認的資料列")
@@ -1785,7 +1970,8 @@ def section_1():
     if filter_type:
         show = show[show["問題類型"].isin(filter_type)]
     if filter_detail:
-        show = show[show["問題細項"].isin(filter_detail)]
+        wanted = {lower_english(str(v)) for v in filter_detail}
+        show = show[show["問題細項"].astype(str).map(lower_english).isin(wanted)]
 
     st.markdown('<div class="editor-toolbar-title">可編輯標記表（支援下拉 + 手動編輯）</div>', unsafe_allow_html=True)
 
@@ -1850,10 +2036,37 @@ def section_1():
             st.session_state.pop("editor_table", None)
             st.rerun()
 
+    # ── 自訂選項：讓「問題類型 / 問題細項」的格子等同可打字的 combo box ──
+    # data_editor 的下拉格不支援直接輸入，所以在這裡把手動輸入的值加進選項清單，
+    # 加完之後每一格都選得到，也會一併帶進批次處理的下拉。
+    opt_c1, opt_c2, opt_c3 = st.columns([3, 3, 2])
+    new_type_opt = opt_c1.text_input("新增自訂問題類型", key="editor_new_type",
+                                     placeholder="下拉清單沒有時輸入新增")
+    new_detail_opt = opt_c2.text_input("新增自訂問題細項", key="editor_new_detail",
+                                       placeholder="英文會自動轉小寫")
+    if opt_c3.button("加入選項", key="editor_add_option", use_container_width=True):
+        added = []
+        if new_type_opt.strip():
+            st.session_state.setdefault("_custom_types", [])
+            name = new_type_opt.strip()
+            if name not in st.session_state["_custom_types"]:
+                st.session_state["_custom_types"].append(name)
+                added.append(name)
+        if new_detail_opt.strip():
+            st.session_state.setdefault("_custom_details", [])
+            name = lower_english(new_detail_opt.strip())
+            if name not in st.session_state["_custom_details"]:
+                st.session_state["_custom_details"].append(name)
+                added.append(name)
+        if added:
+            st.session_state.pop("editor_table", None)
+            st.rerun()
+        else:
+            st.warning("請先輸入要新增的選項名稱。")
+
     # 顯示用欄位：隱藏所有底線開頭的內部欄位（信心、判斷來源等稽核資訊）
-    display_cols = [c for c in visible_columns(show) if c != MARKER_COL]
+    display_cols = [c for c in visible_columns(show) if c not in (MARKER_COL, "選取")]
     editor_row_index = list(show.index)   # 顯示中每一列對應的原始資料列 id
-    # 表格本身用連續 index（否則 hide_index 在 num_rows="dynamic" 下會失效）
     show_display = show[display_cols].reset_index(drop=True)
 
     # 備註欄：顯示複核原因與把握度，讓人知道為什麼這列要看
@@ -1877,10 +2090,12 @@ def section_1():
     else:
         marker_vals = [""] * len(show_display)
         
-    insert_idx = 1
-    if "選取" in show_display.columns:
-        insert_idx = show_display.columns.get_loc("選取") + 1
-    show_display.insert(insert_idx, MARKER_COL, marker_vals)
+    # 「選取」固定在第一欄，「備註」緊接其後。
+    # 原本沒有這一欄，批次套用／刪除勾選列因此永遠抓不到勾選狀態。
+    prev_sel = show["選取"] if "選取" in show.columns else None
+    sel_vals = list(prev_sel.fillna(False).astype(bool)) if prev_sel is not None else [False] * len(show_display)
+    show_display.insert(0, "選取", sel_vals)
+    show_display.insert(1, MARKER_COL, marker_vals)
 
     # --- Select All Trigger ---
     cols_h = st.columns([13, 2])
@@ -1892,15 +2107,15 @@ def section_1():
     edited = st.data_editor(
         show_display,
         use_container_width=True,
-        num_rows="dynamic",
+        num_rows="fixed",
         hide_index=True,
         column_config={
-            "選取": st.column_config.CheckboxColumn("選取", help="勾選要批次處理的列"),
+            "選取": st.column_config.CheckboxColumn("選取", help="勾選要批次處理的列", pinned=True),
             MARKER_COL: st.column_config.TextColumn("備註", disabled=True),
             "問題類型": st.column_config.SelectboxColumn(
-                options=options_with_data_values(TYPE_OPTIONS, df, "問題類型"), required=True),
+                options=combo_options(TYPE_OPTIONS, df, "問題類型", "_custom_types"), required=True),
             "問題細項": st.column_config.SelectboxColumn(
-                options=options_with_data_values(DETAIL_OPTIONS, df, "問題細項"), required=True),
+                options=combo_options(DETAIL_OPTIONS, df, "問題細項", "_custom_details"), required=True),
             "部門": st.column_config.SelectboxColumn(options=dept_options_for(df)),
         },
         key="editor_table",
@@ -1996,11 +2211,19 @@ def section_1():
     st.markdown("##### 批次處理與儲存")
     
     b1, b2, b3, b4 = st.columns([2, 2, 2, 2])
-    batch_type = b1.selectbox("批次問題類型", ["(不變更)"] + TYPE_OPTIONS, key="batch_type_sel")
+    # accept_new_options：可從下拉選，也可以直接打字新增（combo box）
+    batch_type_opts = ["(不變更)"] + combo_options(TYPE_OPTIONS, df, "問題類型", "_custom_types")
+    batch_type = b1.selectbox("批次問題類型", batch_type_opts, key="batch_type_sel",
+                              accept_new_options=True, help="清單沒有的可直接輸入新增")
     valid_batch_det = ["(不變更)"]
     if batch_type != "(不變更)":
         valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
-    batch_detail = b2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel")
+    valid_batch_det += [d for d in st.session_state.get("_custom_details", [])
+                        if d not in valid_batch_det]
+    batch_detail = b2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel",
+                                accept_new_options=True, help="清單沒有的可直接輸入新增")
+    if batch_detail and batch_detail != "(不變更)":
+        batch_detail = lower_english(batch_detail)
 
     if b3.button("將上方設定套用到所有勾選列", type="primary"):
         if "選取" not in edited.columns or not edited["選取"].any():
@@ -2012,11 +2235,17 @@ def section_1():
                 edited.loc[mask, "部門"] = edited.loc[mask, "問題類型"].map(DEPT_MAP).fillna("")
             if batch_detail != "(不變更)":
                 edited.loc[mask, "問題細項"] = batch_detail
-            # Auto-fix rows whose detail mismatches topic
-            edited["問題細項"] = edited.apply(
-                lambda r: r["問題細項"] if r["問題細項"] in TOPIC_DETAIL_MAP.get(r["問題類型"], []) else TOPIC_DETAIL_MAP.get(r["問題類型"], ["其他建議"])[0],
-                axis=1,
-            )
+            # 細項與類型對不上時自動修正；使用者自行新增的細項不動它
+            custom_details = set(st.session_state.get("_custom_details", []))
+
+            def _fix_detail(r):
+                detail = r["問題細項"]
+                allowed = TOPIC_DETAIL_MAP.get(r["問題類型"], [])
+                if detail in allowed or detail in custom_details:
+                    return detail
+                return allowed[0] if allowed else detail
+
+            edited["問題細項"] = edited.apply(_fix_detail, axis=1)
             merged, _ = apply_editor_changes(
                 st.session_state["analysis_df"], edited, editor_row_index,
                 editor_state=st.session_state.get("editor_table"),
@@ -2168,22 +2397,27 @@ def render_charts_from_stats(stats: pd.DataFrame, df: pd.DataFrame, key_prefix: 
                       color="歸屬部門", text="百分比", title="問題類型分布",
                       color_discrete_map=DEPT_COLOR_MAP)
     fig1.update_traces(texttemplate="%{text}%", textposition="outside")
+    if not use_single_bar:
+        add_counts_to_legend(fig1, stats.groupby("歸屬部門")["件數"].sum())
     fig1.update_layout(height=420, yaxis=dict(tickformat="d", nticks=6),
-                       margin=dict(t=45, b=0))
+                       legend=BAR_LEGEND, margin=dict(t=45, b=0, r=110))
     c1.plotly_chart(fig1, use_container_width=True, key=f"{kp}_fig1")
 
     # ── 圖2：機台圓餅圖 ────────────────────────────────────────
     if m_stats is not None:
-        cmap = {row["機型"]: custom_pie[i % len(custom_pie)]
-                for i, row in m_stats.iterrows()}
-        fig2 = px.pie(m_stats, names="機型", values="件數",
+        m_counts = m_stats.set_index("機型")["件數"]
+        m_labels = pie_legend_labels(m_counts)
+        cmap = {label: custom_pie[i % len(custom_pie)] for i, label in enumerate(m_labels)}
+        fig2 = px.pie(names=m_labels, values=list(m_counts.values),
                       title="機台問題細分比較", hole=0.3,
-                      color="機型", color_discrete_map=cmap)
-        fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent+label")
-        fig2.update_layout(height=420, margin=dict(t=45, b=0, l=0, r=0))
+                      color=m_labels, color_discrete_map=cmap)
+        fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent")
+        fig2.update_layout(height=420, showlegend=True,
+                           legend=PIE_LEGEND, margin=dict(t=45, b=0, l=0, r=130))
         c2.plotly_chart(fig2, use_container_width=True, key=f"{kp}_fig2")
     else:
-        c2.info("無機台相關數據")
+        with c2:
+            empty_state("沒有資料紀錄　—　無機台相關數據")
 
     # ── 圖3：十大細項橫條圖 ────────────────────────────────────
     fig3 = px.bar(detail_stats, x="件數", y="問題細項",
@@ -2232,7 +2466,8 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         color_discrete_sequence=["#FF5000", "#060E9F", "#FFCE00", "#8EB9C9", "#0076A9", "#FAE0B8"]
     )
     fig1.update_traces(texttemplate="%{text}%", textposition="outside")
-    fig1.update_layout(height=400)
+    add_counts_to_legend(fig1, stats.groupby("歸屬部門")["件數"].sum())
+    fig1.update_layout(height=400, legend=BAR_LEGEND, margin=dict(t=45, b=0, r=110))
     c1.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1" if key_prefix else None)
 
     df_machine = df[df["問題類型"] == "機台問題類型"].copy()
@@ -2245,18 +2480,22 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
         df_machine["機台機型"] = df_machine.apply(get_machine_type, axis=1)
         m_stats = df_machine["機台機型"].value_counts().reset_index()
         m_stats.columns = ["機型", "件數"]
-        color_map = {row["機型"]: BRAND_PALETTE[i % len(BRAND_PALETTE)]
-                     for i, row in m_stats.iterrows()}
+        m_counts = m_stats.set_index("機型")["件數"]
+        m_labels = pie_legend_labels(m_counts)
+        color_map = {label: BRAND_PALETTE[i % len(BRAND_PALETTE)]
+                     for i, label in enumerate(m_labels)}
         fig2 = px.pie(
-            m_stats, names="機型", values="件數",
+            names=m_labels, values=list(m_counts.values),
             title="機台問題細分比較", hole=0.3,
-            color="機型", color_discrete_map=color_map,
+            color=m_labels, color_discrete_map=color_map,
         )
-        fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent+label")
-        fig2.update_layout(height=400, margin=dict(t=40, b=0, l=0, r=0))
+        fig2.update_traces(texttemplate="%{percent:.1%}", textinfo="percent")
+        fig2.update_layout(height=400, showlegend=True,
+                           legend=PIE_LEGEND, margin=dict(t=40, b=0, l=0, r=130))
         c2.plotly_chart(fig2, use_container_width=True, key=f"{key_prefix}_fig2" if key_prefix else None)
     else:
-        c2.info("無機台相關數據")
+        with c2:
+            empty_state("沒有資料紀錄　—　無機台相關數據")
 
     detail_stats = df["問題細項"].value_counts().reset_index().head(10)
     detail_stats.columns = ["問題細項", "件數"]
@@ -2276,7 +2515,8 @@ def render_charts(df: pd.DataFrame, key_prefix: str = ""):
 
 
 def section_2():
-    st.markdown('<div class="feature-title">功能二：圖表化與 AI 重點分析</div>', unsafe_allow_html=True)
+    page_header("功能二：圖表化與 AI 重點分析",
+                "各問題類型件數與百分比、歸屬部門，可預覽與下載 AI 重點分析。")
     if "analysis_df" not in st.session_state:
         st.info("請先在功能一完成分析。")
         return
@@ -2436,7 +2676,7 @@ def section_2():
 
 
 def section_3():
-    st.markdown('<div class="feature-title">功能三：歷史分析紀錄</div>', unsafe_allow_html=True)
+    page_header("功能三：歷史分析紀錄", "歷史分析紀錄管理（最新置頂），可預覽與下載。")
 
     # ── Google Sheets 連線狀態 ──
     import os
@@ -2625,12 +2865,10 @@ def section_4():
 
     # ── ECOCO 品牌 CSS（對齊 HTML 範本風格）──────────────────────
     st.markdown("""<style>
-    .s4-header{background:#060E9F;color:#fff;padding:22px 26px;border-radius:12px;
-               border-bottom:6px solid #FF5000;margin-bottom:18px}
-    .s4-header h2{margin:0;font-size:14px;font-weight:700;letter-spacing:.3px}
-    .s4-header p{margin:4px 0 0;opacity:.85;font-size:13px}
     .s4-section{border-left:6px solid #FF5000;padding-left:14px;
-                color:#060E9F;font-size:17px;font-weight:700;margin:22px 0 14px}
+                color:#060E9F;margin:24px 0 14px}
+    [data-testid="stAppViewContainer"] .s4-section,
+    .s4-section{font-size:26px !important;font-weight:700 !important;line-height:1.3}
     .s4-card{background:#fff;border-radius:12px;padding:20px 24px;
              box-shadow:0 4px 10px rgba(0,0,0,.06);margin-bottom:16px}
     .s4-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
@@ -2651,11 +2889,8 @@ def section_4():
     </style>""", unsafe_allow_html=True)
 
     # ── 頁首 ──────────────────────────────────────────────────────
-    st.markdown("""
-    <div class="s4-header">
-      <h2>📈 ECOCO 客訴趨勢分析儀表板</h2>
-      <p>城市・站點・部門・問題類型・機台比例 | 自訂日期區間 + 維度篩選</p>
-    </div>""", unsafe_allow_html=True)
+    page_header("📈 ECOCO 客訴趨勢分析儀表板",
+                "城市・站點・部門・問題類型・機台比例 | 自訂日期區間 + 維度篩選")
 
     # ── 資料來源 ──────────────────────────────────────────────────
     src_tab1, src_tab2 = st.tabs(["📂 歷史紀錄資料", "🔗 填入 Google Sheets 網址"])
@@ -2706,12 +2941,12 @@ def section_4():
                                 st.session_state["_s4v3_gs_df"] = _df
                                 st.success(f"✅ 已讀取「{_ws.title}」，共 {len(_df)} 列")
                 except Exception as e:
-                    st.error(f"讀取失敗：{e}")
+                    st.warning("讀取失敗，請確認網址、工作表名稱與試算表共用權限。")
         if st.session_state.get("_s4v3_gs_df") is not None:
             all_dfs.append(st.session_state["_s4v3_gs_df"])
 
     if not all_dfs:
-        st.info("尚無資料，請先在功能一完成分析儲存，或填入 Google Sheets 網址。")
+        empty_state("沒有資料紀錄　—　請先在功能一完成分析儲存，或填入 Google Sheets 網址。")
         return
 
     # 合併前確保每份 df 欄位名稱唯一（避免重複欄位造成 InvalidIndexError）
@@ -2742,6 +2977,9 @@ def section_4():
     except Exception:
         df_all = df_all.reset_index(drop=True)
 
+    # 舊歷史紀錄可能是遮蔽功能上線前存的，顯示前補遮一次
+    df_all = mask_phone_columns(df_all)
+
     # ── 欄位自動偵測 ──────────────────────────────────────────────
     date_col   = next((c for c in df_all.columns if "日期" in c or "date" in c.lower()), None)
     type_col   = next((c for c in df_all.columns if "問題類型" in c), None)
@@ -2753,13 +2991,13 @@ def section_4():
     machine_col= next((c for c in df_all.columns if "機台類型" in c or "機台" in c), None)
 
     if not date_col:
-        st.warning("找不到日期欄位")
+        empty_state("沒有資料紀錄　—　來源資料找不到日期欄位。")
         return
 
     df_all[date_col] = pd.to_datetime(df_all[date_col], errors="coerce")
     df_all = df_all.dropna(subset=[date_col])
     if df_all.empty:
-        st.warning("無有效日期資料")
+        empty_state("沒有資料紀錄　—　來源資料沒有可辨識的日期。")
         return
 
     # ── 時間區間選擇（維度 + 自訂日期）────────────────────────────
@@ -2777,7 +3015,7 @@ def section_4():
         df_all["_period"] = df_all[date_col].dt.to_period(DIM_FREQ[dim]).astype(str)
         periods = sorted(df_all["_period"].unique(), reverse=True)
         if not periods:
-            st.warning("資料不足")
+            empty_state()
             return
         period_sel = filter_c3.selectbox(f"本期", periods, key="s4v3_period")
         p_idx = periods.index(period_sel)
@@ -2841,6 +3079,15 @@ def section_4():
             lambda v: "收瓶機" if ("方舟" in str(v) or "收瓶" in str(v)) else ("電池機" if "電池" in str(v) else str(v))
         )
 
+    # 篩選後沒有資料就到此為止，後面的 KPI／排行／圖表都沒有東西可畫，
+    # 硬跑下去只會噴出一堆紅色錯誤。
+    if df_filt.empty:
+        st.markdown(f'<div class="s4-section">📊 本期即時統計（{period_label}）</div>',
+                    unsafe_allow_html=True)
+        empty_state("沒有資料紀錄")
+        st.caption("請放寬日期區間或取消部分篩選條件。")
+        return
+
     # ── KPI 卡片（用 st.metric 避免 HTML escape 問題）────────────────
     st.markdown(f'<div class="s4-section">📊 本期即時統計（{period_label}）</div>', unsafe_allow_html=True)
     st.caption(f"📅 資料區間：{period_label}　篩選後共 **{n_cur}** 筆")
@@ -2883,21 +3130,21 @@ def section_4():
         if city_col and city_col in df_filt.columns and not df_filt[city_col].dropna().empty:
             st.markdown('<div class="s4-card">' + rank_table_html(df_filt[city_col].value_counts(), "城市/區域", "件數") + '</div>', unsafe_allow_html=True)
         else:
-            st.info("無城市資料")
+            empty_state()
 
     with rank_cols[1]:
         st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">🏬 站點排行</div>', unsafe_allow_html=True)
         if station_col and station_col in df_filt.columns and not df_filt[station_col].dropna().empty:
             st.markdown('<div class="s4-card">' + rank_table_html(df_filt[station_col].value_counts(), "站點名稱", "件數") + '</div>', unsafe_allow_html=True)
         else:
-            st.info("無站點資料")
+            empty_state()
 
     with rank_cols[2]:
         st.markdown('<div style="font-weight:700;color:#060E9F;margin-bottom:8px">🔍 問題細項排行</div>', unsafe_allow_html=True)
         if detail_col and detail_col in df_filt.columns and not df_filt[detail_col].dropna().empty:
             st.markdown('<div class="s4-card">' + rank_table_html(df_filt[detail_col].value_counts(), "問題細項", "件數") + '</div>', unsafe_allow_html=True)
         else:
-            st.info("無細項資料")
+            empty_state()
 
     # ── 圖表：問題類型 + 機台佔比（對齊 HTML 範本）─────────────────
     st.markdown(f'<div class="s4-section">📉 數據可視化分析 ── {period_label}</div>', unsafe_allow_html=True)
@@ -2908,8 +3155,10 @@ def section_4():
             _tc = df_filt[type_col].value_counts()
             _total = _tc.sum()
             COLORS_PIE = ["#060E9F","#FF5000","#FFCE00","#8EB9C9","#0076A9","#FAE0B8"]
+            # 圖例文字直接寫進 names：圓餅圖只有一個 trace，
+            # 用 for_each_trace 改 name 是改不到圖例的（圖例讀的是 label）。
             fig_pie = px.pie(
-                values=_tc.values, names=_tc.index,
+                values=_tc.values, names=pie_legend_labels(_tc),
                 title=f"{period_label} 客訴類別分佈",
                 hole=0.38,
                 color_discrete_sequence=COLORS_PIE,
@@ -2921,28 +3170,9 @@ def section_4():
                 hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
                 showlegend=True,
             )
-            # 圖例：類別名 + % + 件數（對齊截圖格式）
-            _leg_labels = {
-                k: f"{k}  {int(v)/_total*100:.0f}%（{int(v)}件）"
-                for k, v in _tc.items()
-            }
-            fig_pie.for_each_trace(lambda t: t.update(name=_leg_labels.get(t.name, t.name)))
-            fig_pie.update_layout(
-                height=380,
-                showlegend=True,
-                legend=dict(
-                    orientation="v",
-                    yanchor="middle", y=0.5,
-                    xanchor="left", x=1.02,
-                    font=dict(size=12),
-                    itemsizing="constant",
-                    bgcolor="rgba(0,0,0,0)",
-                    borderwidth=0,
-                ),
-                margin=dict(t=50, b=10, l=10, r=220),
-                title_font_size=14,
-                title_x=0.0,
-            )
+            fig_pie.update_layout(height=380, showlegend=True,
+                                  legend=PIE_LEGEND, margin=PIE_MARGIN,
+                                  title_font_size=14, title_x=0.0)
             st.plotly_chart(fig_pie, use_container_width=True)
 
     with chart_col2:
@@ -2951,7 +3181,7 @@ def section_4():
             _mc_total = _mc.sum()
             COLORS_MAC = ["#FF5000","#060E9F","#8EB9C9","#FFCE00"]
             fig_mac = px.pie(
-                values=_mc.values, names=_mc.index,
+                values=_mc.values, names=pie_legend_labels(_mc),
                 title=f"{period_label} 機台客訴佔比",
                 color_discrete_sequence=COLORS_MAC,
             )
@@ -2961,25 +3191,9 @@ def section_4():
                 textfont=dict(size=14, color="white"),
                 hovertemplate="<b>%{label}</b><br>%{value}件 / %{percent:.1%}<extra></extra>",
             )
-            _leg_labels_mac = {
-                k: f"{k}  {int(v)/_mc_total*100:.0f}%（{int(v)}件）"
-                for k, v in _mc.items()
-            }
-            fig_mac.for_each_trace(lambda t: t.update(name=_leg_labels_mac.get(t.name, t.name)))
-            fig_mac.update_layout(
-                height=380,
-                showlegend=True,
-                legend=dict(
-                    orientation="v",
-                    yanchor="middle", y=0.5,
-                    xanchor="left", x=1.02,
-                    font=dict(size=12),
-                    bgcolor="rgba(0,0,0,0)",
-                    borderwidth=0,
-                ),
-                margin=dict(t=50, b=10, l=10, r=200),
-                title_font_size=14,
-            )
+            fig_mac.update_layout(height=380, showlegend=True,
+                                  legend=PIE_LEGEND, margin=PIE_MARGIN,
+                                  title_font_size=14)
             st.plotly_chart(fig_mac, use_container_width=True)
         elif detail_col and detail_col in df_filt.columns:
             _dc = df_filt[detail_col].value_counts().head(8)
@@ -3519,44 +3733,120 @@ def section_4():
 
 
 
+# (session key, 顯示標籤, 前面是否加分隔線)
+NAV_ITEMS = [
+    ("首頁", "🏠　首頁", False),
+    ("上傳檔案區（分析區）", "⬆️　上傳檔案區 (分析區)", False),
+    ("圖表與 AI 分析", "🔎　圖表與 AI 分析", False),
+    ("歷史紀錄", "🕘　歷史紀錄", False),
+    ("趨勢分析", "📈　客訴趨勢分析儀表板", True),
+]
+
+
+def render_sidebar_nav() -> str:
+    """左側導覽；主標題由 CSS 放在頂部橫條，不佔側邊欄空間。"""
+    if "menu" not in st.session_state:
+        st.session_state["menu"] = "首頁"
+    if st.session_state["menu"] == "功能列表區":   # 舊 session 的值
+        st.session_state["menu"] = "首頁"
+
+    with st.sidebar:
+        for key, label, divider in NAV_ITEMS:
+            if divider:
+                st.markdown("<hr>", unsafe_allow_html=True)
+            active = st.session_state["menu"] == key
+            if st.button(label, key=f"nav_{key}", use_container_width=True,
+                         type="primary" if active else "secondary"):
+                st.session_state["menu"] = key
+                st.rerun()
+    return st.session_state["menu"]
+
+
+# 首頁功能卡：(圖示 svg path, 標題, 條列內容)
+HOME_CARDS = [
+    (
+        "M14 4H8a2 2 0 0 0-2 2v20a2 2 0 0 0 2 2h9M14 4l6 6M14 4v6h6"
+        "M20 10v6M24 28l4-4-4-4M28 24h-9",
+        "多樣化檔案上傳與編輯",
+        [
+            "上傳 excel/csv/pdf，分析並標記問題<b>【問題類型、問題細項】</b>；",
+            "支援下拉選填、編輯、篩選；",
+            "批次勾選編輯/刪除；",
+            "下載 Excel、上傳 Google Sheet。",
+        ],
+    ),
+    (
+        "M16 4a12 12 0 1 0 12 12h-12V4Z M20 4a12 12 0 0 1 8 8h-8V4Z",
+        "視覺化圖表與部門分析",
+        [
+            "將分析結果圖表化；",
+            "顯示各類型件數與百分比；",
+            "並標示歸屬部門；",
+            "可預覽與下載 AI 重點分析。",
+        ],
+    ),
+    (
+        "M16 6a10 10 0 1 1-9.8 12M6 6v6h6M16 11v5l4 3",
+        "歷史紀錄管理",
+        [
+            "歷史分析紀錄管理 (最新置頂)，",
+            "可預覽與下載。",
+        ],
+    ),
+    (
+        "M4 24l7-8 5 4 7-9M23 11h5v5M4 28h24",
+        "多維度趨勢分析儀表板",
+        [
+            "週/月/季/年度趨勢分析；",
+            "從歷史紀錄聚合數據，趨勢對比；",
+            "AI 口說報告產生器。",
+        ],
+    ),
+]
+
+
+def render_home_cards() -> None:
+    cards = []
+    for path, title, bullets in HOME_CARDS:
+        items = "".join(f"<li>{b}</li>" for b in bullets)
+        cards.append(
+            "<div class='home-card'>"
+            "<div class='home-card-icon'>"
+            "<svg viewBox='0 0 32 32' fill='none' stroke='currentColor' "
+            "stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'>"
+            f"<path d='{path}'/></svg></div>"
+            f"<div><div class='home-card-title'>{title}</div><ul>{items}</ul></div>"
+            "</div>"
+        )
+    st.markdown(f"<div class='home-grid'>{''.join(cards)}</div>", unsafe_allow_html=True)
+
+
+def empty_state(message: str = "沒有資料紀錄") -> None:
+    """查無資料時的中性提示；不要用紅色錯誤框嚇人。"""
+    st.markdown(
+        "<div style='background:#f6f8fb;border:1px solid #dfe5ee;border-radius:10px;"
+        "padding:18px 22px;color:#5a6472;text-align:center;margin:10px 0;'>"
+        f"{message}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def page_header(title: str, subtitle: str = "") -> None:
+    """頁首：淺底大標題 + 小字副標，不加色塊。"""
+    sub = f"<div class='page-header-sub'>{subtitle}</div>" if subtitle else ""
+    st.markdown(
+        f"<div class='page-header'><div class='page-header-title'>{title}</div>{sub}</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def main():
     apply_brand_theme()
-    st.markdown("<div class='ecoco-banner'>ECOCO 客訴智能分析平台</div>", unsafe_allow_html=True)
-    with st.sidebar:
-        st.markdown("<div class='side-title'>ECOCO AI</div>", unsafe_allow_html=True)
-        st.markdown("<div class='side-sub'>客訴分析處理室</div>", unsafe_allow_html=True)
-        if "menu" not in st.session_state:
-            st.session_state["menu"] = "功能列表區"
-        if st.button("🧩 功能列表區", use_container_width=True, type="primary" if st.session_state["menu"] == "功能列表區" else "secondary"):
-            st.session_state["menu"] = "功能列表區"
-        if st.button("📤 上傳檔案區（分析區）", use_container_width=True, type="primary" if st.session_state["menu"] == "上傳檔案區（分析區）" else "secondary"):
-            st.session_state["menu"] = "上傳檔案區（分析區）"
-        if st.button("📊 圖表與 AI 分析", use_container_width=True, type="primary" if st.session_state["menu"] == "圖表與 AI 分析" else "secondary"):
-            st.session_state["menu"] = "圖表與 AI 分析"
-        if st.button("🗂️ 歷史紀錄", use_container_width=True, type="primary" if st.session_state["menu"] == "歷史紀錄" else "secondary"):
-            st.session_state["menu"] = "歷史紀錄"
-        if st.button("📈 週/月/季/年度分析", use_container_width=True, type="primary" if st.session_state["menu"] == "趨勢分析" else "secondary"):
-            st.session_state["menu"] = "趨勢分析"
-        menu = st.session_state["menu"]
+    menu = render_sidebar_nav()
 
-    if menu == "功能列表區":
-        st.markdown(
-            """
-            <div class="ecoco-card">
-              <b>功能 1</b>：上傳 excel/csv/pdf，分析並標記【問題類型、問題細項】；支援下拉選填、編輯、篩選、批次勾選編輯/刪除、下載 Excel、上傳 Google Sheet。
-            </div>
-            <div class="ecoco-card">
-              <b>功能 2</b>：將分析結果圖表化，顯示各類型件數與百分比，並標示歸屬部門；可預覽與下載 AI 重點分析。
-            </div>
-            <div class="ecoco-card">
-              <b>功能 3</b>：歷史分析紀錄管理（最新置頂），可預覽與下載。
-            </div>
-            <div class="ecoco-card">
-              <b>功能 4</b>：週/月/季/年度趨勢分析——從歷史紀錄聚合數據、趨勢對比、AI 口說報告產生器。
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    if menu == "首頁":
+        page_header("首頁", "客訴分析平台功能總覽")
+        render_home_cards()
     elif menu == "上傳檔案區（分析區）":
         section_1()
     elif menu == "圖表與 AI 分析":
@@ -3565,40 +3855,27 @@ def main():
         section_4()
     else:
         section_3()
-        
-    # Footer stays in normal document flow so it does not cover content.
+
+    # 版權頁尾已移除；只留回到頁首的按鈕。
     st.markdown(
         """
         <style>
-            .fixed-footer {
-                position: relative;
-                width: 100%;
-                text-align: center;
-                color: #888888;
-                font-size: 14px;
-                margin: 36px 0 12px;
-                padding: 12px 0;
-                pointer-events: none;
-            }
             .scroll-top-btn {
                 position: fixed;
-                right: 18px;
+                left: 18px;
                 bottom: 18px;
                 z-index: 1000;
                 border: 1px solid #8EB9C9;
                 background: #FFFFFF;
                 color: #060E9F;
                 border-radius: 999px;
-                padding: 8px 12px;
-                font-size: 13px;
+                padding: 10px 18px;
+                font-size: 15px;
                 cursor: pointer;
                 box-shadow: 0 2px 8px rgba(0,0,0,.12);
             }
         </style>
-        <div class="fixed-footer">
-            202603© ECOCO宜可可循環經濟 客服課 ※ 請尊重智慧財產權 ※
-        </div>
-        <button class="scroll-top-btn" onclick="window.parent.scrollTo({top:0, behavior:'smooth'});">置頂</button>
+        <button class="scroll-top-btn" onclick="window.parent.scrollTo({top:0, behavior:'smooth'});">⌃&nbsp; 置頂</button>
         """,
         unsafe_allow_html=True
     )
