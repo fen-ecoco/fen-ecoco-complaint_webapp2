@@ -260,6 +260,8 @@ def apply_brand_theme() -> None:
             --ecoco-white:#FFFFFF;       /* Pantone White C      */
             /* 由品牌色衍生的介面用色：內文用深藍、次要文字用 7690、
                分隔線與淺底用 550 的淡化版，不引入品牌外的灰階。 */
+            /* 側邊欄大面積用：Blue 072 C 降飽和並加深，避免整片高彩度藍刺眼 */
+            --ecoco-navy:#1F266B;
             --ecoco-text:#060E9F;
             --ecoco-text-muted:#77787b;   /* 內文次要文字（原本的淡藍改成灰） */
             --ecoco-line:rgba(142,185,201,.55);
@@ -387,7 +389,8 @@ def apply_brand_theme() -> None:
 
           /* ── 側邊欄導覽（Pantone Blue 072 C）────────────────────── */
           section[data-testid="stSidebar"] {
-            background: var(--ecoco-blue);
+            /* Blue 072 C 直接大面積鋪滿太飽和刺眼，降飽和加深後仍是同一個藍色家族 */
+            background: var(--ecoco-navy);
             border-right: 3px solid var(--ecoco-orange);
             /* 22px 的中文頁籤要排得下一行 */
             width: 330px !important;
@@ -1947,6 +1950,28 @@ def render_editor_toolbar(df, edited, editor_row_index, marker_col, ai_col, summ
         else:
             st.warning("請先輸入要新增的選項名稱。")
 
+    # 自訂選項可以移除；內建分類法的選項不列在這裡，避免誤刪。
+    custom_types = list(st.session_state.get("_custom_types", []))
+    custom_details = list(st.session_state.get("_custom_details", []))
+    if custom_types or custom_details:
+        removable = ([f"類型：{n}" for n in custom_types]
+                     + [f"細項：{n}" for n in custom_details])
+        d1, d2 = st.columns([6, 1.4], vertical_alignment="bottom")
+        target = d1.selectbox("移除自訂選項", options=removable, key="editor_del_option_sel",
+                              help="只會移除自己加進來的選項，內建分類法不受影響")
+        if d2.button("刪除選項", key="editor_del_option", use_container_width=True):
+            kind, _, name = str(target).partition("：")
+            bucket = "_custom_types" if kind == "類型" else "_custom_details"
+            st.session_state[bucket] = [n for n in st.session_state.get(bucket, []) if n != name]
+            # 已經被填進資料的值不會消失（options_with_data_values 仍會帶出來），
+            # 這裡移除的只是「可選清單」裡自訂的那一項。
+            st.session_state.pop("editor_table", None)
+            st.session_state["_option_removed"] = name
+            st.rerun()
+
+    if st.session_state.pop("_option_removed", ""):
+        st.success("已移除該自訂選項。")
+
     # ── 批次動作 ────────────────────────────────────────────────
     has_selection = "選取" in edited.columns and bool(edited["選取"].any())
 
@@ -2334,10 +2359,18 @@ def section_1():
         
     # 「選取」固定在第一欄，「備註」緊接其後。
     # 原本沒有這一欄，批次套用／刪除勾選列因此永遠抓不到勾選狀態。
+    #
+    # dtype 一定要指定：表格被篩成 0 列時（例如剛存完檔、所有列都已複核，
+    # 而「只看待複核」還打著勾），pandas 會把空欄位建成 float64，
+    # CheckboxColumn 只吃 bool，data_editor 就會拋
+    # StreamlitAPIException 把整頁打掉。
     prev_sel = show["選取"] if "選取" in show.columns else None
     sel_vals = list(prev_sel.fillna(False).astype(bool)) if prev_sel is not None else [False] * len(show_display)
-    show_display.insert(0, "選取", sel_vals)
-    show_display.insert(1, MARKER_COL, marker_vals)
+    show_display.insert(0, "選取", pd.Series(sel_vals, dtype="bool", index=show_display.index))
+    show_display.insert(1, MARKER_COL, pd.Series(marker_vals, dtype="object", index=show_display.index).fillna(""))
+
+    if show_display.empty:
+        st.success("✅ 目前沒有需要人工複核的資料列。取消上方的「只看待複核」即可看到全部資料。")
 
     edited = st.data_editor(
         show_display,
@@ -3991,6 +4024,62 @@ def page_header(title: str, subtitle: str = "") -> None:
     )
 
 
+def render_scroll_top_button() -> None:
+    """右下角「置頂」按鈕。
+
+    不能用 st.markdown 寫 onclick —— Streamlit 的 HTML 消毒會把事件屬性拿掉；
+    也不能用 <a href="#..."> 錨點 —— Streamlit 真正在捲動的是 stMain 這個容器，
+    錨點跳轉推不動它。
+    改用 components.html：元件在 iframe 裡，可以存取父視窗 document，
+    把按鈕直接建在父頁面上並綁事件，兩個限制都繞開。
+    """
+    import streamlit.components.v1 as components
+
+    components.html(
+        """
+        <script>
+        (function () {
+          const doc = window.parent.document;
+          let btn = doc.getElementById('ecoco-scroll-top');
+          if (!btn) {
+            btn = doc.createElement('button');
+            btn.id = 'ecoco-scroll-top';
+            btn.type = 'button';
+            btn.textContent = '⌃  置頂';
+            btn.style.cssText = [
+              'position:fixed', 'right:22px', 'bottom:22px', 'z-index:1000',
+              'border:1.5px solid #FF5000', 'background:#FFFFFF', 'color:#060E9F',
+              'border-radius:999px', 'padding:10px 20px', 'font-size:16px',
+              'font-weight:700', 'cursor:pointer',
+              'box-shadow:0 2px 10px rgba(0,0,0,.18)',
+              "font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif"
+            ].join(';');
+            btn.onmouseenter = () => { btn.style.background = '#FAE0B8'; };
+            btn.onmouseleave = () => { btn.style.background = '#FFFFFF'; };
+            doc.body.appendChild(btn);
+          }
+          btn.onclick = function () {
+            // 用 'auto' 不用 'smooth'：部分環境沒有平滑捲動，smooth 會整個沒反應。
+            // 主要捲動容器是 stMain，其餘當備援一起歸零。
+            const targets = [
+              doc.querySelector('[data-testid="stMain"]'),
+              doc.scrollingElement,
+              doc.documentElement,
+              doc.body
+            ];
+            for (const t of targets) {
+              if (!t) continue;
+              try { t.scrollTo({ top: 0, behavior: 'auto' }); } catch (e) { }
+              try { t.scrollTop = 0; } catch (e) { }
+            }
+          };
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def main():
     apply_brand_theme()
     menu = render_sidebar_nav()
@@ -4007,29 +4096,7 @@ def main():
     else:
         section_3()
 
-    # 版權頁尾已移除；只留回到頁首的按鈕。
-    st.markdown(
-        """
-        <style>
-            .scroll-top-btn {
-                position: fixed;
-                left: 18px;
-                bottom: 18px;
-                z-index: 1000;
-                border: 1px solid #8EB9C9;
-                background: #FFFFFF;
-                color: #060E9F;
-                border-radius: 999px;
-                padding: 10px 18px;
-                font-size: 15px;
-                cursor: pointer;
-                box-shadow: 0 2px 8px rgba(0,0,0,.12);
-            }
-        </style>
-        <button class="scroll-top-btn" onclick="window.parent.scrollTo({top:0, behavior:'smooth'});">⌃&nbsp; 置頂</button>
-        """,
-        unsafe_allow_html=True
-    )
+    render_scroll_top_button()
 
 
 if __name__ == "__main__":

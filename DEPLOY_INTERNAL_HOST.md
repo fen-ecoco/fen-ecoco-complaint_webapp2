@@ -119,12 +119,38 @@ powershell -Command "Get-ScheduledTaskInfo -TaskName 'ECOCO客訴分析' | Selec
 
 ## 7. 啟動網頁介面
 
+從終端機（或直接雙擊）執行：
+
+```bash
+scripts\start_webapp.bat
+```
+
+會顯示本機與內網網址，視窗保持開著即持續服務，`Ctrl+C` 停止。
+換埠號：`set ECOCO_PORT=8502` 後再執行。
+
+等同於手動下這一行：
+
 ```bash
 python -m streamlit run complaint_webapp.py --server.port 8501 --server.address 0.0.0.0
 ```
 
-要開機自動啟動，把這行包成批次檔並用工作排程器設為「開機時執行」，
-或用 NSSM 之類的工具註冊成 Windows 服務。
+**要它一直活著（機器不關機的情況）**，三選一：
+
+| 做法 | 特性 |
+|---|---|
+| 工作排程器設「開機時執行」＋「不論使用者是否登入均執行」 | 免安裝額外工具；當機不會自動拉起 |
+| NSSM 註冊成 Windows 服務 | 當機會自動重啟，最穩，需另外安裝 nssm |
+| 直接開一個終端機視窗跑 `start_webapp.bat` | 最簡單；視窗關掉服務就停 |
+
+工作排程器做法：
+
+```bash
+powershell -ExecutionPolicy Bypass -Command "Register-ScheduledTask -TaskName 'ECOCO客訴分析網頁' -Action (New-ScheduledTaskAction -Execute '%CD%\scripts\start_webapp.bat' -WorkingDirectory '%CD%') -Trigger (New-ScheduledTaskTrigger -AtStartup) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)) -Force"
+```
+
+`-ExecutionTimeLimit ([TimeSpan]::Zero)` 代表不限執行時間，否則排程器會在
+預設 3 天後把它殺掉。要「不論使用者是否登入均執行」需由管理者在排程器介面
+補上服務帳號密碼——密碼必須人工輸入，不要寫進腳本。
 
 介面第一次載入要花約 20–30 秒建立分類知識庫（讀 5000 筆以上歷史標記），
 之後由 Streamlit 快取，切換功能不會重建。
