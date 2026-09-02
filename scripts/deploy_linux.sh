@@ -68,15 +68,23 @@ fi
 
 # ── 3. 中文字型 ──────────────────────────────────────────────
 say "[3/4] 檢查中文字型"
-if fc-list 2>/dev/null | grep -qiE 'noto.*cjk|wqy|uming'; then
-    echo "已有中文字型"
+# 直接檢查檔案路徑，跟 _ensure_cjk_font() 的判斷一致。
+# fc-list 需要 fontconfig 快取正確，字型檔明明在也可能查不到。
+FONT_FOUND=""
+for f in /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc          /usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc          /usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc          /usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc          /usr/share/fonts/truetype/wqy/wqy-microhei.ttc; do
+    [[ -f "$f" ]] && FONT_FOUND="$f" && break
+done
+if [[ -n "$FONT_FOUND" ]]; then
+    echo "已有中文字型：$FONT_FOUND"
 else
-    echo "沒有中文字型，PDF 與圖表的中文會變成空白方框。"
-    if command -v sudo >/dev/null 2>&1; then
-        echo "嘗試安裝 fonts-noto-cjk…"
-        sudo apt-get update -qq && sudo apt-get install -y fonts-noto-cjk && fc-cache -f
+    echo "找不到中文字型，PDF 與圖表的中文會變成空白方框。"
+    # sudo 不一定免密碼，失敗不能讓整個部署中斷（腳本有 set -e）
+    if sudo -n true 2>/dev/null; then
+        echo "安裝 fonts-noto-cjk…"
+        sudo -n apt-get update -qq && sudo -n apt-get install -y fonts-noto-cjk && fc-cache -f || true
     else
-        echo "沒有 sudo，請請管理者執行： sudo apt install -y fonts-noto-cjk"
+        echo "沒有免密碼 sudo，請自行執行： sudo apt install -y fonts-noto-cjk"
+        echo "（程式在找不到系統字型時會自動下載一份到暫存資料夾，仍可運作）"
     fi
 fi
 
