@@ -135,38 +135,52 @@ scripts\start_webapp.bat
 
 換埠號：`set ECOCO_PORT=8600` 後再執行。`Ctrl+C` 或關掉視窗即停止。
 
-### 常駐（終端機關掉也不會停）
+### 常駐（重點：行程不能掛在啟動它的終端機底下）
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1
 ```
 
-會依序嘗試兩種方式，用得成哪個就用哪個：
+**為什麼一定要用排程器**：直接從終端機（或任何工具工作階段）啟動的 streamlit
+行程，會隨著啟動它的 shell 結束而被回收——當下驗證 HTTP 200 都是真的，
+過一陣子再開就已經沒了。交給工作排程器之後，行程由排程服務持有，
+跟啟動它的視窗無關。
 
-| 方式 | 觸發時機 | 權限 |
+註冊起來的工作設定：
+
+| 設定 | 值 | 為什麼 |
 |---|---|---|
-| Windows 排程工作 | 登入時 | 需系統管理員 |
-| 啟動資料夾捷徑（自動退回） | 登入時 | 不需要任何權限 |
+| 觸發器 | 每 5 分鐘重複，持續 3650 天 | 一般使用者就能註冊（AtLogOn / AtStartup 需要管理員） |
+| MultipleInstances | IgnoreNew | 還活著時後續觸發略過；掛了下次觸發拉回來 |
+| ExecutionTimeLimit | 0（不限） | 否則排程器預設 3 天後殺掉長駐行程 |
+| 動作環境變數 | ECOCO_NO_PORT_HUNT=1 | 埠已被自己佔用時乾淨結束，不會在 8502、8503… 一路開下去 |
 
-一般使用者跑會落在第二種，訊息會明講用了哪一種。
+等於一個會自我修復的 keep-alive：服務掛掉最多 5 分鐘內自動回來。
 
-要「開機即啟動、不必登入」：
+查狀態與手動控制：
+
+```bash
+powershell -Command "Get-ScheduledTaskInfo -TaskName 'ECOCO客訴分析網頁'"
+```
+
+```bash
+powershell -Command "Stop-ScheduledTask -TaskName 'ECOCO客訴分析網頁'"
+```
+
+要「開機即啟動、不必登入」（一定要用**系統管理員身分**執行）：
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1 -AtStartup
 ```
 
-這個一定要用**系統管理員身分**執行；若還要在沒人登入時執行，需由管理者在
-工作排程器介面補上服務帳號密碼——密碼必須人工輸入，不要寫進腳本。
+若還要在沒人登入時執行，需由管理者在工作排程器介面補上服務帳號密碼——
+密碼必須人工輸入，不要寫進腳本。
 
 移除：
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1 -Remove
 ```
-
-> 排程工作用了 `-ExecutionTimeLimit 0`（不限執行時間）。
-> 不加這個的話排程器預設 3 天後會把長駐的服務行程殺掉。
 
 ### 更穩的做法：註冊成 Windows 服務
 
