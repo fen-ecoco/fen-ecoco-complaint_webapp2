@@ -12,7 +12,94 @@ GitHub 只作為版本控管與派送程式碼之用，不再由 Render 執行�
 
 ---
 
-## 0. 目標主機什麼都沒裝：用可攜版
+## 0. 目標主機是 Linux（192.168.0.108 的情況）
+
+先確認過連通性，結果如下：
+
+| 檢查 | 結果 |
+|---|---|
+| Ping | 通 |
+| 22 SSH | **通** |
+| 445 SMB 檔案共享 | 不通 |
+| 3389 遠端桌面 | 不通 |
+| 5985 WinRM | 不通 |
+| SSH 識別字串 | `SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.18`（Ubuntu 24.04） |
+
+**那台是 Ubuntu，不是 Windows。** 所以下面幾件事在那台都用不了：
+Windows 可攜版（第 0a 節）、`.bat`、工作排程器、遠端桌面、`robocopy` 到 `\\IP\D$`。
+唯一的通路是 SSH，常駐機制要用 systemd。
+
+### 步驟
+
+在**這台 Windows** 開終端機，把程式碼送過去（`<帳號>` 換成那台的登入帳號）：
+
+```bash
+scp -r complaint_webapp.py automation scripts requirements.txt packages.txt <帳號>@192.168.0.108:~/ecoco/
+```
+
+那台若本身能連得到 GitHub，直接在那台 clone 更省事：
+
+```bash
+ssh <帳號>@192.168.0.108 "git clone https://github.com/fen-ecoco/fen-ecoco-complaint_webapp2.git ~/ecoco"
+```
+
+接著登入那台執行部署腳本：
+
+```bash
+ssh <帳號>@192.168.0.108
+```
+
+```bash
+cd ~/ecoco && bash scripts/deploy_linux.sh
+```
+
+腳本會做四件事：檢查 Python 3.11+、建 venv 裝套件、裝中文字型
+（沒有的話 PDF 與圖表的中文會變成空白方框）、註冊 systemd 服務。
+
+沒有 sudo 權限時：
+
+```bash
+bash scripts/deploy_linux.sh --user-service
+```
+
+使用者服務在登出後會停止，要一直跑得請管理者執行
+`sudo loginctl enable-linger <帳號>`。
+
+### 完成後
+
+```bash
+sudo systemctl status ecoco-webapp
+```
+
+```bash
+sudo journalctl -u ecoco-webapp -f
+```
+
+網址 `http://192.168.0.108:8501`。同網段連不上多半是防火牆：
+
+```bash
+sudo ufw allow 8501/tcp
+```
+
+### 憑證
+
+把 `.streamlit/secrets.toml` 用 `scp` 送過去，或設成環境變數寫進
+`~/ecoco/.env`（systemd unit 已經有 `EnvironmentFile=-.env`）：
+
+```
+GOOGLE_CREDENTIALS_JSON={"type":"service_account", ...}
+HISTORY_SHEET_ID=...
+```
+
+驗證：
+
+```bash
+~/ecoco/.venv/bin/python -m automation.cli doctor
+```
+
+---
+
+## 0a. 目標主機是 Windows 且什麼都沒裝：用可攜版
 
 目標主機沒有 Python、沒有 Git，也不方便裝東西時，**不要在那台裝任何東西**。
 在這台（已經跑得起來的機器）打包，複製過去直接執行即可。
