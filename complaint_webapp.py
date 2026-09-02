@@ -927,9 +927,20 @@ def delete_history(item_id: str):
     ws = _history_sheet()
     if ws:
         try:
+            data_ref = ""
             for i, row in enumerate(ws.get_all_values()[1:], start=2):
                 if row and row[0] == item_id:
-                    ws.delete_rows(i); break
+                    data_ref = row[4] if len(row) > 4 else ""
+                    ws.delete_rows(i)
+                    break
+            # 資料分頁也要一起刪：只刪索引列的話，分頁會留在試算表裡
+            # 變成沒有人指到的孤兒，越積越多。
+            if data_ref.startswith("sheet:"):
+                name = data_ref.split(":", 1)[1]
+                try:
+                    ws.spreadsheet.del_worksheet(ws.spreadsheet.worksheet(name))
+                except Exception:
+                    pass   # 分頁本來就不存在（斷鏈）時忽略
         except Exception:
             pass
     if META_FILE.exists():

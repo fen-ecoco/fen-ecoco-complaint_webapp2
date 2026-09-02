@@ -101,6 +101,118 @@ def _run_one(source, source_name: str, args, knowledge) -> int:
     return 0
 
 
+def cmd_history(args) -> int:
+    """檢視與清空歷史紀錄。
+
+    歷史紀錄存在三個地方，影響的東西不一樣：
+      雲端索引分頁「歷史紀錄」   → 功能三的清單
+      雲端資料分頁 history_*     → 功能三的預覽、功能四的儀表板
+      本機 history_reports/      → 知識庫的主要學習來源
+
+    預設只列出現況（不改任何東西）。清除動作一律要加 --yes，
+    因為清掉本機歷史等於把知識庫歸零：實測自動採用率會從 95% 掉回 58%。
+    """
+    from pathlib import Path as _P
+
+    ss = sheets.open_spreadsheet(config.get_history_sheet_id())
+    tabs, data_tabs, rows, refs = [], [], [], []
+    if ss is not None:
+        try:
+            tabs = [w.title for w in ss.worksheets()]
+            data_tabs = [t for t in tabs if t.startswith("history_")]
+            rows = ss.worksheet("歷史紀錄").get_all_values()[1:]
+            refs = [r[4].split(":", 1)[1] for r in rows
+                    if len(r) > 4 and r[4].startswith("sheet:")]
+        except Exception as exc:
+            _log(f"讀取雲端歷史失敗：{exc}")
+
+    dangling = [r for r in rows
+                if len(r) > 4 and r[4].startswith("sheet:")
+                and r[4].split(":", 1)[1] not in data_tabs]
+    orphans = [t for t in data_tabs if t not in refs]
+
+    local_dir = _P(config.get_local_history_dir())
+    local_files = ([f for f in local_dir.iterdir()
+                    if f.suffix.lower() in (".xlsx", ".xls", ".csv")]
+                   if local_dir.exists() else [])
+    local_rows = 0
+    for f in local_files:
+        try:
+            local_rows += len(pipeline.load_frame(f))
+        except Exception:
+            pass
+
+    _log("── 雲端（Google Sheets）──")
+    _log(f"   索引列 {len(rows)} 筆　可讀資料分頁 {len(refs) - len(dangling)} 份")
+    _log(f"   斷鏈索引（指向已刪除的分頁）{len(dangling)} 筆")
+    _log(f"   孤兒分頁（索引沒指到）{len(orphans)} 份")
+    _log("── 本機（知識庫來源）──")
+    _log(f"   {local_dir}／{len(local_files)} 個檔案　合計約 {local_rows} 列")
+
+    todo = args.clean_dangling or args.purge_cloud or args.purge_local
+    if not todo:
+        _log("")
+        _log("要清理請加參數（預設只檢視，不動任何東西）：")
+        _log("   --clean-dangling   只清掉斷鏈索引與孤兒分頁（不會少任何資料）")
+        _log("   --purge-cloud      清空雲端歷史（功能三／四會變空，知識庫仍在）")
+        _log("   --purge-local      清空本機歷史（知識庫歸零，自動採用率會大幅下降）")
+        _log("   加上 --yes 才會真的執行")
+        return 0
+
+    if not args.yes:
+        _log("")
+        _log("這是預演，沒有實際刪除。確認無誤請加 --yes 重跑。")
+
+    # ── 只清斷鏈與孤兒：不會少任何真正的資料 ──
+    if args.clean_dangling and ss is not None:
+        _log(f"清理斷鏈索引 {len(dangling)} 筆、孤兒分頁 {len(orphans)} 份")
+        if args.yes:
+            try:
+                ws = ss.worksheet("歷史紀錄")
+                ids = {r[0] for r in dangling}
+                # 由下往上刪，才不會因為列號位移而刪錯
+                for i, r in reversed(list(enumerate(ws.get_all_values()[1:], start=2))):
+                    if r and r[0] in ids:
+                        ws.delete_rows(i)
+                for t in orphans:
+                    ss.del_worksheet(ss.worksheet(t))
+                _log("完成")
+            except Exception as exc:
+                _log(f"清理失敗：{exc}")
+                return 1
+
+    # ── 清空雲端 ──
+    if args.purge_cloud and ss is not None:
+        _log(f"清空雲端：刪除 {len(data_tabs)} 份資料分頁、清空索引 {len(rows)} 列")
+        if args.yes:
+            try:
+                for t in data_tabs:
+                    ss.del_worksheet(ss.worksheet(t))
+                ws = ss.worksheet("歷史紀錄")
+                if len(rows):
+                    ws.delete_rows(2, len(rows) + 1)
+                _log("完成")
+            except Exception as exc:
+                _log(f"清空雲端失敗：{exc}")
+                return 1
+
+    # ── 清空本機 ──
+    if args.purge_local:
+        _log(f"清空本機：刪除 {len(local_files)} 個檔案（約 {local_rows} 列）")
+        _log("注意：知識庫會歸零，自動採用率會從約 95% 掉到約 58%")
+        if args.yes:
+            backup = local_dir.parent / f"{local_dir.name}_已清空備份"
+            backup.mkdir(exist_ok=True)
+            for f in local_files:
+                try:
+                    f.rename(backup / f.name)
+                except Exception as exc:
+                    _log(f"搬移 {f.name} 失敗：{exc}")
+            _log(f"完成。原檔已搬到 {backup}（不是直接刪除，反悔可以搬回來）")
+
+    return 0
+
+
 def cmd_run(args) -> int:
     knowledge = pipeline.build_knowledge()
     if knowledge is not None:
@@ -385,6 +497,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp_doc = sub.add_parser("doctor", help="檢查設定與憑證")
     sp_doc.set_defaults(func=cmd_doctor)
+
+    sp_hist = sub.add_parser("history", help="檢視或清空歷史紀錄（預設只檢視）")
+    sp_hist.add_argument("--clean-dangling", action="store_true",
+                         help="清掉斷鏈索引與孤兒分頁（不會少任何資料）")
+    sp_hist.add_argument("--purge-cloud", action="store_true",
+                         help="清空雲端歷史紀錄")
+    sp_hist.add_argument("--purge-local", action="store_true",
+                         help="清空本機歷史紀錄（知識庫會歸零）")
+    sp_hist.add_argument("--yes", action="store_true",
+                         help="真的執行；沒有這個參數只會預演")
+    sp_hist.set_defaults(func=cmd_history)
 
     return parser
 
