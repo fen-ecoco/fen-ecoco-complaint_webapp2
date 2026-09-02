@@ -119,15 +119,59 @@ powershell -Command "Get-ScheduledTaskInfo -TaskName 'ECOCO客訴分析' | Selec
 
 ## 7. 啟動網頁介面
 
+### 手動啟動（終端機）
+
 ```bash
-python -m streamlit run complaint_webapp.py --server.port 8501 --server.address 0.0.0.0
+scripts\start_webapp.bat
 ```
 
-要開機自動啟動，把這行包成批次檔並用工作排程器設為「開機時執行」，
-或用 NSSM 之類的工具註冊成 Windows 服務。
+會印出實際使用的 Python、本機與內網網址。腳本會自己處理三件事：
 
-介面第一次載入要花約 20–30 秒建立分類知識庫（讀 5000 筆以上歷史標記），
-之後由 Streamlit 快取，切換功能不會重建。
+* **找得到能用的直譯器** —— 依序試 `ECOCO_PYTHON`、專案內建路徑、`python`、`py`，
+  並且是用「跑得出結果」判斷而不是只看退出碼（`cmd.exe` 這種也會回傳 0）。
+* **埠被佔用會自動換** —— 從 8501 往上找 20 個埠，換了會明講。
+  這是最常見的失敗原因：埠被佔住時 Streamlit 立刻結束，雙擊的視窗一閃就沒了。
+* **出錯不會讓視窗消失** —— 任何失敗都會 `pause`，訊息讀得到。
+
+換埠號：`set ECOCO_PORT=8600` 後再執行。`Ctrl+C` 或關掉視窗即停止。
+
+### 常駐（終端機關掉也不會停）
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1
+```
+
+會依序嘗試兩種方式，用得成哪個就用哪個：
+
+| 方式 | 觸發時機 | 權限 |
+|---|---|---|
+| Windows 排程工作 | 登入時 | 需系統管理員 |
+| 啟動資料夾捷徑（自動退回） | 登入時 | 不需要任何權限 |
+
+一般使用者跑會落在第二種，訊息會明講用了哪一種。
+
+要「開機即啟動、不必登入」：
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1 -AtStartup
+```
+
+這個一定要用**系統管理員身分**執行；若還要在沒人登入時執行，需由管理者在
+工作排程器介面補上服務帳號密碼——密碼必須人工輸入，不要寫進腳本。
+
+移除：
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1 -Remove
+```
+
+> 排程工作用了 `-ExecutionTimeLimit 0`（不限執行時間）。
+> 不加這個的話排程器預設 3 天後會把長駐的服務行程殺掉。
+
+### 更穩的做法：註冊成 Windows 服務
+
+要「當機自動重啟」，用 NSSM 把 `start_webapp.bat` 註冊成服務。
+需要另外安裝 nssm，且需管理員權限。
 
 ## 8. 備份
 
