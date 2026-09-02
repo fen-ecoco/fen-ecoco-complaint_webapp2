@@ -12,6 +12,195 @@ GitHub 只作為版本控管與派送程式碼之用，不再由 Render 執行�
 
 ---
 
+## 0. 目標主機是 Linux（192.168.0.108 的情況）
+
+先確認過連通性，結果如下：
+
+| 檢查 | 結果 |
+|---|---|
+| Ping | 通 |
+| 22 SSH | **通** |
+| 445 SMB 檔案共享 | 不通 |
+| 3389 遠端桌面 | 不通 |
+| 5985 WinRM | 不通 |
+| SSH 識別字串 | `SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.18`（Ubuntu 24.04） |
+
+**那台是 Ubuntu，不是 Windows。** 所以下面幾件事在那台都用不了：
+Windows 可攜版（第 0a 節）、`.bat`、工作排程器、遠端桌面、`robocopy` 到 `\\IP\D$`。
+唯一的通路是 SSH，常駐機制要用 systemd。
+
+### 步驟
+
+在**這台 Windows** 開終端機，把程式碼送過去（`<帳號>` 換成那台的登入帳號）：
+
+```bash
+scp -r complaint_webapp.py automation scripts requirements.txt packages.txt <帳號>@192.168.0.108:~/ecoco/
+```
+
+那台若本身能連得到 GitHub，直接在那台 clone 更省事：
+
+```bash
+ssh <帳號>@192.168.0.108 "git clone https://github.com/fen-ecoco/fen-ecoco-complaint_webapp2.git ~/ecoco"
+```
+
+接著登入那台執行部署腳本：
+
+```bash
+ssh <帳號>@192.168.0.108
+```
+
+```bash
+cd ~/ecoco && bash scripts/deploy_linux.sh
+```
+
+腳本會做四件事：檢查 Python 3.11+、建 venv 裝套件、裝中文字型
+（沒有的話 PDF 與圖表的中文會變成空白方框）、註冊 systemd 服務。
+
+沒有 sudo 權限時：
+
+```bash
+bash scripts/deploy_linux.sh --user-service
+```
+
+使用者服務在登出後會停止，要一直跑得請管理者執行
+`sudo loginctl enable-linger <帳號>`。
+
+### 完成後
+
+```bash
+sudo systemctl status ecoco-webapp
+```
+
+```bash
+sudo journalctl -u ecoco-webapp -f
+```
+
+網址 `http://192.168.0.108:8501`。同網段連不上多半是防火牆：
+
+```bash
+sudo ufw allow 8501/tcp
+```
+
+### 憑證
+
+把 `.streamlit/secrets.toml` 用 `scp` 送過去，或設成環境變數寫進
+`~/ecoco/.env`（systemd unit 已經有 `EnvironmentFile=-.env`）：
+
+```
+GOOGLE_CREDENTIALS_JSON={"type":"service_account", ...}
+HISTORY_SHEET_ID=...
+```
+
+驗證：
+
+```bash
+~/ecoco/.venv/bin/python -m automation.cli doctor
+```
+
+---
+
+## 0a. 目標主機是 Windows 且什麼都沒裝：用可攜版
+
+目標主機沒有 Python、沒有 Git，也不方便裝東西時，**不要在那台裝任何東西**。
+在這台（已經跑得起來的機器）打包，複製過去直接執行即可。
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\make_portable.ps1
+```
+
+會在專案外層產生 `ECOCO_可攜版\`（約 800 MB）：
+
+```
+ECOCO_可攜版\
+  python\          自帶的 Python 與全部套件
+  app\             專案程式碼
+  啟動.bat         雙擊即啟動網頁介面
+  註冊常駐.bat     註冊成排程工作，關掉視窗也不停
+  README.txt       使用說明
+```
+
+**原理**：這台用的 Python 是可搬移安裝（python-build-standalone 版面配置），
+換路徑、換機器都能執行。已實測從完全不同的目錄啟動，
+`streamlit` / `pandas` / `gspread` 皆正常，`automation.cli doctor` 也跑得起來，
+打包後的 `啟動.bat` 用的是自己那份 Python（不是系統的），服務回應 HTTP 200。
+
+### 複製到目標主機
+
+擇一：
+
+```bash
+robocopy "ECOCO_可攜版" "\\<公司主機IP>\D$\ECOCO_可攜版" /E /MT:8
+```
+
+或壓成一個檔再用任何方式傳過去：
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\make_portable.ps1 -Zip
+```
+
+到目標主機上雙擊 `啟動.bat` 就會啟動；要常駐再雙擊 `註冊常駐.bat`。
+
+### 憑證
+
+打包預設**不含** `.streamlit\secrets.toml`（Google 服務帳戶金鑰）——
+把金鑰複製到另一台機器應該是明確的決定，不該預設發生。需要時：
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\make_portable.ps1 -IncludeSecrets
+```
+
+或事後手動放到 `app\.streamlit\` 底下。
+**沒有憑證也能用**「上傳檔案 → 分析 → 下載」這條主線；
+只有歷史紀錄與趨勢儀表板需要連 Google Sheets。
+
+### 日後更新
+
+在這台 `git pull` 之後重新打包、重新複製即可。目標主機不需要 Git。
+
+---
+
+## 0b. 遠端桌面部署（目標主機已有 Python 與 Git 時）
+
+沒辦法直接坐在那台機器前面時，用**遠端桌面**是最省事的路：
+
+```bash
+mstsc /v:<公司主機IP>
+```
+
+帳號密碼在 Windows 自己的登入視窗輸入。連進去之後，開一個 PowerShell
+貼下面這一段，第 1～3 節與第 7 節的常駐設定會一次做完：
+
+```powershell
+$dest = "D:\ecoco"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Set-Location $dest
+if (Test-Path "$dest\fen-ecoco-complaint_webapp2\.git") {
+    Set-Location "$dest\fen-ecoco-complaint_webapp2"; git pull
+} else {
+    git clone https://github.com/fen-ecoco/fen-ecoco-complaint_webapp2.git
+    Set-Location "$dest\fen-ecoco-complaint_webapp2"
+}
+python -m pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1
+python -m automation.cli doctor
+```
+
+最後那行 `doctor` 會列出憑證與試算表設定是否就緒；缺什麼照第 3 節補。
+
+> **為什麼不用 PowerShell 遠端（Invoke-Command）**：需要兩端都啟用 WinRM，
+> 非網域環境還要設定 TrustedHosts，這兩件事都要系統管理員權限。
+> 若貴公司已有網域與 WinRM，改用遠端指令當然更快。
+
+### 前置需求（那台主機上要先有）
+
+| 項目 | 檢查指令 |
+|---|---|
+| Git | `git --version` |
+| Python 3.11+ | `python --version` |
+| 網路可連 GitHub 與 Google Sheets | `python -m automation.cli doctor` |
+
+---
+
 ## 1. 取得程式碼
 
 ```bash
@@ -135,38 +324,79 @@ scripts\start_webapp.bat
 
 換埠號：`set ECOCO_PORT=8600` 後再執行。`Ctrl+C` 或關掉視窗即停止。
 
-### 常駐（終端機關掉也不會停）
+### 常駐（重點：行程不能掛在啟動它的終端機底下）
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1
 ```
 
-會依序嘗試兩種方式，用得成哪個就用哪個：
+**為什麼一定要用排程器**：直接從終端機（或任何工具工作階段）啟動的 streamlit
+行程，會隨著啟動它的 shell 結束而被回收——當下驗證 HTTP 200 都是真的，
+過一陣子再開就已經沒了。交給工作排程器之後，行程由排程服務持有，
+跟啟動它的視窗無關。
 
-| 方式 | 觸發時機 | 權限 |
+註冊起來的工作設定：
+
+| 設定 | 值 | 為什麼 |
 |---|---|---|
-| Windows 排程工作 | 登入時 | 需系統管理員 |
-| 啟動資料夾捷徑（自動退回） | 登入時 | 不需要任何權限 |
+| 觸發器 | 每 5 分鐘重複，持續 3650 天 | 一般使用者就能註冊（AtLogOn / AtStartup 需要管理員） |
+| MultipleInstances | IgnoreNew | 還活著時後續觸發略過；掛了下次觸發拉回來 |
+| ExecutionTimeLimit | 0（不限） | 否則排程器預設 3 天後殺掉長駐行程 |
+| 動作環境變數 | ECOCO_NO_PORT_HUNT=1 | 埠已被自己佔用時乾淨結束，不會在 8502、8503… 一路開下去 |
 
-一般使用者跑會落在第二種，訊息會明講用了哪一種。
+等於一個會自我修復的 keep-alive：服務掛掉最多 5 分鐘內自動回來。
 
-要「開機即啟動、不必登入」：
+查狀態與手動控制：
+
+```bash
+powershell -Command "Get-ScheduledTaskInfo -TaskName 'ECOCO客訴分析網頁'"
+```
+
+```bash
+powershell -Command "Stop-ScheduledTask -TaskName 'ECOCO客訴分析網頁'"
+```
+
+要「開機即啟動、不必登入」（一定要用**系統管理員身分**執行）：
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1 -AtStartup
 ```
 
-這個一定要用**系統管理員身分**執行；若還要在沒人登入時執行，需由管理者在
-工作排程器介面補上服務帳號密碼——密碼必須人工輸入，不要寫進腳本。
+### 讓它在沒人登入時也執行（操作步驟）
+
+`-AtStartup` 只解決「開機就啟動」；若要連**登出後也繼續跑**，必須讓工作以
+儲存的帳號密碼執行。密碼由 Windows 自己收，不經過任何腳本或設定檔。
+
+1. 開始功能表搜尋「工作排程器」，以**系統管理員身分**開啟
+2. 左側「工作排程器程式庫」找到 **ECOCO客訴分析網頁**
+3. 右鍵 →「內容」
+4. 「一般」頁籤 → 安全性選項：
+   - 勾選 **「不論使用者登入與否均執行」**
+   - 勾選 **「不儲存密碼…」請不要勾**（要儲存密碼才能在登出後執行）
+   - 需要的話勾選「以最高權限執行」
+5. 按「確定」→ Windows 跳出視窗要求輸入該帳號的密碼 → 在**那個視窗**輸入
+6. 完成後用下面指令確認 `LogonType` 變成 `Password`：
+
+```bash
+powershell -Command "(Get-ScheduledTask -TaskName 'ECOCO客訴分析網頁').Principal | Format-List UserId,LogonType,RunLevel"
+```
+
+> 建議用**服務專用帳號**而不是個人帳號。個人帳號日後改密碼，這個工作就會
+> 開始失敗（排程器不會自動更新儲存的密碼）。
+
+### 只在上班時段執行（省記憶體）
+
+網頁服務常駐約 260 MB。若希望下班後把它釋放掉：
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1 -Daily -StartTime "08:00" -StopTime "19:00"
+```
 
 移除：
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1 -Remove
 ```
-
-> 排程工作用了 `-ExecutionTimeLimit 0`（不限執行時間）。
-> 不加這個的話排程器預設 3 天後會把長駐的服務行程殺掉。
 
 ### 更穩的做法：註冊成 Windows 服務
 

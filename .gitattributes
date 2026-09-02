@@ -1,0 +1,13 @@
+# Shell script 一定要 LF：帶 CRLF 到 Linux 會噴
+#   /usr/bin/env: 'bash\r': No such file or directory
+*.sh text eol=lf
+
+# Windows 腳本一定要 CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# 二進位檔不要動
+*.xlsx binary
+*.pptx binary
+*.png  binary
+*.pdf  binary
