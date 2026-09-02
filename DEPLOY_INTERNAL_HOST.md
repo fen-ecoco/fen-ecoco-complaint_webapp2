@@ -12,7 +12,67 @@ GitHub 只作為版本控管與派送程式碼之用，不再由 Render 執行�
 
 ---
 
-## 0. 遠端部署到另一台主機
+## 0. 目標主機什麼都沒裝：用可攜版
+
+目標主機沒有 Python、沒有 Git，也不方便裝東西時，**不要在那台裝任何東西**。
+在這台（已經跑得起來的機器）打包，複製過去直接執行即可。
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\make_portable.ps1
+```
+
+會在專案外層產生 `ECOCO_可攜版\`（約 800 MB）：
+
+```
+ECOCO_可攜版\
+  python\          自帶的 Python 與全部套件
+  app\             專案程式碼
+  啟動.bat         雙擊即啟動網頁介面
+  註冊常駐.bat     註冊成排程工作，關掉視窗也不停
+  README.txt       使用說明
+```
+
+**原理**：這台用的 Python 是可搬移安裝（python-build-standalone 版面配置），
+換路徑、換機器都能執行。已實測從完全不同的目錄啟動，
+`streamlit` / `pandas` / `gspread` 皆正常，`automation.cli doctor` 也跑得起來，
+打包後的 `啟動.bat` 用的是自己那份 Python（不是系統的），服務回應 HTTP 200。
+
+### 複製到目標主機
+
+擇一：
+
+```bash
+robocopy "ECOCO_可攜版" "\\<公司主機IP>\D$\ECOCO_可攜版" /E /MT:8
+```
+
+或壓成一個檔再用任何方式傳過去：
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\make_portable.ps1 -Zip
+```
+
+到目標主機上雙擊 `啟動.bat` 就會啟動；要常駐再雙擊 `註冊常駐.bat`。
+
+### 憑證
+
+打包預設**不含** `.streamlit\secrets.toml`（Google 服務帳戶金鑰）——
+把金鑰複製到另一台機器應該是明確的決定，不該預設發生。需要時：
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\make_portable.ps1 -IncludeSecrets
+```
+
+或事後手動放到 `app\.streamlit\` 底下。
+**沒有憑證也能用**「上傳檔案 → 分析 → 下載」這條主線；
+只有歷史紀錄與趨勢儀表板需要連 Google Sheets。
+
+### 日後更新
+
+在這台 `git pull` 之後重新打包、重新複製即可。目標主機不需要 Git。
+
+---
+
+## 0b. 遠端桌面部署（目標主機已有 Python 與 Git 時）
 
 沒辦法直接坐在那台機器前面時，用**遠端桌面**是最省事的路：
 
