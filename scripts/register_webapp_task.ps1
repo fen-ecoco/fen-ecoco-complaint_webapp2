@@ -37,24 +37,43 @@ if ($Remove) {
 
 if (-not (Test-Path $batPath)) { throw "找不到 $batPath" }
 
-# ── 方式 1：排程工作 ─────────────────────────────────────────
+# ── 方式 1：排程工作（自我修復的長駐） ──────────────────────
+# 觸發器用 -Once + 每 5 分鐘重複：一般使用者就能註冊
+#（AtLogOn / AtStartup 都需要管理員權限，實測會被拒）。
+# MultipleInstances = IgnoreNew：服務還活著時後續觸發直接略過；
+# 服務掛了下一次觸發就把它拉回來。
+# 搭配 start_webapp.bat 的 ECOCO_NO_PORT_HUNT=1，
+# 埠已被自己佔用時乾淨結束，不會另外開一份在別的埠。
 $registered = $false
 try {
     $action = New-ScheduledTaskAction -Execute "cmd.exe" `
-        -Argument "/c set ECOCO_PORT=$Port && `"$batPath`"" `
+        -Argument "/c set ECOCO_PORT=$Port && set ECOCO_NO_PORT_HUNT=1 && `"$batPath`"" `
         -WorkingDirectory $projectDir
-    $trigger = if ($AtStartup) { New-ScheduledTaskTrigger -AtStartup } else { New-ScheduledTaskTrigger -AtLogOn }
-    # ExecutionTimeLimit 0 = 不限時；否則排程器預設 3 天後會終止這個長駐行程
+
+    if ($AtStartup) {
+        $trigger = New-ScheduledTaskTrigger -AtStartup
+    } else {
+        $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
+            -RepetitionInterval (New-TimeSpan -Minutes 5) `
+            -RepetitionDuration (New-TimeSpan -Days 3650)
+    }
+
+    # ExecutionTimeLimit 0 = 不限時；否則排程器預設 3 天後會終止長駐行程
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
-        -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+        -MultipleInstances IgnoreNew `
         -ExecutionTimeLimit ([TimeSpan]::Zero)
+
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
         -Settings $settings -Description "ECOCO 客訴分析網頁介面" -Force -ErrorAction Stop | Out-Null
     $registered = $true
-    $when = if ($AtStartup) { "開機時啟動" } else { "登入時啟動" }
+
+    $when = if ($AtStartup) { "開機時啟動" } else { "每 5 分鐘檢查，沒在跑就拉起來" }
     Write-Host "已註冊排程工作：$TaskName（$when，埠 $Port）"
-    Write-Host "  立即啟動： Start-ScheduledTask -TaskName '$TaskName'"
+
+    Start-ScheduledTask -TaskName $TaskName
+    Write-Host "已立即啟動一次。"
     Write-Host "  查看狀態： Get-ScheduledTaskInfo -TaskName '$TaskName'"
+    Write-Host "  手動停止： Stop-ScheduledTask -TaskName '$TaskName'"
 } catch {
     Write-Host "排程工作註冊失敗（$($_.Exception.Message.Trim())）"
     if ($AtStartup) {

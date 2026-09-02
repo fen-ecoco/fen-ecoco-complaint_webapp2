@@ -51,6 +51,19 @@ echo   Python  : %PYEXE%
 
 rem ---- 2. pick a free port ------------------------------------
 if "%ECOCO_PORT%"=="" set "ECOCO_PORT=8501"
+
+rem ---- already running? ---------------------------------------
+rem  Scheduled/startup launches must not spawn a second copy on another
+rem  port. ECOCO_NO_PORT_HUNT=1 makes a busy port a clean no-op exit.
+set "BUSY="
+for /f %%b in ('powershell -NoProfile -Command "if(Get-NetTCPConnection -LocalPort %ECOCO_PORT% -State Listen -ErrorAction SilentlyContinue){'1'}else{'0'}"') do set "BUSY=%%b"
+if "%BUSY%"=="1" if "%ECOCO_NO_PORT_HUNT%"=="1" (
+    echo   Already serving on port %ECOCO_PORT% - nothing to do.
+    popd
+    endlocal
+    exit /b 0
+)
+
 set "PORT="
 for /f %%p in ('powershell -NoProfile -Command "$s=%ECOCO_PORT%; for($p=$s;$p -lt ($s+20);$p++){ if(-not (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)){ $p; break } }"') do set "PORT=%%p"
 
