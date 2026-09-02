@@ -18,6 +18,9 @@ param(
     [string]$TaskName = "ECOCO客訴分析網頁",
     [int]$Port = 8501,
     [switch]$AtStartup,
+    [switch]$Daily,            # 只在上班時段執行
+    [string]$StartTime = "08:00",
+    [string]$StopTime  = "19:00",
     [switch]$Remove
 )
 
@@ -30,6 +33,7 @@ $lnkPath     = Join-Path $startupDir "$TaskName.lnk"
 if ($Remove) {
     $done = @()
     try { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false; $done += "排程工作" } catch { }
+    try { Unregister-ScheduledTask -TaskName "$TaskName-停止" -Confirm:$false; $done += "每日停止工作" } catch { }
     if (Test-Path $lnkPath) { Remove-Item $lnkPath -Force; $done += "啟動資料夾捷徑" }
     if ($done.Count) { Write-Host ("已移除：" + ($done -join "、")) } else { Write-Host "沒有找到已註冊的項目。" }
     return
@@ -52,6 +56,15 @@ try {
 
     if ($AtStartup) {
         $trigger = New-ScheduledTaskTrigger -AtStartup
+    } elseif ($Daily) {
+        # 上班時段模式：每天 StartTime 啟動，期間每 5 分鐘自我修復，
+        # 到 StopTime 由另一個工作停掉，把記憶體還回去。
+        $span = [datetime]$StopTime - [datetime]$StartTime
+        if ($span.TotalMinutes -le 0) { throw "StopTime 必須晚於 StartTime" }
+        $trigger = New-ScheduledTaskTrigger -Daily -At $StartTime
+        $trigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
+            -RepetitionInterval (New-TimeSpan -Minutes 5) `
+            -RepetitionDuration $span).Repetition
     } else {
         $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
             -RepetitionInterval (New-TimeSpan -Minutes 5) `
@@ -67,8 +80,20 @@ try {
         -Settings $settings -Description "ECOCO 客訴分析網頁介面" -Force -ErrorAction Stop | Out-Null
     $registered = $true
 
-    $when = if ($AtStartup) { "開機時啟動" } else { "每 5 分鐘檢查，沒在跑就拉起來" }
+    $when = if ($AtStartup) { "開機時啟動" }
+            elseif ($Daily)  { "每天 $StartTime 啟動、$StopTime 停止" }
+            else             { "每 5 分鐘檢查，沒在跑就拉起來" }
     Write-Host "已註冊排程工作：$TaskName（$when，埠 $Port）"
+
+    if ($Daily) {
+        $stopAction  = New-ScheduledTaskAction -Execute "powershell.exe" `
+            -Argument "-NoProfile -Command `"Stop-ScheduledTask -TaskName '$TaskName'`""
+        $stopTrigger = New-ScheduledTaskTrigger -Daily -At $StopTime
+        Register-ScheduledTask -TaskName "$TaskName-停止" -Action $stopAction `
+            -Trigger $stopTrigger -Description "每天 $StopTime 停止 ECOCO 網頁介面" `
+            -Force -ErrorAction Stop | Out-Null
+        Write-Host "已註冊每日停止工作：$TaskName-停止（每天 $StopTime）"
+    }
 
     Start-ScheduledTask -TaskName $TaskName
     Write-Host "已立即啟動一次。"

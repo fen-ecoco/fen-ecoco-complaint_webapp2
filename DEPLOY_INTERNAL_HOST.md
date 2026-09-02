@@ -12,6 +12,48 @@ GitHub 只作為版本控管與派送程式碼之用，不再由 Render 執行�
 
 ---
 
+## 0. 遠端部署到另一台主機
+
+沒辦法直接坐在那台機器前面時，用**遠端桌面**是最省事的路：
+
+```bash
+mstsc /v:<公司主機IP>
+```
+
+帳號密碼在 Windows 自己的登入視窗輸入。連進去之後，開一個 PowerShell
+貼下面這一段，第 1～3 節與第 7 節的常駐設定會一次做完：
+
+```powershell
+$dest = "D:\ecoco"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Set-Location $dest
+if (Test-Path "$dest\fen-ecoco-complaint_webapp2\.git") {
+    Set-Location "$dest\fen-ecoco-complaint_webapp2"; git pull
+} else {
+    git clone https://github.com/fen-ecoco/fen-ecoco-complaint_webapp2.git
+    Set-Location "$dest\fen-ecoco-complaint_webapp2"
+}
+python -m pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1
+python -m automation.cli doctor
+```
+
+最後那行 `doctor` 會列出憑證與試算表設定是否就緒；缺什麼照第 3 節補。
+
+> **為什麼不用 PowerShell 遠端（Invoke-Command）**：需要兩端都啟用 WinRM，
+> 非網域環境還要設定 TrustedHosts，這兩件事都要系統管理員權限。
+> 若貴公司已有網域與 WinRM，改用遠端指令當然更快。
+
+### 前置需求（那台主機上要先有）
+
+| 項目 | 檢查指令 |
+|---|---|
+| Git | `git --version` |
+| Python 3.11+ | `python --version` |
+| 網路可連 GitHub 與 Google Sheets | `python -m automation.cli doctor` |
+
+---
+
 ## 1. 取得程式碼
 
 ```bash
@@ -173,8 +215,35 @@ powershell -Command "Stop-ScheduledTask -TaskName 'ECOCO客訴分析網頁'"
 powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1 -AtStartup
 ```
 
-若還要在沒人登入時執行，需由管理者在工作排程器介面補上服務帳號密碼——
-密碼必須人工輸入，不要寫進腳本。
+### 讓它在沒人登入時也執行（操作步驟）
+
+`-AtStartup` 只解決「開機就啟動」；若要連**登出後也繼續跑**，必須讓工作以
+儲存的帳號密碼執行。密碼由 Windows 自己收，不經過任何腳本或設定檔。
+
+1. 開始功能表搜尋「工作排程器」，以**系統管理員身分**開啟
+2. 左側「工作排程器程式庫」找到 **ECOCO客訴分析網頁**
+3. 右鍵 →「內容」
+4. 「一般」頁籤 → 安全性選項：
+   - 勾選 **「不論使用者登入與否均執行」**
+   - 勾選 **「不儲存密碼…」請不要勾**（要儲存密碼才能在登出後執行）
+   - 需要的話勾選「以最高權限執行」
+5. 按「確定」→ Windows 跳出視窗要求輸入該帳號的密碼 → 在**那個視窗**輸入
+6. 完成後用下面指令確認 `LogonType` 變成 `Password`：
+
+```bash
+powershell -Command "(Get-ScheduledTask -TaskName 'ECOCO客訴分析網頁').Principal | Format-List UserId,LogonType,RunLevel"
+```
+
+> 建議用**服務專用帳號**而不是個人帳號。個人帳號日後改密碼，這個工作就會
+> 開始失敗（排程器不會自動更新儲存的密碼）。
+
+### 只在上班時段執行（省記憶體）
+
+網頁服務常駐約 260 MB。若希望下班後把它釋放掉：
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\register_webapp_task.ps1 -Daily -StartTime "08:00" -StopTime "19:00"
+```
 
 移除：
 
