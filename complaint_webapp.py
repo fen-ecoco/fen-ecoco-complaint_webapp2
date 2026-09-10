@@ -927,9 +927,20 @@ def delete_history(item_id: str):
     ws = _history_sheet()
     if ws:
         try:
+            data_ref = ""
             for i, row in enumerate(ws.get_all_values()[1:], start=2):
                 if row and row[0] == item_id:
-                    ws.delete_rows(i); break
+                    data_ref = row[4] if len(row) > 4 else ""
+                    ws.delete_rows(i)
+                    break
+            # 資料分頁也要一起刪：只刪索引列的話，分頁會留在試算表裡
+            # 變成沒有人指到的孤兒，越積越多。
+            if data_ref.startswith("sheet:"):
+                name = data_ref.split(":", 1)[1]
+                try:
+                    ws.spreadsheet.del_worksheet(ws.spreadsheet.worksheet(name))
+                except Exception:
+                    pass   # 分頁本來就不存在（斷鏈）時忽略
         except Exception:
             pass
     if META_FILE.exists():
@@ -1903,13 +1914,13 @@ def render_editor_toolbar(df, edited, editor_row_index, marker_col, ai_col, summ
         _toolbar_label("批次問題處理")
         c1, c2 = st.columns(2)
         # accept_new_options：可從下拉選，也可以直接打字新增（combo box）
-        batch_type_opts = ["(不變更)"] + combo_options(TYPE_OPTIONS, df, "問題類型", "_custom_types")
+        batch_type_opts = ["(不變更)"] + combo_options(TYPE_OPTIONS, df, "問題類型", "types")
         batch_type = c1.selectbox("批次問題類型", batch_type_opts, key="batch_type_sel",
                                   accept_new_options=True, help="清單沒有的可直接輸入新增")
         valid_batch_det = ["(不變更)"]
         if batch_type != "(不變更)":
             valid_batch_det += TOPIC_DETAIL_MAP.get(batch_type, [])
-        valid_batch_det += [d for d in st.session_state.get("_custom_details", [])
+        valid_batch_det += [d for d in load_custom_options()["details"]
                             if d not in valid_batch_det]
         batch_detail = c2.selectbox("批次問題細項", valid_batch_det, key="batch_cat_sel",
                                     accept_new_options=True, help="清單沒有的可直接輸入新增")
@@ -1931,28 +1942,32 @@ def render_editor_toolbar(df, edited, editor_row_index, marker_col, ai_col, summ
     new_detail_opt = e2.text_input("新增自訂問題細項", key="editor_new_detail",
                                    placeholder="英文會自動轉小寫")
     if e3.button("加入選項", key="editor_add_option", use_container_width=True):
+        opts = load_custom_options()
         added = []
         if new_type_opt.strip():
-            st.session_state.setdefault("_custom_types", [])
             name = new_type_opt.strip()
-            if name not in st.session_state["_custom_types"]:
-                st.session_state["_custom_types"].append(name)
+            if name not in opts["types"]:
+                opts["types"].append(name)
                 added.append(name)
         if new_detail_opt.strip():
-            st.session_state.setdefault("_custom_details", [])
             name = lower_english(new_detail_opt.strip())
-            if name not in st.session_state["_custom_details"]:
-                st.session_state["_custom_details"].append(name)
+            if name not in opts["details"]:
+                opts["details"].append(name)
                 added.append(name)
-        if added:
+        if added and save_custom_options(opts):
             st.session_state.pop("editor_table", None)
+            st.session_state["_option_added"] = "、".join(added)
             st.rerun()
-        else:
-            st.warning("請先輸入要新增的選項名稱。")
+        elif not added:
+            st.warning("請先輸入要新增的選項名稱（或該選項已經在清單裡）。")
+
+    if st.session_state.pop("_option_added", ""):
+        st.success("已加入自訂選項，之後每次開啟都還在，直到按「刪除選項」移除。")
 
     # 自訂選項可以移除；內建分類法的選項不列在這裡，避免誤刪。
-    custom_types = list(st.session_state.get("_custom_types", []))
-    custom_details = list(st.session_state.get("_custom_details", []))
+    _opts = load_custom_options()
+    custom_types = _opts["types"]
+    custom_details = _opts["details"]
     if custom_types or custom_details:
         removable = ([f"類型：{n}" for n in custom_types]
                      + [f"細項：{n}" for n in custom_details])
@@ -1961,13 +1976,15 @@ def render_editor_toolbar(df, edited, editor_row_index, marker_col, ai_col, summ
                               help="只會移除自己加進來的選項，內建分類法不受影響")
         if d2.button("刪除選項", key="editor_del_option", use_container_width=True):
             kind, _, name = str(target).partition("：")
-            bucket = "_custom_types" if kind == "類型" else "_custom_details"
-            st.session_state[bucket] = [n for n in st.session_state.get(bucket, []) if n != name]
+            bucket = "types" if kind == "類型" else "details"
+            opts = load_custom_options()
+            opts[bucket] = [n for n in opts[bucket] if n != name]
             # 已經被填進資料的值不會消失（options_with_data_values 仍會帶出來），
             # 這裡移除的只是「可選清單」裡自訂的那一項。
-            st.session_state.pop("editor_table", None)
-            st.session_state["_option_removed"] = name
-            st.rerun()
+            if save_custom_options(opts):
+                st.session_state.pop("editor_table", None)
+                st.session_state["_option_removed"] = name
+                st.rerun()
 
     if st.session_state.pop("_option_removed", ""):
         st.success("已移除該自訂選項。")
@@ -1986,7 +2003,7 @@ def render_editor_toolbar(df, edited, editor_row_index, marker_col, ai_col, summ
             if batch_detail != "(不變更)":
                 edited.loc[mask, "問題細項"] = batch_detail
             # 細項與類型對不上時自動修正；使用者自行新增的細項不動它
-            custom_details = set(st.session_state.get("_custom_details", []))
+            custom_details = set(load_custom_options()["details"])
 
             def _fix_detail(r):
                 detail = r["問題細項"]
@@ -2037,16 +2054,47 @@ def mask_phone_columns(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+CUSTOM_OPTIONS_FILE = Path("custom_options.json")
+
+
+def load_custom_options() -> dict:
+    """讀取自訂選項（問題類型／問題細項）。
+
+    存成檔案而不是放 st.session_state：session_state 只活在單一瀏覽器分頁，
+    重新整理、關掉分頁、服務重啟都會消失，同一台伺服器上的其他同事也看不到。
+    寫成檔案之後就是這台機器的長期設定，直到有人按「刪除選項」為止。
+    """
+    try:
+        data = json.loads(CUSTOM_OPTIONS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"types": [], "details": []}
+    return {
+        "types": [str(x) for x in data.get("types", []) if str(x).strip()],
+        "details": [str(x) for x in data.get("details", []) if str(x).strip()],
+    }
+
+
+def save_custom_options(opts: dict) -> bool:
+    try:
+        CUSTOM_OPTIONS_FILE.write_text(
+            json.dumps(opts, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except Exception as exc:
+        st.warning(f"自訂選項存檔失敗：{str(exc)[:200]}")
+        return False
+
+
 def combo_options(base: list[str], df: pd.DataFrame | None, column: str,
-                  session_key: str) -> list[str]:
-    """下拉選項＝內建清單＋資料實際值＋使用者自行輸入過的值。
+                  which: str) -> list[str]:
+    """下拉選項＝內建清單＋資料實際值＋使用者自行加入的自訂值。
 
     st.column_config.SelectboxColumn 不支援直接在格子裡打字，
     所以自訂值改由表格上方的輸入框加入，加進來之後每一格都選得到，
     效果等同可打字的 combo box。
     """
     options = options_with_data_values(base, df, column)
-    for name in st.session_state.get(session_key, []):
+    bucket = "types" if which == "types" else "details"
+    for name in load_custom_options()[bucket]:
         if name and name not in options:
             options.append(name)
     return options
@@ -2381,9 +2429,9 @@ def section_1():
             "選取": st.column_config.CheckboxColumn("選取", help="勾選要批次處理的列", pinned=True),
             MARKER_COL: st.column_config.TextColumn("備註", disabled=True),
             "問題類型": st.column_config.SelectboxColumn(
-                options=combo_options(TYPE_OPTIONS, df, "問題類型", "_custom_types"), required=True),
+                options=combo_options(TYPE_OPTIONS, df, "問題類型", "types"), required=True),
             "問題細項": st.column_config.SelectboxColumn(
-                options=combo_options(DETAIL_OPTIONS, df, "問題細項", "_custom_details"), required=True),
+                options=combo_options(DETAIL_OPTIONS, df, "問題細項", "details"), required=True),
             "部門": st.column_config.SelectboxColumn(options=dept_options_for(df)),
         },
         key="editor_table",

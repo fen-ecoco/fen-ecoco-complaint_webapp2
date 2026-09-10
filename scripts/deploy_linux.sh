@@ -63,7 +63,14 @@ if [[ ! -d "$VENV" ]]; then
     }
 fi
 "$VENV/bin/python" -m pip install --upgrade pip >/dev/null
-"$VENV/bin/python" -m pip install -r requirements.txt
+# 有 lock 檔就用它：requirements.txt 沒有鎖版本，直接裝會拿到當下最新版，
+# 不同時間部署的機器會拿到不同組合。
+if [[ -f requirements-lock.txt ]]; then
+    echo "使用 requirements-lock.txt（已驗證的版本組合）"
+    "$VENV/bin/python" -m pip install -r requirements-lock.txt
+else
+    "$VENV/bin/python" -m pip install -r requirements.txt
+fi
 "$VENV/bin/python" -c "import streamlit,pandas,gspread;print('套件就緒')"
 
 # ── 3. 中文字型 ──────────────────────────────────────────────

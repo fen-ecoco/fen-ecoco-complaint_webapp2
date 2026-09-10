@@ -27,3 +27,7 @@ inbox/
 history_backup/
 logs/
 scripts/env.local.bat
+
+# Linux 部署建立的虛擬環境（約 500MB，絕對不要進版控）
+.venv/
+venv/
