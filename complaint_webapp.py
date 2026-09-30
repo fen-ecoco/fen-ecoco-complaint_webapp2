@@ -2372,7 +2372,9 @@ def section_1():
             unsafe_allow_html=True
         )
 
-    st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
+    st.caption("💡 修改問題類型／細項：**在儲存格上點一下選取，再點第二下**即可展開下拉清單"
+               "（雙擊與 Enter 都不會展開，這是 Streamlit 表格元件的行為）。"
+               "要一次改多列，改用下方的「批次問題處理」。調整完成後點擊「💾 儲存修改」。")
 
     # 工具列（檢視 / 欄位管理 / 批次問題處理 / 自訂選項）先佔位，
     # 實際內容在 data_editor 之後才填入 —— 批次動作需要 edited 的勾選狀態，
@@ -2825,6 +2827,7 @@ def section_2():
     stats_with_total = pd.concat([stats, totals_row], ignore_index=True)
 
     st.markdown("#### 類型件數與部門 (可直接編輯，圖表即時同步)")
+    st.caption("💡 在儲存格上點一下選取，再點第二下即可展開下拉清單。")
     edited_stats = st.data_editor(
         stats_with_total,
         use_container_width=True,
