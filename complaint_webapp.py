@@ -2372,7 +2372,9 @@ def section_1():
             unsafe_allow_html=True
         )
 
-    st.caption("💡 直接在表格中下拉選擇問題類型 / 問題細項，調整完成後點擊「💾 儲存修改」。")
+    st.caption("💡 在儲存格按 **F2**（或 Enter、雙擊）開啟下拉清單挑選問題類型 / 問題細項，"
+               "調整完成後點擊「💾 儲存修改」。")
+    render_grid_f2_shim()
 
     # 工具列（檢視 / 欄位管理 / 批次問題處理 / 自訂選項）先佔位，
     # 實際內容在 data_editor 之後才填入 —— 批次動作需要 edited 的勾選狀態，
@@ -2825,6 +2827,8 @@ def section_2():
     stats_with_total = pd.concat([stats, totals_row], ignore_index=True)
 
     st.markdown("#### 類型件數與部門 (可直接編輯，圖表即時同步)")
+    st.caption("💡 在儲存格按 **F2**（或 Enter、雙擊）開啟下拉清單。")
+    render_grid_f2_shim()
     edited_stats = st.data_editor(
         stats_with_total,
         use_container_width=True,
@@ -4069,6 +4073,53 @@ def page_header(title: str, subtitle: str = "") -> None:
     st.markdown(
         f"<div class='page-header'><div class='page-header-title'>{title}</div>{sub}</div>",
         unsafe_allow_html=True,
+    )
+
+
+def render_grid_f2_shim() -> None:
+    """讓表格儲存格按 F2 就打開下拉清單（Excel 的習慣）。
+
+    Streamlit 的表格底層是 glide-data-grid，它只認 Enter 與雙擊，
+    F2 不是它的快捷鍵，而 Streamlit 沒有提供改鍵位的介面。
+    這裡在父視窗補一個 keydown 監聽：在表格範圍內按 F2 就轉送一個
+    Enter 給同一個元素，等同於「點兩下打開選單」。
+    用 components.html 是因為 st.markdown 的 HTML 消毒會把 script 拿掉；
+    元件在 iframe 裡，可以存取父視窗 document。
+    """
+    import streamlit.components.v1 as components
+
+    components.html(
+        """
+        <script>
+        (function () {
+          const doc = window.parent.document;
+          if (doc.__ecocoF2Installed) return;   // 每次 rerun 都會重跑，只裝一次
+          doc.__ecocoF2Installed = true;
+
+          const inGrid = (el) => el && el.closest && el.closest(
+            '[data-testid="stDataEditor"], [data-testid="stDataFrame"]');
+
+          doc.addEventListener('keydown', function (e) {
+            if (e.key !== 'F2') return;
+            const host = inGrid(e.target) || inGrid(doc.activeElement);
+            if (!host) return;
+            e.preventDefault();
+            e.stopPropagation();
+            // glide-data-grid 把鍵盤事件掛在自己的容器上，
+            // 直接朝目前焦點元素送一個 Enter，它就會打開該格的編輯器。
+            const target = doc.activeElement && host.contains(doc.activeElement)
+                         ? doc.activeElement : host;
+            for (const type of ['keydown', 'keyup']) {
+              target.dispatchEvent(new KeyboardEvent(type, {
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+                bubbles: true, cancelable: true
+              }));
+            }
+          }, true);
+        })();
+        </script>
+        """,
+        height=0,
     )
 
 
