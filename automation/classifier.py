@@ -25,6 +25,7 @@ from .taxonomy import (
     POLICY_CONFIDENCE,
     POLICY_DETAILS,
     coerce_pair,
+    same_meaning,
 )
 
 LAYER_CACHE = "L0-指紋"
@@ -240,6 +241,20 @@ class CascadeClassifier:
             layers = "、".join(sorted({p.layer for p in same_pair}))
             best.confidence = round(min(0.98, best.confidence + config.agreement_boost()), 3)
             best.reason = f"{best.reason}；{layers} 判斷一致（交叉驗證通過）"
+            return best
+
+        # 名稱不同但意思相同（同義群組）→ 不是分歧，仍算交叉驗證通過。
+        # 分類法從「合併」改為「聯集」之後，細分與合併名稱並存，
+        # 各層很容易給出同義但不同字的答案；若當成矛盾扣分，
+        # 會平白把大量本來有把握的列推去人工（實測 +3.7 個百分點）。
+        synonym = [p for p in candidates
+                   if p.topic == best.topic and same_meaning(p.detail, best.detail)]
+        if len(synonym) >= 2:
+            best.agreement = AGREE_MULTI
+            layers = "、".join(sorted({p.layer for p in synonym}))
+            best.confidence = round(min(0.98, best.confidence + config.agreement_boost()), 3)
+            best.reason = (f"{best.reason}；{layers} 判斷為同義細項"
+                           f"（交叉驗證通過，取信心最高者）")
             return best
 
         # 類型一致但細項不同 → 只算部分一致，不加分也不重罰
