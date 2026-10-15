@@ -21,6 +21,13 @@ FULL_KEYWORDS = [
     # 客訴實際出現過的其他說法（含簡體與誤字）
     "客滿", "滿團", "滿团", "满了", "已满", "沒空位", "沒有空位",
 ]
+# 含「滿」但與「裝滿」無關的詞：單字「滿」要觸發滿艙判定之前先把這些剔除，
+# 否則「我很不滿意」「服務滿分」都會被判成機台滿艙。
+NOT_FULL_WORDS = [
+    "滿意", "不滿", "滿足", "圓滿", "美滿", "滿分", "充滿",
+    "滿心", "滿頭", "滿臉", "滿腹", "滿街", "滿天",
+]
+
 # 需要清運／換袋的說法（多半就是滿了）
 FULL_CONTEXT_KEYWORDS = [
     "需清運", "來清運", "請清運", "沒人清", "沒人收", "沒有清運", "來收", "清機",
@@ -41,6 +48,9 @@ PET_KEYWORDS = [
 ]
 # 英文簡寫需用邊界比對，否則 "pp" 會命中 "app"、"pet" 會命中 "carpet"
 PET_LATIN_RE = re.compile(r"(?<![a-z])(pet|pvc|pp)(?![a-z])")
+# 「瓶滿」「瓶子滿」「瓶罐都滿」這類：瓶與滿必須相鄰（中間最多 3 個字），
+# 否則整句話只要出現「瓶」就會把「回收箱滿艙」的客訴搶走。
+BOTTLE_FULL_RE = re.compile(r"瓶[^，。！？!?\s]{0,3}[滿满]")
 
 
 def full_bin_detail(text: str) -> str:
@@ -50,9 +60,17 @@ def full_bin_detail(text: str) -> str:
     都沒提到具體回收物→回收箱滿艙。
     """
     t = str(text).lower()
+    # 瓶蓋一定要先判：「瓶蓋」本身含「瓶」，順序顛倒的話會被當成寶特瓶。
     if any(k in t for k in CAP_KEYWORDS):
         return "瓶蓋桶已滿"
     if any(k in t for k in PET_KEYWORDS) or PET_LATIN_RE.search(t):
+        return "寶特瓶滿艙"
+    # 「瓶滿／瓶子滿／瓶罐滿」→ 寶特瓶（機台收的瓶就是寶特瓶）。
+    # 必須是「瓶」緊接著「滿」才算，不能整句出現「瓶」就算 ——
+    # 實測後者會把 95 筆人工標為「回收箱滿艙」的客訴搶走
+    #（例：「回收箱滿了，瓶子投不進去」重點是箱子滿，不是瓶子）。
+    # 這一步放在瓶蓋之後，所以「瓶蓋滿」不會誤落到這裡。
+    if BOTTLE_FULL_RE.search(t):
         return "寶特瓶滿艙"
     return "回收箱滿艙"
 
@@ -66,7 +84,15 @@ def _is_full_complaint(text: str) -> bool:
     if any(k in text for k in FULL_KEYWORDS):
         return True
     # 只講「請來清運／清機」而沒講滿，也算（機台需要清運就是因為滿）
-    return any(k in text for k in FULL_CONTEXT_KEYWORDS)
+    if any(k in text for k in FULL_CONTEXT_KEYWORDS):
+        return True
+    # 只要出現「滿」字就算 —— 詞表再長都列不完（實測有 16.4% 的滿艙客訴
+    # 因為用了表上沒有的說法而漏判）。先剔除「滿意／不滿」這類無關的詞，
+    # 剩下還有「滿」才算。
+    stripped = text
+    for w in NOT_FULL_WORDS:
+        stripped = stripped.replace(w, "")
+    return "滿" in stripped or "满" in stripped
 
 
 def analyze_complaint(subject: str, content: str) -> tuple[str, str]:
