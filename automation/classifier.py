@@ -24,6 +24,7 @@ from .taxonomy import (
     FALLBACK_TYPE,
     POLICY_CONFIDENCE,
     POLICY_DETAILS,
+    RULE_FIRST_DETAILS,
     coerce_pair,
     same_meaning,
 )
@@ -120,6 +121,15 @@ class CascadeClassifier:
             reason=("內建關鍵字規則命中"
                     + (f"（歷史實測準確率 {measured:.0%}）" if measured is not None else "")),
         )
+        if not pred.is_fallback and detail in RULE_FIRST_DETAILS:
+            # 規則優先細項：關鍵字命中就定案，不讓歷史規則／相似案例覆蓋。
+            # 這些細項的歷史標記多半用的是合併前後的另一個名稱，
+            # 實測準確率因此偏低，在信心競賽裡一定輸，只能短路處理。
+            pred.dept = self._dept_for(pred.topic)
+            pred.confidence = max(pred.confidence, POLICY_CONFIDENCE)
+            pred.topic_confidence = pred.confidence
+            pred.reason = "依公司規定由關鍵字直接判定（不採用歷史學習層）"
+            return pred
         if not pred.is_fallback and detail in POLICY_DETAILS:
             # 公司明訂要依內容區分的細項：以內建規則為準，
             # 不採用舊資料挖出的規則（舊標記把三種滿艙混在一起）。

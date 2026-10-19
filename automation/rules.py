@@ -38,6 +38,9 @@ FULL_CONTEXT_KEYWORDS = [
 
 CAP_KEYWORDS = ["瓶蓋", "蓋子", "瓶蓋桶", "瓶蓋箱", "瓶蓋回收"]
 
+# 重量相關：出現任一個就一律歸「重量偵測異常」
+WEIGHT_KEYWORDS = ["重量", "秤重", "偵測重量", "稱重", "磅重", "重量感測", "克數", "公克數"]
+
 # 寶特瓶滿艙：寶特瓶與其他塑膠類容器（依實際客訴用語整理）
 PET_KEYWORDS = [
     "寶特瓶", "保特瓶", "宝特瓶", "寶特", "保特",
@@ -144,6 +147,16 @@ def analyze_complaint(subject: str, content: str) -> tuple[str, str]:
     if any(k in t for k in ["點數顯示異常", "點數顯示錯誤"]):
         return "APP使用問題類型", "APP點數顯示異常"
 
+    # ── 重量：只要提到就一律歸「重量偵測異常」──────────────
+    # 必須排在辨識／顯示／點數那幾條之前。實測「無法辨識重量」會被
+    # 辨識規則攔成「辨識/重量判定異常」、「投很多次重量都不對」會被
+    # 點數規則攔成「點數未入帳號」、「一直顯示重量錯誤」會被螢幕規則攔走。
+    # 滿艙排在更前面（公司政策細項），兩者同時出現時仍以滿艙為準。
+    # 滿艙是公司政策細項，排在更後面但優先權更高，
+    # 所以這裡要先排除掉滿艙客訴（例：「寶特瓶滿了重量也不對」仍歸寶特瓶滿艙）。
+    if any(k in t for k in WEIGHT_KEYWORDS) and not _is_full_complaint(t):
+        return "機台問題類型", "重量偵測異常"
+
     # 回收點數
     if "點數" in t and any(k in t for k in ["未累積", "未增加", "沒有入帳", "未入帳"]):
         return "回收點數問題類型", "點數未入帳號"
@@ -202,8 +215,6 @@ def analyze_complaint(subject: str, content: str) -> tuple[str, str]:
         return "機台問題類型", "機台網路連線失敗"
     if any(k in t for k in ["網路不穩", "網路中斷"]):
         return "機台問題類型", "網路中斷或不穩定"
-    if any(k in t for k in ["重量", "秤重", "偵測重量"]):
-        return "機台問題類型", "重量偵測異常"
     if any(k in t for k in ["無法操作", "流程異常", "不能操作"]):
         return "機台問題類型", "操作流程異常/無法正常操作"
     if any(k in t for k in ["中斷", "重啟", "重開機"]):
