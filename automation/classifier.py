@@ -65,6 +65,44 @@ def coerce(topic: str, detail: str) -> tuple[str, str]:
     return coerce_pair(topic, detail)
 
 
+def policy_override(topic: str, detail: str,
+                    subject: str, content: str) -> Optional[Prediction]:
+    """來源檔已有標記，但公司政策規定要依內容重判時，回傳取代用的判斷。
+
+    客服工單匯出的檔案本身就帶著 (問題類型, 問題細項)，analyze_dataframe
+    原本一律原樣保留、連分類器都不跑。問題是來源的舊標記常常是錯的 ——
+    實例：內容只提「無處投遞寶特瓶」，來源卻標成「瓶蓋桶已滿」。
+
+    滿艙三項（POLICY_DETAILS）與重量偵測異常（RULE_FIRST_DETAILS）是公司
+    明訂「一律依客訴內容判定」的細項，因此比照 classify_fast 的做法重判，
+    不受來源標記拘束。其餘細項不在政策範圍，回傳 None 讓呼叫端原樣保留。
+    """
+    text = f"{subject or ''} {content or ''}".strip()
+
+    if detail in POLICY_DETAILS:
+        corrected = full_bin_detail(text)
+        if corrected == detail:
+            return None
+        t, d = coerce(topic, corrected)
+        return Prediction(
+            topic=t, detail=d, dept=DEPT_MAP.get(t, "") or "",
+            confidence=POLICY_CONFIDENCE, layer=LAYER_RULE,
+            topic_confidence=POLICY_CONFIDENCE,
+            reason=f"來源檔標為「{detail}」與公司政策不符，依客訴內容重判滿艙種類",
+        )
+
+    rule_topic, rule_detail = coerce(*analyze_complaint(subject, content))
+    if rule_detail in RULE_FIRST_DETAILS and rule_detail != detail:
+        return Prediction(
+            topic=rule_topic, detail=rule_detail,
+            dept=DEPT_MAP.get(rule_topic, "") or "",
+            confidence=POLICY_CONFIDENCE, layer=LAYER_RULE,
+            topic_confidence=POLICY_CONFIDENCE,
+            reason=f"依公司規定由關鍵字直接判定（來源檔標為「{detail}」不採用）",
+        )
+    return None
+
+
 class CascadeClassifier:
     """把 L0/L1/L2 串起來的分類器。
 

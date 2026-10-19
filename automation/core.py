@@ -12,7 +12,13 @@ from typing import Optional
 import pandas as pd
 
 from . import config
-from .classifier import AGREE_CONFLICT, CascadeClassifier, LAYER_SOURCE, Prediction
+from .classifier import (
+    AGREE_CONFLICT,
+    CascadeClassifier,
+    LAYER_SOURCE,
+    Prediction,
+    policy_override,
+)
 from .rules import _is_valid_pair
 from .taxonomy import DEPT_MAP, TOPIC_DETAIL_MAP, default_detail_for
 from .text import mask_sensitive_df, normalize_problem_labels, strip_gmt_prefix
@@ -102,6 +108,12 @@ def analyze_dataframe(
             d = str(existing_detail.iloc[i]).strip()
             if d not in TOPIC_DETAIL_MAP.get(t, []):
                 d = default_detail_for(t)
+            # 公司明訂依內容判定的細項（滿艙三項、重量偵測異常）不沿用來源標記，
+            # 否則工單系統帶進來的舊標記會整列繞過分類器。
+            forced = policy_override(t, d, subjects.iloc[i], contents.iloc[i])
+            if forced is not None:
+                preds[i] = forced
+                continue
             preds[i] = Prediction(
                 topic=t, detail=d, dept=DEPT_MAP.get(t, "") or "",
                 confidence=1.0, layer=LAYER_SOURCE, reason="來源檔已有合法標記，原樣保留",
