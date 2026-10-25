@@ -14,6 +14,7 @@ import pandas as pd
 
 from . import config, sheets
 from .classifier import build_default
+from .ingest import normalize_upload
 from .columns import DetectedColumns, detect_columns
 from .core import AnalysisConfig, analyze_dataframe, review_summary
 from .knowledge import build_from_history
@@ -57,20 +58,28 @@ class PipelineResult:
         return "\n".join(lines)
 
 
-def load_frame(path: str | Path) -> pd.DataFrame:
-    """讀取 xlsx / xls / csv（排程模式的本機檔案來源）。"""
-    p = Path(path)
-    suffix = p.suffix.lower()
+def _read_frame(path: Path) -> pd.DataFrame:
+    suffix = path.suffix.lower()
     if suffix in (".xlsx", ".xls"):
-        return pd.read_excel(p)
+        return pd.read_excel(path)
     if suffix in (".csv", ".tsv", ".txt"):
         for enc in ("utf-8-sig", "utf-8", "cp950", "big5"):
             try:
-                return pd.read_csv(p, encoding=enc, sep=None, engine="python")
+                return pd.read_csv(path, encoding=enc, sep=None, engine="python")
             except (UnicodeDecodeError, ValueError):
                 continue
-        return pd.read_csv(p, encoding="utf-8", errors="replace")
-    raise ValueError(f"不支援的檔案格式：{suffix or p.name}")
+        return pd.read_csv(path, encoding="utf-8", errors="replace")
+    raise ValueError(f"不支援的檔案格式：{suffix or path.name}")
+
+
+def load_frame(path: str | Path) -> pd.DataFrame:
+    """讀取 xlsx / xls / csv（排程模式的本機檔案來源）。
+
+    來源若是客服系統的原始工單匯出，會先自動轉成分析格式，
+    與網頁上傳走同一套轉檔邏輯。
+    """
+    df, _note = normalize_upload(_read_frame(Path(path)))
+    return df
 
 
 def read_local_history_frames(folder: Optional[str | Path] = None,

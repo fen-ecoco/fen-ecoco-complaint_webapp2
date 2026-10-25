@@ -130,8 +130,15 @@ def detect_columns(df: pd.DataFrame) -> DetectedColumns:
             text_cols.append((c, filled, avg_len))
 
     # ── 主旨欄 / 內容欄：先看欄名 ──
+    # 主旨欄從「全部欄位」比對欄名，不限於有文字的欄：
+    # 工單匯出轉檔後「問題主旨」常常整欄空白（原始匯出沒有這個欄位），
+    # 只看有文字的欄會讓它落選，主旨改由字數啟發式挑中「站點名稱」之類
+    # 與客訴無關的欄，等於把店名當成客訴主旨餵進分類器。
+    # 欄名相符的信心本來就遠高於字數啟發式，空白主旨欄是合理結果
+    #（內容欄仍要求有文字，否則整份資料就沒東西可分析了）。
+    subj_pool = [c for c in candidates if c != out.date]
     subj_named = sorted(
-        ((_name_score(c, SUBJECT_KEYWORDS)[0], c, _name_score(c, SUBJECT_KEYWORDS)[1]) for c, _, _ in text_cols),
+        ((_name_score(c, SUBJECT_KEYWORDS)[0], c, _name_score(c, SUBJECT_KEYWORDS)[1]) for c in subj_pool),
         reverse=True, key=lambda x: x[0],
     )
     cont_named = sorted(

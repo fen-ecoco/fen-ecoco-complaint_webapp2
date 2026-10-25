@@ -38,6 +38,7 @@ st.set_page_config(page_title="ECOCO 客訴分析平台", page_icon="📊", layo
 # ── 自動化核心（automation/ 套件；與無介面排程 automation/cli.py 共用同一套邏輯）──
 from automation import config as auto_config
 from automation.classifier import build_default as build_classifier
+from automation.ingest import normalize_upload
 from automation.columns import detect_columns
 from automation.core import (
     META_COLUMNS,
@@ -550,9 +551,7 @@ def parse_pdf_to_df(file_obj) -> pd.DataFrame:
     return pd.DataFrame(rows if rows else [{"content": ""}])
 
 
-def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
-    """Load file from a Streamlit UploadedFile or BytesIO. Pass filename when using BytesIO."""
-    name = filename or getattr(uploaded_file, "name", "")
+def _read_any(uploaded_file, name: str) -> pd.DataFrame:
     suffix = Path(name).suffix.lower()
     if suffix in [".xlsx", ".xls"]:
         return pd.read_excel(uploaded_file)
@@ -568,6 +567,18 @@ def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
     if suffix == ".pdf":
         return parse_pdf_to_df(uploaded_file)
     raise ValueError(f"僅支援 excel / csv / pdf，收到：{suffix or name}")
+
+
+def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
+    """Load file from a Streamlit UploadedFile or BytesIO. Pass filename when using BytesIO.
+
+    上傳的若是客服系統的原始工單匯出（70 幾欄的 Zendesk 格式），
+    會自動轉成 13 欄的分析格式，不必再人工整理一次。
+    """
+    name = filename or getattr(uploaded_file, "name", "")
+    df, note = normalize_upload(_read_any(uploaded_file, name))
+    st.session_state["_ingest_note"] = note
+    return df
 
 
 
@@ -2233,6 +2244,15 @@ def section_1():
         if not cols:
             st.warning("檔案沒有可用欄位。")
             return
+
+        # 原始工單匯出已自動轉檔時，把做了什麼講清楚（人工整理那一步省掉了）
+        ingest_note = st.session_state.get("_ingest_note") or ""
+        if ingest_note:
+            st.markdown(
+                "<div class='ecoco-card' style='border-left:4px solid #FAE0B8;'>"
+                f"&#128260; {ingest_note}</div>",
+                unsafe_allow_html=True,
+            )
 
         # ── 欄位自動偵測（偵測得到就不必人工指定）──
         det = detect_columns(df_raw)
