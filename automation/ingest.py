@@ -49,6 +49,15 @@ DETAIL_COLUMNS = list(TOPIC_DETAIL_COLUMN.values())
 # 判斷「這是不是原始工單匯出」用的指紋欄位
 _SIGNATURE = ("Id", "Subject", "Created at", "客服主題 [list]")
 
+# 公司挑單規則：只處理網頁表單進來的工單。
+# Line / IG / Mail / Facebook 的來信不走客訴流程，不納入分析。
+VIA_COLUMN = "Via"
+WEB_FORM = "Web form"
+CREATED_COLUMN = "Created at"
+
+# 歷史紀錄裡代表「客訴進件時間」的欄位（接續分析的水位就看這個）
+_DATE_COLUMNS = ("進件日期", "日期")
+
 # 站點欄格式：`es0249【新北】全聯福利中心中和新生店站`
 _SITE_RE = re.compile(r"^\s*(\S+?)\s*【(.*?)】\s*(.*?)\s*$")
 
@@ -104,6 +113,41 @@ def pick_detail(row: pd.Series, topic: str) -> str:
     if len(rest) == 1:
         return rest[0]
     return "／".join(rest)
+
+
+def latest_processed_at(frames) -> pd.Timestamp | None:
+    """歷史紀錄裡最新的一筆進件時間，就是「上次分析到哪裡」的水位。"""
+    best = None
+    for frame in frames or []:
+        for col in _DATE_COLUMNS:
+            if col in getattr(frame, "columns", []):
+                t = pd.to_datetime(frame[col], errors="coerce").max()
+                if pd.notna(t) and (best is None or t > best):
+                    best = t
+                break
+    return best
+
+
+def select_rows(df: pd.DataFrame, since=None,
+                web_form_only: bool = True) -> tuple[pd.DataFrame, dict]:
+    """套用公司的挑單規則，回傳 (挑選後的資料, 各階段筆數)。
+
+    規則由公司提供：只要 Via = Web form，且 Created at 接續上次分析的
+    最後一筆之後（嚴格大於，避免同一筆重複分析）。
+    """
+    stats = {"total": len(df), "web_form": len(df), "new": len(df)}
+    out = df
+
+    if web_form_only and VIA_COLUMN in out.columns:
+        out = out[out[VIA_COLUMN].astype(str).str.strip() == WEB_FORM]
+    stats["web_form"] = len(out)
+
+    if since is not None and CREATED_COLUMN in out.columns:
+        created = pd.to_datetime(out[CREATED_COLUMN], errors="coerce")
+        # 解析不出時間的列保留下來，寧可多看一筆也不要漏掉客訴
+        out = out[created.isna() | (created > pd.Timestamp(since))]
+    stats["new"] = len(out)
+    return out, stats
 
 
 def clean_raw_export(df: pd.DataFrame, drop_empty_content: bool = True) -> pd.DataFrame:
@@ -162,17 +206,27 @@ def drop_annotation_row(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def normalize_upload(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
+def normalize_upload(df: pd.DataFrame, since=None,
+                     web_form_only: bool = True) -> tuple[pd.DataFrame, str]:
     """上傳檔案的統一入口：需要轉換就轉換，回傳 (資料, 說明文字)。
+
+    since 為上次分析到的進件時間，只處理之後的新進件；None 代表不限。
+    挑單規則只套用在原始工單匯出上 —— 已經整理過的檔案是人工挑好的，
+    再篩一次只會把對方刻意放進來的列吃掉。
 
     說明文字為空字串代表沒有做任何轉換。
     """
     if looks_like_raw_export(df):
-        before = len(df)
-        out = clean_raw_export(df)
-        note = (f"偵測到原始工單匯出（{len(df.columns)} 欄），"
-                f"已自動轉換成分析格式：{before} 列 → {len(out)} 列"
-                f"（剔除 {before - len(out)} 列無內容）")
+        picked, stats = select_rows(df, since=since, web_form_only=web_form_only)
+        out = clean_raw_export(picked)
+        steps = [f"原始工單匯出 {stats['total']} 列"]
+        if web_form_only:
+            steps.append(f"Web form {stats['web_form']} 列")
+        if since is not None:
+            steps.append(f"{pd.Timestamp(since):%Y/%m/%d %H:%M} 之後的新進件 {stats['new']} 列")
+        if len(out) != stats["new"]:
+            steps.append(f"剔除 {stats['new'] - len(out)} 列無內容")
+        note = f"已自動轉換成分析格式（{len(df.columns)} 欄 → 13 欄）：" + " → ".join(steps)
         return out, note
 
     trimmed = drop_annotation_row(df)
