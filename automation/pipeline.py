@@ -14,6 +14,7 @@ import pandas as pd
 
 from . import config, sheets
 from .classifier import build_default
+from .ingest import latest_processed_at, normalize_upload
 from .columns import DetectedColumns, detect_columns
 from .core import AnalysisConfig, analyze_dataframe, review_summary
 from .knowledge import build_from_history
@@ -57,20 +58,49 @@ class PipelineResult:
         return "\n".join(lines)
 
 
-def load_frame(path: str | Path) -> pd.DataFrame:
-    """讀取 xlsx / xls / csv（排程模式的本機檔案來源）。"""
-    p = Path(path)
-    suffix = p.suffix.lower()
+def _read_frame(path: Path) -> pd.DataFrame:
+    suffix = path.suffix.lower()
     if suffix in (".xlsx", ".xls"):
-        return pd.read_excel(p)
+        return pd.read_excel(path)
     if suffix in (".csv", ".tsv", ".txt"):
         for enc in ("utf-8-sig", "utf-8", "cp950", "big5"):
             try:
-                return pd.read_csv(p, encoding=enc, sep=None, engine="python")
+                return pd.read_csv(path, encoding=enc, sep=None, engine="python")
             except (UnicodeDecodeError, ValueError):
                 continue
-        return pd.read_csv(p, encoding="utf-8", errors="replace")
-    raise ValueError(f"不支援的檔案格式：{suffix or p.name}")
+        return pd.read_csv(path, encoding="utf-8", errors="replace")
+    raise ValueError(f"不支援的檔案格式：{suffix or path.name}")
+
+
+def history_watermark():
+    """歷史紀錄裡最新的進件時間 —— 下一份原始匯出就從這之後接續。
+
+    本機與雲端都要看：排程跑在伺服器上寫本機檔，人工在網頁上存的則進雲端，
+    只看其中一邊會把另一邊已經分析過的客訴再算一次。
+    讀不到就回 None（代表不設限，整份都分析）。
+    """
+    frames: list[pd.DataFrame] = []
+    try:
+        frames += read_local_history_frames()
+    except Exception:
+        pass
+    try:
+        frames += sheets.read_history_frames()
+    except Exception:
+        pass
+    return latest_processed_at(frames)
+
+
+def load_frame(path: str | Path, since=None,
+               web_form_only: bool = True) -> pd.DataFrame:
+    """讀取 xlsx / xls / csv（排程模式的本機檔案來源）。
+
+    來源若是客服系統的原始工單匯出，會先自動轉成分析格式並套用挑單規則，
+    與網頁上傳走同一套邏輯。
+    """
+    df, _note = normalize_upload(_read_frame(Path(path)),
+                                 since=since, web_form_only=web_form_only)
+    return df
 
 
 def read_local_history_frames(folder: Optional[str | Path] = None,

@@ -38,6 +38,7 @@ st.set_page_config(page_title="ECOCO 客訴分析平台", page_icon="📊", layo
 # ── 自動化核心（automation/ 套件；與無介面排程 automation/cli.py 共用同一套邏輯）──
 from automation import config as auto_config
 from automation.classifier import build_default as build_classifier
+from automation.ingest import normalize_upload
 from automation.columns import detect_columns
 from automation.core import (
     META_COLUMNS,
@@ -550,9 +551,7 @@ def parse_pdf_to_df(file_obj) -> pd.DataFrame:
     return pd.DataFrame(rows if rows else [{"content": ""}])
 
 
-def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
-    """Load file from a Streamlit UploadedFile or BytesIO. Pass filename when using BytesIO."""
-    name = filename or getattr(uploaded_file, "name", "")
+def _read_any(uploaded_file, name: str) -> pd.DataFrame:
     suffix = Path(name).suffix.lower()
     if suffix in [".xlsx", ".xls"]:
         return pd.read_excel(uploaded_file)
@@ -568,6 +567,38 @@ def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
     if suffix == ".pdf":
         return parse_pdf_to_df(uploaded_file)
     raise ValueError(f"僅支援 excel / csv / pdf，收到：{suffix or name}")
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_history_watermark(version: str = ""):
+    """上次分析到的最後一筆進件時間（本機＋雲端歷史取最大值）。
+
+    version 只是 cache key：存檔後傳入新值即可重新計算。
+    """
+    try:
+        from automation.pipeline import history_watermark
+
+        return history_watermark()
+    except Exception:
+        return None
+
+
+def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
+    """Load file from a Streamlit UploadedFile or BytesIO. Pass filename when using BytesIO.
+
+    上傳的若是客服系統的原始工單匯出（70 幾欄的工單格式），會自動轉成
+    13 欄的分析格式並套用公司的挑單規則：只要 Web form，且接續上次分析
+    的最後一筆之後。勾「處理整份檔案」可以略過挑單規則重跑全部。
+    """
+    name = filename or getattr(uploaded_file, "name", "")
+    whole = bool(st.session_state.get("ingest_whole_file"))
+    since = None if whole else get_history_watermark(
+        st.session_state.get("_knowledge_version", ""))
+    df, note = normalize_upload(_read_any(uploaded_file, name),
+                                since=since, web_form_only=not whole)
+    st.session_state["_ingest_note"] = note
+    st.session_state["_ingest_since"] = since
+    return df
 
 
 
@@ -2196,6 +2227,18 @@ def section_1():
         )
 
     uploaded = st.file_uploader("上傳新檔案", type=["xlsx", "xls", "csv", "pdf"], key="uploader")
+
+    # 挑單規則的開關要畫在讀檔之前 —— load_input_file 會讀這個值決定要不要
+    # 只取 Web form、以及要不要從上次分析的時間往後接。
+    _wm = get_history_watermark(st.session_state.get("_knowledge_version", ""))
+    st.checkbox(
+        "處理整份檔案（不套用挑單規則）",
+        key="ingest_whole_file",
+        help=("預設只分析客服系統原始匯出裡「Via = Web form」且進件時間"
+              + (f"晚於上次分析（{_wm:%Y/%m/%d %H:%M}）" if _wm is not None else "未受限")
+              + "的新客訴，避免重複分析。勾選後整份檔案都會重跑。"),
+    )
+
     # Persist file bytes across menu switches
     if uploaded is not None:
         if uploaded.name != st.session_state.get("_uploaded_name"):
@@ -2232,6 +2275,25 @@ def section_1():
         cols = list(df_raw.columns)
         if not cols:
             st.warning("檔案沒有可用欄位。")
+            return
+
+        # 原始工單匯出已自動轉檔時，把做了什麼講清楚（人工整理那一步省掉了）
+        ingest_note = st.session_state.get("_ingest_note") or ""
+        if ingest_note:
+            st.markdown(
+                "<div class='ecoco-card' style='border-left:4px solid #FAE0B8;'>"
+                f"&#128260; {ingest_note}</div>",
+                unsafe_allow_html=True,
+            )
+
+        # 挑單規則把整份檔案篩光＝這份匯出沒有新客訴，不是錯誤
+        if df_raw.empty:
+            since = st.session_state.get("_ingest_since")
+            st.info(
+                "這份檔案沒有需要分析的新客訴"
+                + (f"（上次已分析到 {since:%Y/%m/%d %H:%M}）。" if since is not None else "。")
+                + "要重跑整份檔案，請勾選上方的「處理整份檔案」。"
+            )
             return
 
         # ── 欄位自動偵測（偵測得到就不必人工指定）──
