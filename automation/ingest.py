@@ -30,9 +30,13 @@ DIRECT_MAP = {
     "Id": "進件編號",
     "聯繫電話  [txt]": "帳號手機",
     "使用時間 [txt]": "日期時間",
-    "機台類型 [list]": "機台類型",
     "客服主題 [list]": "問題類型",
 }
+
+# 機台類型要併兩欄：主欄說是哪一種機台（收瓶機／電池機／方舟站），
+# 方舟站另有子欄說它收什麼（寶特瓶），只取主欄會把這個資訊丟掉。
+MACHINE_COLUMN = "機台類型 [list]"
+MACHINE_SUB_COLUMN = "機台類型(方舟站) [txt]"
 
 # 問題類型 → 該類型的細項欄。工單系統每種主題各有一欄細項，
 # 只有與「客服主題」相符的那一欄才是這張單真正的細項。
@@ -159,6 +163,16 @@ def clean_raw_export(df: pd.DataFrame, drop_empty_content: bool = True) -> pd.Da
 
     for src, tgt in DIRECT_MAP.items():
         out[tgt] = df[src].map(_clean) if src in df.columns else ""
+
+    machines = []
+    for _idx, row in df.iterrows():
+        main = _val(row, MACHINE_COLUMN)
+        sub = _val(row, MACHINE_SUB_COLUMN)
+        if main and sub:
+            machines.append(f"{main}({sub})")
+        else:
+            machines.append(main or sub)
+    out["機台類型"] = machines
 
     sites = df["站點名稱 [list]"] if "站點名稱 [list]" in df.columns else pd.Series([""] * len(df), index=df.index)
     parsed = sites.map(split_site)
