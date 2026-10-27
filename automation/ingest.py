@@ -38,17 +38,45 @@ DIRECT_MAP = {
 # 方舟站另有子欄說它收什麼（寶特瓶），只取主欄會把這個資訊丟掉。
 MACHINE_COLUMN = "機台類型 [list]"
 MACHINE_SUB_COLUMN = "機台類型(方舟站) [txt]"
+ARK_STATION = "方舟站"
+
+# 第一層分類的各種寫法 → 統一後的問題類型。
+# 同一個分類在 CSV 匯出是「機台需要協助(滿袋無需回報)」、JSON 匯出是代碼
+# 「機台需要協助_滿袋無需回報_」，公司統一只要「機台需要協助」。
+TOPIC_CANONICAL = {
+    "機台需要協助_滿袋無需回報_": "機台需要協助",
+    "機台需要協助(滿袋無需回報)": "機台需要協助",
+    "機台需要協助（滿袋無需回報）": "機台需要協助",
+    "顧客關係_": "顧客關係",
+    "回收點數問題_": "回收點數問題",
+    "優惠券兌換問題_": "優惠券兌換問題",
+    "app_使用問題_": "APP 使用問題",
+    "註冊帳號問題_": "註冊帳號問題",
+}
 
 # 問題類型 → 該類型的細項欄。工單系統每種主題各有一欄細項，
 # 只有與「客服主題」相符的那一欄才是這張單真正的細項。
 TOPIC_DETAIL_COLUMN = {
-    "機台需要協助(滿袋無需回報)": "機台問題類型 [list]",
+    "機台需要協助": "機台問題類型 [list]",
     "回收點數問題": "回收點數問題類型 [list]",
     "註冊帳號問題": "APP帳號設定問題類型 [list]",
     "優惠券兌換問題": "優惠券問題類型 [list]",
     "APP 使用問題": "APP使用問題類型 [list]",
     "顧客關係": "顧客關係類型 [list]",
 }
+
+
+def normalize_topic(value) -> str:
+    """第一層分類的任何寫法 → 統一的問題類型。
+
+    沒收錄的寫法只去掉代碼尾巴的底線，不自作主張改內容。
+    """
+    v = str(value).strip()
+    if v.lower() in _BLANK:
+        return ""
+    if v in TOPIC_CANONICAL:
+        return TOPIC_CANONICAL[v]
+    return v.rstrip("_")
 DETAIL_COLUMNS = list(TOPIC_DETAIL_COLUMN.values())
 
 # 判斷「這是不是原始工單匯出」用的指紋欄位
@@ -110,29 +138,8 @@ CHANNEL_TO_VIA = {
         "Sunshine Conversations Facebook Messenger",
 }
 
-# 第一層分類在 JSON 裡是代碼形式（機台需要協助_滿袋無需回報_），
-# 轉回 CSV 匯出顯示的原值，兩條路徑才會產生一樣的問題類型。
-TOPIC_SLUGS = {
-    "機台需要協助_滿袋無需回報_": "機台需要協助(滿袋無需回報)",
-    "顧客關係_": "顧客關係",
-    "回收點數問題_": "回收點數問題",
-    "優惠券兌換問題_": "優惠券兌換問題",
-    "app_使用問題_": "APP 使用問題",
-    "註冊帳號問題_": "註冊帳號問題",
-}
-
 # 工單時間是 UTC，客服看的與歷史紀錄用的都是台灣時間
 TW_OFFSET = pd.Timedelta(hours=8)
-
-
-def unslug_topic(value: str) -> str:
-    """第一層分類代碼 → 顯示原值。沒收錄的代碼只去掉尾巴的底線。"""
-    v = _clean(value)
-    if not v:
-        return ""
-    if v in TOPIC_SLUGS:
-        return TOPIC_SLUGS[v]
-    return v.rstrip("_")
 
 
 def parse_zendesk_json(raw: str | bytes) -> list[dict]:
@@ -188,7 +195,6 @@ def zendesk_to_frame(tickets) -> pd.DataFrame:
             name = ZENDESK_FIELDS.get(cf.get("id"))
             if name:
                 row[name] = _clean(cf.get("value"))
-        row["客服主題 [list]"] = unslug_topic(row.get("客服主題 [list]", ""))
         # 使用日期與使用時間在 JSON 是分開的兩欄，併成 CSV 的「使用時間」
         date, time = row.pop("使用日期", ""), row.get("使用時間 [txt]", "")
         row["使用時間 [txt]"] = f"{date} {time}".strip() if date else time
@@ -281,6 +287,7 @@ def clean_raw_export(df: pd.DataFrame, drop_empty_content: bool = True) -> pd.Da
 
     for src, tgt in DIRECT_MAP.items():
         out[tgt] = df[src].map(_clean) if src in df.columns else ""
+    out["問題類型"] = out["問題類型"].map(normalize_topic)
 
     # 歷史紀錄裡的進件編號一律是 Z + 工單號（5354 筆全部如此），
     # 少了這個前綴，同一張工單會在歷史裡變成兩筆不同的客訴。
@@ -291,10 +298,9 @@ def clean_raw_export(df: pd.DataFrame, drop_empty_content: bool = True) -> pd.Da
     for _idx, row in df.iterrows():
         main = _val(row, MACHINE_COLUMN)
         sub = _val(row, MACHINE_SUB_COLUMN)
-        if main and sub:
-            machines.append(f"{main}({sub})")
-        else:
-            machines.append(main or sub)
+        # 子欄只有方舟站才有意義（說明收的是哪一種回收物）；其他機台填的是
+        # 「第2台收瓶機」這類自由描述，併進來只會讓機台類型沒辦法分組。
+        machines.append(f"{main}({sub})" if main == ARK_STATION and sub else main)
     out["機台類型"] = machines
 
     sites = df["站點名稱 [list]"] if "站點名稱 [list]" in df.columns else pd.Series([""] * len(df), index=df.index)
