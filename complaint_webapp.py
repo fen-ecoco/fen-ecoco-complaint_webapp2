@@ -38,7 +38,7 @@ st.set_page_config(page_title="ECOCO 客訴分析平台", page_icon="📊", layo
 # ── 自動化核心（automation/ 套件；與無介面排程 automation/cli.py 共用同一套邏輯）──
 from automation import config as auto_config
 from automation.classifier import build_default as build_classifier
-from automation.ingest import normalize_upload
+from automation.ingest import normalize_upload, read_zendesk_json
 from automation.columns import detect_columns
 from automation.core import (
     META_COLUMNS,
@@ -564,9 +564,12 @@ def _read_any(uploaded_file, name: str) -> pd.DataFrame:
                 continue
         uploaded_file.seek(0)
         return pd.read_csv(uploaded_file, encoding="utf-8", errors="replace")
+    if suffix == ".json":
+        uploaded_file.seek(0)
+        return read_zendesk_json(uploaded_file.read())
     if suffix == ".pdf":
         return parse_pdf_to_df(uploaded_file)
-    raise ValueError(f"僅支援 excel / csv / pdf，收到：{suffix or name}")
+    raise ValueError(f"僅支援 excel / csv / json / pdf，收到：{suffix or name}")
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -2213,7 +2216,7 @@ def render_knowledge_panel() -> None:
 
 def section_1():
     page_header("功能一：檔案上傳與分析區",
-                "支援上傳 excel / csv / pdf，分析並產出【問題類型、問題細項】。")
+                "支援上傳 excel / csv / json / pdf，分析並產出【問題類型、問題細項】。")
     render_knowledge_panel()
 
     # File info badge — no long text, just a compact pill with truncated name
@@ -2226,7 +2229,7 @@ def section_1():
             unsafe_allow_html=True
         )
 
-    uploaded = st.file_uploader("上傳新檔案", type=["xlsx", "xls", "csv", "pdf"], key="uploader")
+    uploaded = st.file_uploader("上傳新檔案", type=["xlsx", "xls", "csv", "json", "pdf"], key="uploader")
 
     # 挑單規則的開關要畫在讀檔之前 —— load_input_file 會讀這個值決定要不要
     # 只取 Web form、以及要不要從上次分析的時間往後接。

@@ -14,7 +14,7 @@ import pandas as pd
 
 from . import config, sheets
 from .classifier import build_default
-from .ingest import latest_processed_at, normalize_upload
+from .ingest import latest_processed_at, normalize_upload, read_zendesk_json
 from .columns import DetectedColumns, detect_columns
 from .core import AnalysisConfig, analyze_dataframe, review_summary
 from .knowledge import build_from_history
@@ -69,6 +69,8 @@ def _read_frame(path: Path) -> pd.DataFrame:
             except (UnicodeDecodeError, ValueError):
                 continue
         return pd.read_csv(path, encoding="utf-8", errors="replace")
+    if suffix == ".json":
+        return read_zendesk_json(path.read_bytes())
     raise ValueError(f"不支援的檔案格式：{suffix or path.name}")
 
 
