@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import pandas as pd
@@ -77,6 +78,123 @@ def _clean(value) -> str:
 def _val(row: pd.Series, col: str) -> str:
     """取某一欄的值並正規化；沒有該欄就回空字串。"""
     return _clean(row[col]) if col in row.index else ""
+
+
+# ── Zendesk JSON 匯出 ────────────────────────────────────────
+# 工單平台也能直接匯出 JSON（NDJSON，一行一張工單）。欄位是數字 id，
+# 這份對照表是拿 137 筆同時出現在 CSV 與 JSON 的工單逐欄比對出來的。
+ZENDESK_FIELDS = {
+    41243924547865: "聯繫電話  [txt]",
+    41492126053913: "商家名稱與門市 [txt]",
+    41492314326681: "使用日期",            # CSV 匯出沒有這一欄，JSON 才有
+    41492327655449: "使用時間 [txt]",
+    41492532308761: "站點名稱 [list]",
+    41492601887897: "機台類型 [list]",
+    41492613173401: "機台類型(方舟站) [txt]",
+    49277052627993: "客服主題 [list]",
+    49273684609305: "機台問題類型 [list]",
+    49274860688921: "回收點數問題類型 [list]",
+    49275362537881: "APP帳號設定問題類型 [list]",
+    49275451718553: "優惠券問題類型 [list]",
+    49275558878617: "APP使用問題類型 [list]",
+    49275607775641: "顧客關係類型 [list]",
+}
+
+# via.channel → CSV 匯出的 Via 值（兩種匯出要篩出同一批工單）
+CHANNEL_TO_VIA = {
+    "web": "Web form",
+    "line": "Line",
+    "email": "Mail",
+    "instagram_dm": "Instagram DM",
+    "sunshine_conversations_facebook_messenger":
+        "Sunshine Conversations Facebook Messenger",
+}
+
+# 第一層分類在 JSON 裡是代碼形式（機台需要協助_滿袋無需回報_），
+# 轉回 CSV 匯出顯示的原值，兩條路徑才會產生一樣的問題類型。
+TOPIC_SLUGS = {
+    "機台需要協助_滿袋無需回報_": "機台需要協助(滿袋無需回報)",
+    "顧客關係_": "顧客關係",
+    "回收點數問題_": "回收點數問題",
+    "優惠券兌換問題_": "優惠券兌換問題",
+    "app_使用問題_": "APP 使用問題",
+    "註冊帳號問題_": "註冊帳號問題",
+}
+
+# 工單時間是 UTC，客服看的與歷史紀錄用的都是台灣時間
+TW_OFFSET = pd.Timedelta(hours=8)
+
+
+def unslug_topic(value: str) -> str:
+    """第一層分類代碼 → 顯示原值。沒收錄的代碼只去掉尾巴的底線。"""
+    v = _clean(value)
+    if not v:
+        return ""
+    if v in TOPIC_SLUGS:
+        return TOPIC_SLUGS[v]
+    return v.rstrip("_")
+
+
+def parse_zendesk_json(raw: str | bytes) -> list[dict]:
+    """讀 Zendesk 匯出：整份是 JSON 陣列，或 NDJSON（一行一張工單）。"""
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8-sig", errors="replace")
+    raw = raw.lstrip("﻿").strip()
+    if not raw:
+        return []
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError:
+        out = []
+        for line in raw.splitlines():
+            line = line.strip().rstrip(",")
+            if line in ("", "[", "]"):
+                continue
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return out
+    if isinstance(doc, dict):
+        for key in ("tickets", "results", "data"):
+            if isinstance(doc.get(key), list):
+                return doc[key]
+        return [doc]
+    return doc if isinstance(doc, list) else []
+
+
+def looks_like_zendesk_json(tickets) -> bool:
+    return bool(tickets) and isinstance(tickets[0], dict) and         {"id", "subject", "created_at"} <= set(tickets[0])
+
+
+def zendesk_to_frame(tickets) -> pd.DataFrame:
+    """把工單 JSON 攤平成與 CSV 匯出同名的欄位，之後共用同一套清洗邏輯。"""
+    rows = []
+    for t in tickets:
+        row = {
+            "Id": t.get("id"),
+            "Subject": _clean(t.get("subject")),
+            # JSON 多了工單內文，CSV 匯出沒有這一欄 —— 它才是用戶真正寫的內容
+            "Description": _clean(t.get("description")),
+            "Status": _clean(t.get("status")),
+            "Via": CHANNEL_TO_VIA.get(
+                ((t.get("via") or {}).get("channel") or ""),
+                _clean((t.get("via") or {}).get("channel")),
+            ),
+        }
+        created = pd.to_datetime(t.get("created_at"), errors="coerce", utc=True)
+        row[CREATED_COLUMN] = "" if pd.isna(created) else             (created.tz_localize(None) + TW_OFFSET).strftime("%Y-%m-%d %H:%M:%S")
+        for cf in t.get("custom_fields") or []:
+            name = ZENDESK_FIELDS.get(cf.get("id"))
+            if name:
+                row[name] = _clean(cf.get("value"))
+        row["客服主題 [list]"] = unslug_topic(row.get("客服主題 [list]", ""))
+        # 使用日期與使用時間在 JSON 是分開的兩欄，併成 CSV 的「使用時間」
+        date, time = row.pop("使用日期", ""), row.get("使用時間 [txt]", "")
+        row["使用時間 [txt]"] = f"{date} {time}".strip() if date else time
+        rows.append(row)
+    cols = ["Id", "Subject", "Description", "Status", "Via", CREATED_COLUMN] +         [c for c in dict.fromkeys(ZENDESK_FIELDS.values()) if c != "使用日期"]
+    return pd.DataFrame(rows).reindex(columns=cols).fillna("")
 
 
 def looks_like_raw_export(df: pd.DataFrame) -> bool:
@@ -164,6 +282,11 @@ def clean_raw_export(df: pd.DataFrame, drop_empty_content: bool = True) -> pd.Da
     for src, tgt in DIRECT_MAP.items():
         out[tgt] = df[src].map(_clean) if src in df.columns else ""
 
+    # 歷史紀錄裡的進件編號一律是 Z + 工單號（5354 筆全部如此），
+    # 少了這個前綴，同一張工單會在歷史裡變成兩筆不同的客訴。
+    out["進件編號"] = out["進件編號"].map(
+        lambda v: v if not v or v[:1].isalpha() else f"Z{v}")
+
     machines = []
     for _idx, row in df.iterrows():
         main = _val(row, MACHINE_COLUMN)
@@ -180,23 +303,30 @@ def clean_raw_export(df: pd.DataFrame, drop_empty_content: bool = True) -> pd.Da
     out["站點區域"] = [p[1] for p in parsed]
     out["站點名稱"] = [p[2] for p in parsed]
 
-    # 用戶內容＝工單標題＋商家門市。門市名稱是客訴定位的關鍵字
-    #（「全聯台中中清店」），併進內容才查得到。
-    contents = []
-    for idx, row in df.iterrows():
-        text = _val(row, "Subject")
+    # JSON 匯出另有工單內文（Description），那才是用戶真正寫的內容，
+    # 這時主旨與內容各歸各位；CSV 匯出沒有這一欄，只能把標題當內容用。
+    split_subject = "Description" in df.columns
+    subjects, contents = [], []
+    for _idx, row in df.iterrows():
+        title = _val(row, "Subject")
         shop = _val(row, "商家名稱與門市 [txt]")
-        # 工單另有「聯絡訊息」長文欄位，有填就接在後面
-        msg = _val(row, "聯絡訊息 [txt]")
-        joined = text + shop
-        if msg and msg not in joined:
-            joined = f"{joined} {msg}".strip()
-        contents.append(joined)
+        body = _val(row, "Description") or _val(row, "聯絡訊息 [txt]")
+        if split_subject:
+            subjects.append(title)
+            # 門市名稱是客訴定位的關鍵字（「全聯台中中清店」），併進內容才查得到
+            text = body or title
+            contents.append(f"{text}{shop}" if shop and shop not in text else text)
+        else:
+            subjects.append("")
+            joined = title + shop
+            if body and body not in joined:
+                joined = f"{joined} {body}".strip()
+            contents.append(joined)
+    out["問題主旨"] = subjects
     out["用戶內容"] = contents
 
-    # 主題與問題主旨：原始匯出沒有對應欄位，留空給人工或分析後回填
+    # 主題：來源沒有對應欄位，一律留空
     out["主題"] = ""
-    out["問題主旨"] = ""
 
     out["問題細項"] = [pick_detail(row, out.at[idx, "問題類型"]) for idx, row in df.iterrows()]
 
@@ -218,6 +348,14 @@ def drop_annotation_row(df: pd.DataFrame) -> pd.DataFrame:
     if first in ("Id", "進件編號") or (first and not any(ch.isdigit() for ch in first)):
         return df.iloc[1:].reset_index(drop=True)
     return df
+
+
+def read_zendesk_json(raw: str | bytes) -> pd.DataFrame:
+    """JSON 匯出 → 與 CSV 匯出同名欄位的 DataFrame。內容不是工單就回空表。"""
+    tickets = parse_zendesk_json(raw)
+    if not looks_like_zendesk_json(tickets):
+        raise ValueError("這份 JSON 不是客服系統的工單匯出")
+    return zendesk_to_frame(tickets)
 
 
 def normalize_upload(df: pd.DataFrame, since=None,
