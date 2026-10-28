@@ -3,7 +3,7 @@ import json
 import re
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -586,6 +586,55 @@ def get_history_watermark(version: str = ""):
         return None
 
 
+INGEST_MODE_RULE = "僅套用挑單規則"
+INGEST_MODE_WHOLE = "處理整份檔案（不套用挑單規則）"
+
+
+def render_ingest_controls() -> None:
+    """上傳區的處理方式選擇。必須畫在讀檔之前 —— load_input_file 會讀這些值。
+
+    起始時間做成可挑選的欄位（而不是每次重算歷史水位）有兩個理由：
+    一是人工常常要回頭補跑某個時間之後的客訴；二是水位會在存檔後往前跳，
+    同一份檔案在下一次重跑時就會被篩成 0 列，畫面上的表格整個不見。
+    """
+    wm = get_history_watermark(st.session_state.get("_knowledge_version", ""))
+    st.radio(
+        "上傳檔案的處理方式",
+        [INGEST_MODE_RULE, INGEST_MODE_WHOLE],
+        key="ingest_mode",
+        horizontal=True,
+        help="挑單規則＝只取客服系統原始匯出裡「Via = Web form」且進件時間晚於"
+             "指定時間的新客訴。整份檔案＝不篩選，全部重跑。",
+    )
+    if st.session_state.get("ingest_mode", INGEST_MODE_RULE) != INGEST_MODE_RULE:
+        return
+
+    default = wm if wm is not None else (datetime.now() - timedelta(days=7))
+    c1, c2, c3 = st.columns([1.4, 1, 2.2])
+    with c1:
+        st.date_input("從這個日期之後", value=default.date(), key="ingest_since_date",
+                      format="YYYY/MM/DD")
+    with c2:
+        st.time_input("時間", value=default.time(), key="ingest_since_time", step=60)
+    with c3:
+        if wm is not None:
+            st.caption(f"上次分析到 {wm:%Y/%m/%d %H:%M}（預設值）。"
+                       "改成更早的時間就能回頭補跑。")
+        else:
+            st.caption("查不到歷史紀錄，預設抓最近 7 天。")
+
+
+def ingest_since():
+    """使用者挑的起始時間；選「處理整份檔案」時回 None。"""
+    if st.session_state.get("ingest_mode", INGEST_MODE_RULE) != INGEST_MODE_RULE:
+        return None
+    d = st.session_state.get("ingest_since_date")
+    t = st.session_state.get("ingest_since_time")
+    if d is None:
+        return get_history_watermark(st.session_state.get("_knowledge_version", ""))
+    return pd.Timestamp(datetime.combine(d, t or time(0, 0)))
+
+
 def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
     """Load file from a Streamlit UploadedFile or BytesIO. Pass filename when using BytesIO.
 
@@ -594,9 +643,8 @@ def load_input_file(uploaded_file, filename: str = "") -> pd.DataFrame:
     的最後一筆之後。勾「處理整份檔案」可以略過挑單規則重跑全部。
     """
     name = filename or getattr(uploaded_file, "name", "")
-    whole = bool(st.session_state.get("ingest_whole_file"))
-    since = None if whole else get_history_watermark(
-        st.session_state.get("_knowledge_version", ""))
+    whole = st.session_state.get("ingest_mode", INGEST_MODE_RULE) != INGEST_MODE_RULE
+    since = ingest_since()
     df, note = normalize_upload(_read_any(uploaded_file, name),
                                 since=since, web_form_only=not whole)
     st.session_state["_ingest_note"] = note
@@ -2231,16 +2279,7 @@ def section_1():
 
     uploaded = st.file_uploader("上傳新檔案", type=["xlsx", "xls", "csv", "json", "pdf"], key="uploader")
 
-    # 挑單規則的開關要畫在讀檔之前 —— load_input_file 會讀這個值決定要不要
-    # 只取 Web form、以及要不要從上次分析的時間往後接。
-    _wm = get_history_watermark(st.session_state.get("_knowledge_version", ""))
-    st.checkbox(
-        "處理整份檔案（不套用挑單規則）",
-        key="ingest_whole_file",
-        help=("預設只分析客服系統原始匯出裡「Via = Web form」且進件時間"
-              + (f"晚於上次分析（{_wm:%Y/%m/%d %H:%M}）" if _wm is not None else "未受限")
-              + "的新客訴，避免重複分析。勾選後整份檔案都會重跑。"),
-    )
+    render_ingest_controls()
 
     # Persist file bytes across menu switches
     if uploaded is not None:
@@ -2274,29 +2313,39 @@ def section_1():
         df_raw = None
         uploaded_name = st.session_state.get("source_name", "")
 
+    # 原始工單匯出已自動轉檔時，把做了什麼講清楚（人工整理那一步省掉了）
+    ingest_note = st.session_state.get("_ingest_note") or ""
+    if df_raw is not None and ingest_note:
+        st.markdown(
+            "<div class='ecoco-card' style='border-left:4px solid #FAE0B8;'>"
+            f"&#128260; {ingest_note}</div>",
+            unsafe_allow_html=True,
+        )
+
+    # 挑單規則把整份檔案篩光＝這份匯出沒有新客訴，不是錯誤。
+    #
+    # 這裡不能直接 return：存檔會把歷史水位往前推，之後任何一次重跑
+    #（例如切換「只看待複核」）都會把同一份檔案篩成 0 列，整張可編輯標記表
+    # 連同下載區就跟著消失，只剩上傳框。已經有分析結果就改走「顯示既有結果」
+    # 那條路，只在上方提示這份檔案沒有更新的客訴。
+    if df_raw is not None and df_raw.empty:
+        since = st.session_state.get("_ingest_since")
+        msg = ("這份檔案沒有需要分析的新客訴"
+               + (f"（起始時間 {since:%Y/%m/%d %H:%M} 之後沒有資料）。"
+                  if since is not None else "。")
+               + "要重跑整份檔案，請把上方的處理方式改成「處理整份檔案」，"
+                 "或把起始時間往前調。")
+        if "analysis_df" in st.session_state:
+            st.info(msg + "　以下是目前已分析的結果。")
+            df_raw = None
+        else:
+            st.info(msg)
+            return
+
     if df_raw is not None:
         cols = list(df_raw.columns)
         if not cols:
             st.warning("檔案沒有可用欄位。")
-            return
-
-        # 原始工單匯出已自動轉檔時，把做了什麼講清楚（人工整理那一步省掉了）
-        ingest_note = st.session_state.get("_ingest_note") or ""
-        if ingest_note:
-            st.markdown(
-                "<div class='ecoco-card' style='border-left:4px solid #FAE0B8;'>"
-                f"&#128260; {ingest_note}</div>",
-                unsafe_allow_html=True,
-            )
-
-        # 挑單規則把整份檔案篩光＝這份匯出沒有新客訴，不是錯誤
-        if df_raw.empty:
-            since = st.session_state.get("_ingest_since")
-            st.info(
-                "這份檔案沒有需要分析的新客訴"
-                + (f"（上次已分析到 {since:%Y/%m/%d %H:%M}）。" if since is not None else "。")
-                + "要重跑整份檔案，請勾選上方的「處理整份檔案」。"
-            )
             return
 
         # ── 欄位自動偵測（偵測得到就不必人工指定）──
