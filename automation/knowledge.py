@@ -30,6 +30,16 @@ from .taxonomy import FALLBACK_DETAIL, FALLBACK_TYPE, legalize_pair
 SUBJECT_HINTS = ("主旨", "標題", "案由", "subject", "title")
 CONTENT_HINTS = ("內容", "描述", "說明", "content", "detail", "description")
 CONFIRMED_LAYERS = {"人工確認", "來源檔既有"}
+DATE_HINTS = ("進件日期", "受理日期", "客訴日期", "日期", "date")
+
+# 標記字彙會隨公司調整分類法而改變（2026-09 起同一種故障從「機台故障/無法運作」
+# 改寫成「機台當機/無回應」等細分名稱）。舊資料筆數遠多於新資料，不加權的話
+# 知識庫會一直回答已經不用的舊名稱。用半衰期把舊標記的票數逐步打折：
+# 新字彙只要累積到一定量就能壓過舊字彙，但舊資料仍保有覆蓋率上的貢獻。
+# 半衰期 30 天、下限 0.15：三個時間切分上一起掃出來的。下限再低（0.05）會把
+# 舊資料壓得太扁，類型準確率掉 1 個百分點；再高（0.3）新字彙又翻不了身。
+RECENCY_HALF_LIFE_DAYS = 30.0
+RECENCY_FLOOR = 0.15
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 STOPWORDS = {
@@ -82,6 +92,7 @@ class KnowledgeBase:
     builtin_precision: dict[tuple[str, str], float] = field(default_factory=dict)
     examples: list[tuple[str, str, str]] = field(default_factory=list)   # (text, topic, detail)
     example_tokens: list[set[str]] = field(default_factory=list)
+    example_weights: list[float] = field(default_factory=list)   # 時間新近度權重
     doc_freq: dict[str, int] = field(default_factory=dict)
     postings: dict[str, list[int]] = field(default_factory=dict)   # token → 範例編號（倒排索引）
     knn_calibration: dict[str, float] = field(default_factory=dict)  # 票數區間 → 實測精確率
@@ -120,6 +131,12 @@ class KnowledgeBase:
         return rule.topic, rule.detail, confidence, why
 
     # ── L2 ────────────────────────────────────────────────
+    def _weight(self, idx: int) -> float:
+        """範例的時間新近度權重；舊知識庫沒有這個欄位時一律當 1。"""
+        if idx < len(self.example_weights):
+            return self.example_weights[idx]
+        return 1.0
+
     def _scored_neighbours(self, text: str, k: int) -> list[tuple[float, int]]:
         """用倒排索引 + IDF 加權找最相似的歷史範例，回傳 [(相似度, 範例編號)]。"""
         if not self.examples:
@@ -152,7 +169,7 @@ class KnowledgeBase:
         """最相似的歷史標註（供 LLM few-shot 使用）。"""
         return [self.examples[i] for _, i in self._scored_neighbours(text, k)]
 
-    def knn_predict(self, text: str, k: int = 15) -> Optional[tuple[str, str, float, str]]:
+    def knn_predict(self, text: str, k: int = 10) -> Optional[tuple[str, str, float, str]]:
         """相似案例投票分類（不需要 API，完全在本機跑）。
 
         取最相似的 k 筆歷史標註，用相似度當權重投票；
@@ -166,6 +183,7 @@ class KnowledgeBase:
         total = 0.0
         for sim, i in neighbours:
             _txt, topic, detail = self.examples[i]
+            sim *= self._weight(i)
             votes[(topic, detail)] = votes.get((topic, detail), 0.0) + sim
             total += sim
         if total <= 0:
@@ -177,7 +195,7 @@ class KnowledgeBase:
                f"（實測準確率 {confidence:.0%}）")
         return topic, detail, confidence, why
 
-    def knn_topic_predict(self, text: str, k: int = 15) -> Optional[tuple[str, float, str]]:
+    def knn_topic_predict(self, text: str, k: int = 10) -> Optional[tuple[str, float, str]]:
         """只判「問題類型」的相似案例投票。
 
         類型只有 6 種、細項有 45 種，所以類型的把握度通常遠高於細項。
@@ -191,6 +209,7 @@ class KnowledgeBase:
         total = 0.0
         for sim, i in neighbours:
             _txt, topic, _detail = self.examples[i]
+            # 類型投票不做時間加權：改分類法時變的是細項名稱，類型名稱沒動。
             votes[topic] = votes.get(topic, 0.0) + sim
             total += sim
         if total <= 0:
@@ -251,8 +270,13 @@ def _iter_labeled_rows(frames: Iterable[pd.DataFrame]):
         layer_col = "_source_layer" if "_source_layer" in df.columns else None
         ai_col = "_ai_filled" if "_ai_filled" in df.columns else None
         dept_col = "部門" if "部門" in df.columns else None
+        date_col = _pick_col(df, DATE_HINTS)
+        # 轉成 list 用位置取值：歷史檔的 index 不保證唯一，
+        # 用 label 取會拿回 Series 而不是單一時間，整個知識庫就建不起來。
+        dates = (list(pd.to_datetime(df[date_col], errors="coerce"))
+                 if date_col is not None else None)
 
-        for _, row in df.iterrows():
+        for pos, (_idx_label, row) in enumerate(df.iterrows()):
             # 只學合乎現行分類法的標記，不合的舊資料直接略過
             legal = legalize_pair(str(row.get("問題類型", "")), str(row.get("問題細項", "")))
             if legal is None:
@@ -270,7 +294,12 @@ def _iter_labeled_rows(frames: Iterable[pd.DataFrame]):
             elif ai_col is not None:
                 flag = str(row.get(ai_col, "")).strip().lower()
                 confirmed = flag in ("false", "0", "", "nan")
-            yield text, topic, detail, dept, confirmed
+            when = None
+            if dates is not None and pos < len(dates):
+                raw = dates[pos]
+                if not pd.isna(raw):
+                    when = raw
+            yield text, topic, detail, dept, confirmed, when
 
 
 def _mine_rules(
@@ -427,13 +456,17 @@ def _dedupe_rows(rows: Iterable[tuple]) -> list[tuple]:
     pos: dict[tuple, int] = {}
     out: list[tuple] = []
     for row in rows:
-        text, topic, detail, dept, confirmed = row
+        text, topic, detail, dept, confirmed, when = row
         key = (normalize_text(text), topic, detail, dept)
         i = pos.get(key)
         if i is not None:
-            # 重複列裡只要有一筆是人工確認的，就保留確認狀態
-            if confirmed and not out[i][4]:
-                out[i] = out[i][:4] + (True,)
+            prev = out[i]
+            # 重複列裡只要有一筆是人工確認的，就保留確認狀態；
+            # 日期取最新的那一筆，時間加權才不會被雲端／本機的舊副本拉低
+            newest = prev[5]
+            if when is not None and (newest is None or when > newest):
+                newest = when
+            out[i] = prev[:4] + (prev[4] or confirmed, newest)
             continue
         pos[key] = len(out)
         out.append(row)
@@ -443,7 +476,7 @@ def _dedupe_rows(rows: Iterable[tuple]) -> list[tuple]:
 def build_from_history(
     frames: Iterable[pd.DataFrame],
     min_support: Optional[int] = None,
-    max_examples: int = 4000,
+    max_examples: int = 12000,
 ) -> Optional[KnowledgeBase]:
     """從歷史 DataFrame 清單建立知識庫；資料太少時回傳 None。"""
     rows = _dedupe_rows(_iter_labeled_rows(frames))
@@ -453,26 +486,43 @@ def build_from_history(
     kb = KnowledgeBase()
     min_support = min_support if min_support is not None else config.knowledge_min_support()
 
+    # ── 時間新近度權重 ──
+    # 基準是資料裡最新的一筆（不是今天），評估與線上才會算出同一組權重。
+    dated = [r[5] for r in rows if r[5] is not None]
+    newest = max(dated) if dated else None
+
+    def recency(when) -> float:
+        if newest is None or when is None:
+            return 1.0        # 沒有日期的資料不打折，避免整批被邊緣化
+        age = (newest - when).days
+        if age <= 0:
+            return 1.0
+        return max(RECENCY_FLOOR, 0.5 ** (age / RECENCY_HALF_LIFE_DAYS))
+
     # ── L0 指紋（人工確認過的優先，且記錄一致筆數）──
     grouped: dict[str, Counter] = defaultdict(Counter)
     dept_votes: dict[str, Counter] = defaultdict(Counter)
     labeled_for_rules: list[tuple[str, str, str]] = []
     confirmed_rows: list[tuple[str, str, str]] = []
+    pool_rows: list[tuple[float, str, str, str]] = []   # (權重, 文字, 類型, 細項)
 
-    for text, topic, detail, dept, confirmed in rows:
+    for text, topic, detail, dept, confirmed, when in rows:
+        w = recency(when)
         norm = normalize_text(text)
         if norm:
-            weight = 3 if confirmed else 1
-            grouped[norm][(topic, detail, dept)] += weight
+            # 同一段文字在不同時期被標成不同名稱時，新的那一次要贏
+            grouped[norm][(topic, detail, dept)] += (3 if confirmed else 1) * w
         if confirmed:
             confirmed_rows.append((text, topic, detail))
         labeled_for_rules.append((text, topic, detail))
+        pool_rows.append((w, text, topic, detail, confirmed))
         if dept:
-            dept_votes[topic][dept] += 3 if confirmed else 1
+            dept_votes[topic][dept] += (3 if confirmed else 1) * w
 
     for norm, counter in grouped.items():
         (topic, detail, dept), votes = counter.most_common(1)[0]
-        kb.fingerprints[norm] = (topic, detail, dept, int(votes))
+        # votes 是加權後的浮點數；指紋對外只用它表示「有幾筆佐證」，取 1 以上的整數
+        kb.fingerprints[norm] = (topic, detail, dept, max(1, int(round(votes))))
 
     # ── L1 規則：優先用人工確認過的資料學，數量不足才用全部 ──
     basis = confirmed_rows if len(confirmed_rows) >= max(20, min_support * 5) else labeled_for_rules
@@ -496,15 +546,20 @@ def build_from_history(
     for topic, counter in dept_votes.items():
         kb.dept_by_topic[topic] = counter.most_common(1)[0][0]
 
-    # ── L2 few-shot 檢索池 ──
-    pool = confirmed_rows if confirmed_rows else labeled_for_rules
+    # ── L1c 相似案例檢索池（同時供 L2 few-shot 使用）──
+    # 必須由新到舊填：池子有上限，照原本的讀檔順序填會把名額全給最舊的資料，
+    # 新字彙的標記根本進不了池子，相似案例就只會投出已經不用的舊名稱。
+    has_confirmed = any(c for _w, _t, _tp, _d, c in pool_rows)
+    pool = [r for r in pool_rows if r[4]] if has_confirmed else pool_rows
+    pool = sorted(pool, key=lambda r: r[0], reverse=True)
     seen: set[str] = set()
-    for text, topic, detail in pool:
+    for w, text, topic, detail, _confirmed in pool:
         norm = normalize_text(text)
         if norm in seen:
             continue
         seen.add(norm)
         kb.examples.append((text, topic, detail))
+        kb.example_weights.append(w)
         if len(kb.examples) >= max_examples:
             break
     df_counter: Counter = Counter()
