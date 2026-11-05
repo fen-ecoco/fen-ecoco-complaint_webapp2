@@ -93,7 +93,10 @@ def load_labeled(frames: Iterable[pd.DataFrame]) -> list[LabeledRow]:
 
 def _to_frame(rows: Iterable[LabeledRow], remap: Optional[Callable[[str], str]] = None):
     remap = remap or (lambda d: d)
+    # 進件日期一定要帶：知識庫用它做時間加權，少了這一欄評估會量不到加權效果，
+    # 線上與評估也會變成兩套行為。
     return pd.DataFrame([{
+        "進件日期": r.date,
         "問題主旨": r.subject, "用戶內容": r.content,
         "問題類型": r.topic, "問題細項": remap(r.detail),
         "_source_layer": "人工確認",
