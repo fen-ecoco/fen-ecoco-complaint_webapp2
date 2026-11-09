@@ -697,38 +697,93 @@ def analyze_dataframe(df: pd.DataFrame, cfg: AnalysisConfig,
 #   HISTORY_SHEET_ID = "<your_spreadsheet_id>"
 #   [google_credentials]   ← service account JSON 欄位
 
+# 連線與讀取失敗時的原因。放模組層級而不是 session_state：
+# _get_gsheet_client / load_history_frames_cached 都是 st.cache 函式，
+# 快取命中時整個函式不會再執行，寫進 session_state 的訊息下一次就讀不到了。
+_GSHEET_ERRORS: dict[str, str] = {}
+
+
+def _note_gsheet_error(msg: str, key: str = "client") -> None:
+    _GSHEET_ERRORS[key] = msg
+
+
+def gsheet_error(key: str = "client") -> str:
+    return _GSHEET_ERRORS.get(key, "")
+
+
+def render_gsheet_error(key: str = "client") -> None:
+    """把 Google Sheets 的失敗原因顯示出來。
+
+    原本每一層都是 `except Exception: return []`，畫面只會寫「尚無歷史資料」，
+    真正的原因（憑證沒讀到、權限不足、配額用盡）全部被吞掉，
+    要查只能一層一層翻程式碼。
+    """
+    msg = gsheet_error(key)
+    if msg:
+        st.error(f"⚠ Google Sheets 讀取失敗　{msg}")
+
+
 @st.cache_resource(show_spinner=False)
+def _build_gsheet_client():
+    """建立 gspread client（快取；authorize 要 1 秒以上）。
+
+    失敗時一定要拋例外，不能回傳 None —— st.cache_resource 會把回傳值留到
+    行程結束，一旦把 None 快取起來，就算原因早就排除（網路瞬斷、憑證還沒掛上），
+    整個服務在重開之前都會一直說「未連線 Google Sheets」。
+    拋例外則不進快取，下一次呼叫會重試。
+    """
+    import gspread as _gs
+    from google.oauth2.service_account import Credentials as _Creds
+
+    # 憑證來源統一由 automation/config.py 解析（環境變數 → secrets → JSON 檔）
+    creds_dict = auto_config.get_google_credentials()
+    if not creds_dict:
+        raise RuntimeError(
+            "找不到 Google 服務帳號憑證。四個來源都沒有："
+            "GOOGLE_CREDENTIALS_JSON 環境變數、GOOGLE_APPLICATION_CREDENTIALS 檔案路徑、"
+            ".streamlit/secrets.toml 的 [google_credentials]、專案目錄下的服務帳號 JSON。")
+    creds = _Creds.from_service_account_info(
+        creds_dict,
+        scopes=["https://spreadsheets.google.com/feeds",
+                "https://www.googleapis.com/auth/drive"],
+    )
+    return _gs.authorize(creds)
+
+
 def _get_gsheet_client():
-    """從環境變數或 st.secrets 取得 gspread client（快取；authorize 要 1 秒以上）。"""
+    """取得 gspread client；失敗回傳 None 並記下原因（下次呼叫會重試）。"""
     try:
-        import gspread as _gs
-        from google.oauth2.service_account import Credentials as _Creds
-    except ImportError:
+        client = _build_gsheet_client()
+    except ImportError as exc:
+        _note_gsheet_error(f"缺少套件：{exc}")
         return None
-    try:
-        # 憑證來源統一由 automation/config.py 解析（環境變數 → secrets → JSON 檔）
-        creds_dict = auto_config.get_google_credentials()
-        if not creds_dict:
-            return None
-        creds = _Creds.from_service_account_info(
-            creds_dict,
-            scopes=["https://spreadsheets.google.com/feeds",
-                    "https://www.googleapis.com/auth/drive"],
-        )
-        return _gs.authorize(creds)
-    except Exception:
+    except Exception as exc:
+        _note_gsheet_error(f"建立 Google 連線失敗：{type(exc).__name__}: {exc}")
         return None
+    _GSHEET_ERRORS.pop("client", None)
+    return client
 
 
 @st.cache_resource(show_spinner=False)
 def _open_spreadsheet_cached(sheet_id: str):
-    """open_by_key 也要一次網路往返，快取起來。"""
+    """open_by_key 也要一次網路往返，快取起來。
+
+    與 _build_gsheet_client 同樣的理由：失敗要拋例外，不能把 None 快取進去。
+    """
     client = _get_gsheet_client()
-    if client is None or not sheet_id:
-        return None
+    if client is None:
+        raise RuntimeError(gsheet_error("client") or "無法建立 Google 連線")
+    if not sheet_id:
+        raise RuntimeError("未設定 HISTORY_SHEET_ID")
+    return client.open_by_key(sheet_id)
+
+
+def _open_spreadsheet(sheet_id: str):
+    """取得試算表；失敗回傳 None 並記下原因（下次呼叫會重試）。"""
     try:
-        return client.open_by_key(sheet_id)
-    except Exception:
+        return _open_spreadsheet_cached(sheet_id)
+    except Exception as exc:
+        _note_gsheet_error(f"開啟試算表失敗：{type(exc).__name__}: {exc}")
         return None
 
 
@@ -753,7 +808,7 @@ def _history_sheet(log_error: bool = False):
             if log_error:
                 st.session_state["_gsheet_error"] = "未設定 HISTORY_SHEET_ID 環境變數"
             return None
-        ss = _open_spreadsheet_cached(sid)
+        ss = _open_spreadsheet(sid)
         if ss is None:
             return None
         try:
@@ -789,6 +844,12 @@ def _history_sheet(log_error: bool = False):
         return None
 
 
+class _HistoryUnavailable(RuntimeError):
+    """讀不到雲端歷史紀錄。用例外中止而不是回傳 []：
+    st.cache_data 只會快取「成功回傳」的結果，拋例外就不會把空清單記住 10 分鐘，
+    否則一次暫時性失敗會讓儀表板整整十分鐘都說「尚無歷史資料」。"""
+
+
 @st.cache_data(show_spinner="正在讀取歷史紀錄…", ttl=600)
 def load_history_frames_cached(version: str = "") -> list[pd.DataFrame]:
     """讀回歷史紀錄的資料表（功能四用）。
@@ -800,35 +861,46 @@ def load_history_frames_cached(version: str = "") -> list[pd.DataFrame]:
     """
     import base64 as _b64
 
-    ws = _history_sheet()
+    _GSHEET_ERRORS.pop("history", None)
+    ws = _history_sheet(log_error=True)
     if ws is None:
-        return []
+        _note_gsheet_error(gsheet_error("client") or "連不上歷史紀錄試算表", "history")
+        raise _HistoryUnavailable(gsheet_error("history"))
     try:
         rows = ws.get_all_values()[1:]
-    except Exception:
-        return []
+    except Exception as exc:
+        _note_gsheet_error(f"讀取索引失敗：{type(exc).__name__}: {exc}", "history")
+        raise _HistoryUnavailable(gsheet_error("history")) from exc
     try:
         existing = {w.title: w for w in ws.spreadsheet.worksheets()}
-    except Exception:
+    except Exception as exc:
+        _note_gsheet_error(f"列出資料分頁失敗：{type(exc).__name__}: {exc}", "history")
         existing = {}
 
     frames: list[pd.DataFrame] = []
+    skipped: list[str] = []
     for grow in rows:
         if not grow or not grow[0]:
             continue
         data_ref = grow[4] if len(grow) > 4 else ""
         if not data_ref:
+            skipped.append(f"{grow[0]}（沒有資料位置）")
             continue
         try:
             if data_ref.startswith("sheet:"):
                 data_ws = existing.get(data_ref.split(":", 1)[1])
                 if data_ws is None:
+                    skipped.append(f"{grow[0]}（分頁已不存在）")
                     continue
                 frames.append(_worksheet_to_dataframe(data_ws))
             else:
                 frames.append(pd.read_excel(io.BytesIO(_b64.b64decode(data_ref))))
-        except Exception:
-            continue
+        except Exception as exc:
+            skipped.append(f"{grow[0]}（{type(exc).__name__}）")
+    if skipped:
+        _note_gsheet_error(
+            f"索引 {len(rows)} 筆，讀到 {len(frames)} 筆，略過 "
+            + "、".join(skipped[:5]) + ("…" if len(skipped) > 5 else ""), "history")
     return frames
 
 
@@ -3270,9 +3342,24 @@ def section_4():
     all_dfs: list[pd.DataFrame] = []
 
     with src_tab1:
-        all_dfs.extend(load_history_frames_cached(
-            st.session_state.get("_knowledge_version", "")))
-        st.caption(f"已載入 {len(all_dfs)} 份歷史紀錄" if all_dfs else "尚無歷史資料")
+        c_load, c_btn = st.columns([4, 1])
+        with c_btn:
+            if st.button("🔄 重新讀取", key="s4_reload",
+                         help="清掉快取，重新向 Google Sheets 取一次歷史紀錄"):
+                load_history_frames_cached.clear()
+                st.rerun()
+        try:
+            all_dfs.extend(load_history_frames_cached(
+                st.session_state.get("_knowledge_version", "")))
+        except _HistoryUnavailable as exc:
+            with c_load:
+                st.error(f"⚠ 讀不到 Google Sheets 歷史紀錄　{exc}")
+        with c_load:
+            if all_dfs:
+                st.caption(f"已載入 {len(all_dfs)} 份歷史紀錄")
+                render_gsheet_error("history")   # 有讀到但略過幾筆時說明原因
+            elif not gsheet_error("history"):
+                st.caption("尚無歷史資料")
 
     with src_tab2:
         gs_url = st.text_input("Google Sheets 網址", placeholder="https://docs.google.com/spreadsheets/d/xxxxx/edit", key="s4v3_gsurl")
