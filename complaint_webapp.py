@@ -724,43 +724,66 @@ def render_gsheet_error(key: str = "client") -> None:
 
 
 @st.cache_resource(show_spinner=False)
+def _build_gsheet_client():
+    """建立 gspread client（快取；authorize 要 1 秒以上）。
+
+    失敗時一定要拋例外，不能回傳 None —— st.cache_resource 會把回傳值留到
+    行程結束，一旦把 None 快取起來，就算原因早就排除（網路瞬斷、憑證還沒掛上），
+    整個服務在重開之前都會一直說「未連線 Google Sheets」。
+    拋例外則不進快取，下一次呼叫會重試。
+    """
+    import gspread as _gs
+    from google.oauth2.service_account import Credentials as _Creds
+
+    # 憑證來源統一由 automation/config.py 解析（環境變數 → secrets → JSON 檔）
+    creds_dict = auto_config.get_google_credentials()
+    if not creds_dict:
+        raise RuntimeError(
+            "找不到 Google 服務帳號憑證。四個來源都沒有："
+            "GOOGLE_CREDENTIALS_JSON 環境變數、GOOGLE_APPLICATION_CREDENTIALS 檔案路徑、"
+            ".streamlit/secrets.toml 的 [google_credentials]、專案目錄下的服務帳號 JSON。")
+    creds = _Creds.from_service_account_info(
+        creds_dict,
+        scopes=["https://spreadsheets.google.com/feeds",
+                "https://www.googleapis.com/auth/drive"],
+    )
+    return _gs.authorize(creds)
+
+
 def _get_gsheet_client():
-    """從環境變數或 st.secrets 取得 gspread client（快取；authorize 要 1 秒以上）。"""
+    """取得 gspread client；失敗回傳 None 並記下原因（下次呼叫會重試）。"""
     try:
-        import gspread as _gs
-        from google.oauth2.service_account import Credentials as _Creds
+        client = _build_gsheet_client()
     except ImportError as exc:
         _note_gsheet_error(f"缺少套件：{exc}")
         return None
-    try:
-        # 憑證來源統一由 automation/config.py 解析（環境變數 → secrets → JSON 檔）
-        creds_dict = auto_config.get_google_credentials()
-        if not creds_dict:
-            _note_gsheet_error(
-                "找不到 Google 服務帳號憑證。四個來源都沒有："
-                "GOOGLE_CREDENTIALS_JSON 環境變數、GOOGLE_APPLICATION_CREDENTIALS 檔案路徑、"
-                ".streamlit/secrets.toml 的 [google_credentials]、專案目錄下的服務帳號 JSON。")
-            return None
-        creds = _Creds.from_service_account_info(
-            creds_dict,
-            scopes=["https://spreadsheets.google.com/feeds",
-                    "https://www.googleapis.com/auth/drive"],
-        )
-        return _gs.authorize(creds)
     except Exception as exc:
         _note_gsheet_error(f"建立 Google 連線失敗：{type(exc).__name__}: {exc}")
         return None
+    _GSHEET_ERRORS.pop("client", None)
+    return client
 
 
 @st.cache_resource(show_spinner=False)
 def _open_spreadsheet_cached(sheet_id: str):
-    """open_by_key 也要一次網路往返，快取起來。"""
+    """open_by_key 也要一次網路往返，快取起來。
+
+    與 _build_gsheet_client 同樣的理由：失敗要拋例外，不能把 None 快取進去。
+    """
     client = _get_gsheet_client()
-    if client is None or not sheet_id:
-        return None
+    if client is None:
+        raise RuntimeError(gsheet_error("client") or "無法建立 Google 連線")
+    if not sheet_id:
+        raise RuntimeError("未設定 HISTORY_SHEET_ID")
+    return client.open_by_key(sheet_id)
+
+
+def _open_spreadsheet(sheet_id: str):
+    """取得試算表；失敗回傳 None 並記下原因（下次呼叫會重試）。"""
     try:
-        return client.open_by_key(sheet_id)
-    except Exception:
+        return _open_spreadsheet_cached(sheet_id)
+    except Exception as exc:
+        _note_gsheet_error(f"開啟試算表失敗：{type(exc).__name__}: {exc}")
         return None
 
 
@@ -785,7 +808,7 @@ def _history_sheet(log_error: bool = False):
             if log_error:
                 st.session_state["_gsheet_error"] = "未設定 HISTORY_SHEET_ID 環境變數"
             return None
-        ss = _open_spreadsheet_cached(sid)
+        ss = _open_spreadsheet(sid)
         if ss is None:
             return None
         try:
