@@ -3305,6 +3305,23 @@ def section_3():
 
 
 
+def to_datetime_mixed(values):
+    """寬鬆解析日期欄。
+
+    歷史紀錄的日期欄同時存在「2026/10/19 09:04」與「2026-10-19 09:04:12」兩種寫法
+    （不同時期、不同匯出來源留下的）。pandas 的 to_datetime 會拿第一個非空值
+    推一個格式出來套用到整欄，對不上的一律變成 NaT ——
+    實測 9320 筆的進件日期只解析出 270 筆，等於儀表板把 97% 的資料丟掉。
+    format="mixed" 讓每一列各自判斷，9320 筆全部解析得出來。
+    """
+    s = values if isinstance(values, pd.Series) else pd.Series(values)
+    try:
+        return pd.to_datetime(s, errors="coerce", format="mixed")
+    except (TypeError, ValueError):
+        # format="mixed" 要 pandas 2.0 以上；舊版退回逐列解析
+        return pd.to_datetime(s, errors="coerce")
+
+
 def _md_table(rows, headers) -> str:
     """產生 Markdown 表格；沒有資料時回傳一行說明而不是空表格。"""
     if not rows:
@@ -3318,7 +3335,9 @@ def _md_table(rows, headers) -> str:
 
 def _md_rank(df: pd.DataFrame, col, title: str, top: int = 10, prev=None) -> str:
     """單一維度的排行表，附上與對照期的增減。"""
-    if not col or col not in df.columns or df.empty:
+    if df.empty:
+        return f"### {title}\n\n_（這個區間沒有資料）_\n"
+    if not col or col not in df.columns:
         return f"### {title}\n\n_（來源資料沒有這個欄位）_\n"
     cur = df[col].astype(str).str.strip().replace("", "（未填）").value_counts()
     old = (prev[col].astype(str).str.strip().replace("", "（未填）").value_counts()
@@ -3338,80 +3357,209 @@ def _md_rank(df: pd.DataFrame, col, title: str, top: int = 10, prev=None) -> str
     return f"### {title}\n\n" + _md_table(rows, headers)
 
 
-def build_markdown_report(df: pd.DataFrame, prev: pd.DataFrame, period_label: str,
-                          cols: dict, filters: dict, detail_rows: int = 0) -> str:
-    """把目前篩選出來的客訴整理成一份完整的 Markdown 報告。
+# ── 敘述式報告的輔助 ────────────────────────────────────────────
+MACHINE_SECTIONS = [
+    ("🥤 收瓶機 / 方舟站", lambda v: ("收瓶" in v) or ("方舟" in v)),
+    ("🔋 電池機", lambda v: "電池" in v),
+    ("📱 未填機型（APP／帳號／客服類）", lambda v: v in ("", "-", "（未填）", "nan")),
+    ("🔧 其他機型", lambda v: True),
+]
 
+
+def _hotspots(sub: pd.DataFrame, station_col, limit: int = 4) -> str:
+    """同一個問題集中在哪幾個站點 —— 派工與清運排程最需要的就是這個。"""
+    if not station_col or station_col not in sub.columns:
+        return ""
+    vc = sub[station_col].astype(str).str.strip()
+    vc = vc[(vc != "") & (vc.str.lower() != "nan") & (vc != "-")].value_counts()
+    hot = [f"{k}（{int(v)} 件）" for k, v in vc.head(limit).items() if v >= 1]
+    return "、".join(hot)
+
+
+def _quotes(sub: pd.DataFrame, limit: int = 2, max_len: int = 120) -> list:
+    """挑幾則有資訊量的客訴原文當佐證。
+
+    取最長的幾則：一句「機台故障」說明不了什麼，寫得長的那幾則才看得出狀況。
+    """
+    subj_col = next((c for c in sub.columns if "問題主旨" in c), None)
+    cont_col = next((c for c in sub.columns if "用戶內容" in c), None)
+    picked = []
+    for _, r in sub.iterrows():
+        text = ""
+        for c in (cont_col, subj_col):
+            v = str(r.get(c, "")).strip() if c else ""
+            if v and v.lower() != "nan" and len(v) > len(text):
+                text = v
+        if text:
+            picked.append(text.replace("\n", " ").replace("\r", " "))
+    picked.sort(key=len, reverse=True)
+    out = []
+    for t in picked[:limit]:
+        out.append(t if len(t) <= max_len else t[:max_len] + "…")
+    return out
+
+
+def _tie_groups(counts, top_n: int = 5) -> list:
+    """把件數相同的細項併成一組「並列」，對齊人工週報的寫法。"""
+    groups, seen = [], None
+    for name, n in counts.items():
+        n = int(n)
+        if seen is not None and n == seen[0]:
+            seen[1].append(name)
+            continue
+        seen = (n, [name])
+        groups.append(seen)
+        if len(groups) >= top_n:
+            break
+    return groups
+
+
+def _machine_section(df: pd.DataFrame, title: str, detail_col, station_col,
+                     total_all: int, quotes_per_item: int) -> list:
+    """單一機型的 Top N 問題詳解。"""
+    parts = [f"### {title}（總進件量：{len(df)} 件）", ""]
+    if df.empty or not detail_col or detail_col not in df.columns:
+        parts += ["_（這個區間沒有這類進件）_", ""]
+        return parts
+    share_all = f"，佔全期 {len(df) / total_all:.1%}" if total_all else ""
+    parts[0] = f"### {title}（總進件量：{len(df)} 件{share_all}）"
+
+    counts = df[detail_col].astype(str).str.strip().replace("", "（未填）").value_counts()
+    base = int(counts.sum())
+    for i, (n, names) in enumerate(_tie_groups(counts), start=1):
+        head = " & ".join(names) + ("（並列）" if len(names) > 1 else "")
+        pct = f"{n / base:.1%}" if base else "-"
+        parts.append(f"**Top {i}：{head}**")
+        parts.append("")
+        parts.append(f"- 件數：{n} 件" + (f"　×{len(names)} 項" if len(names) > 1 else ""))
+        parts.append(f"- 佔比：{pct}")
+        sub = df[df[detail_col].astype(str).str.strip().isin(names)]
+        hot = _hotspots(sub, station_col)
+        if hot:
+            parts.append(f"- 熱點站點：{hot}")
+        for q in _quotes(sub, limit=quotes_per_item):
+            parts.append(f"- 客訴原文：> {q}")
+        parts.append("")
+    return parts
+
+
+def build_markdown_report(df: pd.DataFrame, prev: pd.DataFrame, period_label: str,
+                          cols: dict, filters: dict, detail_rows: int = 0,
+                          quotes_per_item: int = 2) -> str:
+    """把目前篩選出來的客訴整理成一份完整的 Markdown 分析報告。
+
+    版面對齊公司現行的人工週報：摘要 → 核心痛點 → 各機型詳解 → 統計附表。
     內容完全跟著畫面上的時間區間與維度篩選走，不另外取資料 ——
     報告裡的數字與使用者當下看到的儀表板一定一致。
+
+    能從資料算出來的都自動填（件數、佔比、增減、熱點站點、客訴原文）；
+    「影響」與「優化方針」那種需要判斷的段落不自動編，只把佐證材料列出來，
+    留給人工（或貼給 LLM）去寫 —— 系統沒有依據的話不該替公司下結論。
     """
     date_col = cols.get("date")
+    type_col = cols.get("type")
+    detail_col = cols.get("detail")
+    station_col = cols.get("station")
+    machine_col = cols.get("machine")
     now = datetime.now().strftime("%Y/%m/%d %H:%M")
     total = len(df)
     prev_total = len(prev) if prev is not None else 0
-    if prev_total:
-        diff = (total - prev_total) / prev_total * 100
-        word = "增加" if diff >= 0 else "減少"
-        trend = f"{total} 件，較對照期（{prev_total} 件）{word} {abs(diff):.1f}%"
-    else:
-        trend = f"{total} 件（沒有可比較的對照期）"
 
     span = ""
     if date_col and date_col in df.columns and not df.empty:
-        d = pd.to_datetime(df[date_col], errors="coerce").dropna()
+        d = to_datetime_mixed(df[date_col]).dropna()
         if not d.empty:
-            span = f"{d.min():%Y/%m/%d %H:%M} ～ {d.max():%Y/%m/%d %H:%M}"
+            span = f"{d.min():%Y/%m/%d} ～ {d.max():%Y/%m/%d}"
+
+    parts = [f"# 💡 智慧回收系統客訴分析報告（{period_label}）", ""]
+
+    # ── 摘要 ──
+    if prev_total:
+        diff = (total - prev_total) / prev_total * 100
+        word = "增加" if diff >= 0 else "回落"
+        lead = (f"本期（{period_label}）客服系統總計接獲 **{total} 件**有效客訴，"
+                f"較對照期（{prev_total} 件）{word} {abs(diff):.1f}%。")
+    else:
+        lead = (f"本期（{period_label}）客服系統總計接獲 **{total} 件**有效客訴"
+                f"（沒有可比較的對照期）。")
+    if type_col and type_col in df.columns and total:
+        tv = df[type_col].astype(str).str.strip().replace("", "（未填）").value_counts()
+        lead += f"「**{tv.index[0]}**」為客訴最主要來源，佔整體 {int(tv.iloc[0]) / total:.1%}（{int(tv.iloc[0])} 件）。"
+    parts += [lead, ""]
 
     picked = [f"{k}：{'、'.join(map(str, v))}" for k, v in filters.items() if v]
-    parts = [
-        f"# ECOCO 客訴分析報告　{period_label}",
-        "",
+    parts += [
         f"- **統計區間**：{period_label}" + (f"（實際資料 {span}）" if span else ""),
-        f"- **總進件數**：{trend}",
         f"- **套用篩選**：{'；'.join(picked) if picked else '無（全部資料）'}",
         f"- **產出時間**：{now}",
-        "",
-        "---",
-        "",
-        "## 整體概況",
-        "",
+        "", "---", "",
     ]
 
-    type_col = cols.get("type")
-    if type_col and type_col in df.columns and not df.empty:
-        vc = df[type_col].astype(str).str.strip().replace("", "（未填）").value_counts()
-        top_type = vc.index[0]
-        top_n = int(vc.iloc[0])
-        parts.append(f"本期共 {total} 件客訴，最多的是 **{top_type}**，"
-                     f"{top_n} 件、佔 {top_n / total:.1%}。")
+    # ── 核心痛點歸納 ──
+    parts += ["## 🔥 核心痛點歸納", ""]
+    if not total:
+        parts += ["_（這個區間沒有客訴資料）_", ""]
+    elif detail_col and detail_col in df.columns:
+        dv = df[detail_col].astype(str).str.strip().replace("", "（未填）").value_counts()
+        prev_dv = (prev[detail_col].astype(str).str.strip().value_counts()
+                   if prev is not None and not prev.empty and detail_col in prev.columns
+                   else None)
+        medals = ["🏆 Top 1 🔴", "⚠️ Top 2 🟡", "🔸 Top 3 🟢"]
+        for i, (name, n) in enumerate(dv.head(3).items()):
+            n = int(n)
+            sub = df[df[detail_col].astype(str).str.strip() == name]
+            parts.append(f"### {medals[i]}　{n / total:.1%}　【{name}】")
+            parts.append("")
+            line = f"- **現象**：{n} 件，佔本期 {n / total:.1%}"
+            if prev_dv is not None:
+                before = int(prev_dv.get(name, 0))
+                line += (f"；對照期 {before} 件"
+                         + ("（新增）" if before == 0
+                            else f"（{(n - before) / before * 100:+.0f}%）"))
+            parts.append(line)
+            hot = _hotspots(sub, station_col, limit=5)
+            if hot:
+                parts.append(f"- **集中站點**：{hot}")
+            for q in _quotes(sub, limit=3, max_len=150):
+                parts.append(f"- **客訴原文**：> {q}")
+            parts.append("")
     else:
-        parts.append(f"本期共 {total} 件客訴。")
-    parts.append("")
+        parts += ["_（來源資料沒有問題細項欄位）_", ""]
 
+    # ── 各機型詳解 ──
+    parts += ["---", "", "## 📊 各機型問題與佔比詳解", ""]
+    if machine_col and machine_col in df.columns and not df.empty:
+        mv = df[machine_col].astype(str).str.strip()
+        used = pd.Series(False, index=df.index)
+        for title, match in MACHINE_SECTIONS:
+            pick = mv.map(match) & (~used)
+            used = used | pick
+            sub = df[pick]
+            if sub.empty:
+                continue
+            parts += _machine_section(sub, title, detail_col, station_col,
+                                      total, quotes_per_item)
+    else:
+        parts += ["_（來源資料沒有機台類型欄位，改看下方統計附表）_", ""]
+
+    # ── 統計附表 ──
+    parts += ["---", "", "## 📈 統計附表", ""]
     parts.append(_md_rank(df, type_col, "問題類型分布", top=20, prev=prev))
-    parts.append(_md_rank(df, cols.get("detail"), "問題細項排行（前 15）", top=15, prev=prev))
+    parts.append(_md_rank(df, detail_col, "問題細項排行（前 20）", top=20, prev=prev))
     parts.append(_md_rank(df, cols.get("city"), "區域分布", top=15, prev=prev))
-    parts.append(_md_rank(df, cols.get("station"), "站點排行（前 15）", top=15, prev=prev))
+    parts.append(_md_rank(df, station_col, "站點排行（前 15）", top=15, prev=prev))
     parts.append(_md_rank(df, cols.get("dept"), "權責部門", top=10, prev=prev))
-    parts.append(_md_rank(df, cols.get("machine"), "機台類型", top=10, prev=prev))
 
-    # 類型 × 細項交叉：看得出同一個類型裡真正的痛點在哪
-    detail_col = cols.get("detail")
-    if type_col and detail_col and not df.empty and {type_col, detail_col} <= set(df.columns):
-        parts.append("### 類型 × 細項交叉\n")
-        groups = sorted(df.groupby(df[type_col].astype(str)), key=lambda kv: -len(kv[1]))
-        for tname, grp in groups:
-            dv = grp[detail_col].astype(str).value_counts()
-            inner = "、".join(f"{k} {int(v)} 件" for k, v in dv.head(8).items())
-            parts.append(f"- **{tname}**（{len(grp)} 件）：{inner}")
-        parts.append("")
-
+    # ── 原文明細 ──
     if detail_rows and not df.empty:
         shown = min(detail_rows, len(df))
-        parts.append(f"### 客訴內容明細（最新 {shown} 筆）\n")
+        parts.append("---")
+        parts.append("")
+        parts.append(f"## 🧾 客訴內容明細（最新 {shown} 筆）")
+        parts.append("")
         show = df
         if date_col and date_col in df.columns:
-            show = df.assign(_d=pd.to_datetime(df[date_col], errors="coerce"))
+            show = df.assign(_d=to_datetime_mixed(df[date_col]))
             show = show.sort_values("_d", ascending=False)
         subj_col = next((c for c in df.columns if "問題主旨" in c), None)
         cont_col = next((c for c in df.columns if "用戶內容" in c), None)
@@ -3419,7 +3567,7 @@ def build_markdown_report(df: pd.DataFrame, prev: pd.DataFrame, period_label: st
             when = str(r.get(date_col, ""))[:16] if date_col else ""
             where = " / ".join(
                 str(r.get(c, "")).strip()
-                for c in (cols.get("city"), cols.get("station"))
+                for c in (cols.get("city"), station_col)
                 if c and str(r.get(c, "")).strip()
             )
             label = " / ".join(
@@ -3435,11 +3583,15 @@ def build_markdown_report(df: pd.DataFrame, prev: pd.DataFrame, period_label: st
                     parts.append("> " + txt.replace("\n", " "))
             parts.append("")
 
-    parts.append("---")
-    parts.append("")
-    parts.append("_本報告由 ECOCO 客訴分析平台產出，數字與產出當下儀表板的篩選條件一致。_")
+    parts += [
+        "---", "",
+        "## ✍️ 待補（需人工判斷，系統不自動編寫）", "",
+        "- **影響評估**：上面每一項都附了集中站點與客訴原文，據此描述對用戶與營運的實際衝擊。",
+        "- **優化方針**：改善措施涉及工務排程、補點政策與韌體修改，系統沒有依據，不替公司下結論。",
+        "",
+        f"_本報告由 ECOCO 客訴分析平台產出（{now}），統計數字與產出當下儀表板的篩選條件一致。_",
+    ]
     return "\n".join(parts)
-
 
 def section_4():
     """功能四：週/月/季/年度趨勢分析儀表板"""
@@ -3576,7 +3728,7 @@ def section_4():
         empty_state("沒有資料紀錄　—　來源資料找不到日期欄位。")
         return
 
-    df_all[date_col] = pd.to_datetime(df_all[date_col], errors="coerce")
+    df_all[date_col] = to_datetime_mixed(df_all[date_col])
     df_all = df_all.dropna(subset=[date_col])
     if df_all.empty:
         empty_state("沒有資料紀錄　—　來源資料沒有可辨識的日期。")
@@ -4188,15 +4340,21 @@ def section_4():
     st.caption("內容跟著上方的時間區間與維度篩選走 —— 篩什麼就產出什麼，"
                "數字與畫面上看到的一致。")
 
-    md_c1, md_c2 = st.columns([1, 2])
+    md_c1, md_c2, md_c3 = st.columns([1, 1, 2])
     with md_c1:
-        md_detail_n = st.number_input(
-            "附上幾筆客訴原文", min_value=0, max_value=500, value=50, step=10,
-            key="s4_md_rows",
-            help="0 = 只要統計不要逐筆內容。數字越大檔案越長。")
+        md_quote_n = st.number_input(
+            "每項附幾則原文", min_value=0, max_value=5, value=2, step=1,
+            key="s4_md_quotes",
+            help="核心痛點與各機型 Top N 底下，各附幾則客訴原文當佐證。")
     with md_c2:
-        st.caption(f"目前篩選後共 **{len(df_filt)}** 筆，"
-                   f"區間 **{period_label}**。")
+        md_detail_n = st.number_input(
+            "附錄逐筆明細", min_value=0, max_value=500, value=0, step=10,
+            key="s4_md_rows",
+            help="報告最後附上最新 N 筆客訴全文。0 = 不附。")
+    with md_c3:
+        st.caption(f"目前篩選後共 **{len(df_filt)}** 筆，區間 **{period_label}**。"
+                   "　報告的件數、佔比、熱點站點都算得出來；"
+                   "「影響評估」與「優化方針」需要人工判斷，系統只列佐證不代為下結論。")
 
     if st.button("📝 產生 Markdown 報告", key="s4_md_gen"):
         _md_cols = {"date": date_col, "type": type_col, "detail": detail_col,
@@ -4207,7 +4365,7 @@ def section_4():
         try:
             st.session_state["_s4_md_text"] = build_markdown_report(
                 df_filt, df_prev, period_label, _md_cols, _md_filters,
-                detail_rows=int(md_detail_n))
+                detail_rows=int(md_detail_n), quotes_per_item=int(md_quote_n))
             st.session_state["_s4_md_label"] = period_label
         except Exception as exc:
             st.session_state.pop("_s4_md_text", None)
