@@ -3305,6 +3305,142 @@ def section_3():
 
 
 
+def _md_table(rows, headers) -> str:
+    """產生 Markdown 表格；沒有資料時回傳一行說明而不是空表格。"""
+    if not rows:
+        return "_（這個區間沒有資料）_\n"
+    out = ["| " + " | ".join(headers) + " |",
+           "|" + "|".join("---" for _ in headers) + "|"]
+    for r in rows:
+        out.append("| " + " | ".join("" if v is None else str(v) for v in r) + " |")
+    return "\n".join(out) + "\n"
+
+
+def _md_rank(df: pd.DataFrame, col, title: str, top: int = 10, prev=None) -> str:
+    """單一維度的排行表，附上與對照期的增減。"""
+    if not col or col not in df.columns or df.empty:
+        return f"### {title}\n\n_（來源資料沒有這個欄位）_\n"
+    cur = df[col].astype(str).str.strip().replace("", "（未填）").value_counts()
+    old = (prev[col].astype(str).str.strip().replace("", "（未填）").value_counts()
+           if prev is not None and not prev.empty and col in prev.columns else None)
+    total = int(cur.sum())
+    rows = []
+    for name, n in cur.head(top).items():
+        share = f"{n / total:.1%}" if total else "-"
+        if old is not None:
+            before = int(old.get(name, 0))
+            delta = "新增" if before == 0 else f"{(n - before) / before * 100:+.0f}%"
+            rows.append([name, int(n), share, before, delta])
+        else:
+            rows.append([name, int(n), share])
+    headers = (["項目", "件數", "佔比", "對照期", "增減"] if old is not None
+               else ["項目", "件數", "佔比"])
+    return f"### {title}\n\n" + _md_table(rows, headers)
+
+
+def build_markdown_report(df: pd.DataFrame, prev: pd.DataFrame, period_label: str,
+                          cols: dict, filters: dict, detail_rows: int = 0) -> str:
+    """把目前篩選出來的客訴整理成一份完整的 Markdown 報告。
+
+    內容完全跟著畫面上的時間區間與維度篩選走，不另外取資料 ——
+    報告裡的數字與使用者當下看到的儀表板一定一致。
+    """
+    date_col = cols.get("date")
+    now = datetime.now().strftime("%Y/%m/%d %H:%M")
+    total = len(df)
+    prev_total = len(prev) if prev is not None else 0
+    if prev_total:
+        diff = (total - prev_total) / prev_total * 100
+        word = "增加" if diff >= 0 else "減少"
+        trend = f"{total} 件，較對照期（{prev_total} 件）{word} {abs(diff):.1f}%"
+    else:
+        trend = f"{total} 件（沒有可比較的對照期）"
+
+    span = ""
+    if date_col and date_col in df.columns and not df.empty:
+        d = pd.to_datetime(df[date_col], errors="coerce").dropna()
+        if not d.empty:
+            span = f"{d.min():%Y/%m/%d %H:%M} ～ {d.max():%Y/%m/%d %H:%M}"
+
+    picked = [f"{k}：{'、'.join(map(str, v))}" for k, v in filters.items() if v]
+    parts = [
+        f"# ECOCO 客訴分析報告　{period_label}",
+        "",
+        f"- **統計區間**：{period_label}" + (f"（實際資料 {span}）" if span else ""),
+        f"- **總進件數**：{trend}",
+        f"- **套用篩選**：{'；'.join(picked) if picked else '無（全部資料）'}",
+        f"- **產出時間**：{now}",
+        "",
+        "---",
+        "",
+        "## 整體概況",
+        "",
+    ]
+
+    type_col = cols.get("type")
+    if type_col and type_col in df.columns and not df.empty:
+        vc = df[type_col].astype(str).str.strip().replace("", "（未填）").value_counts()
+        top_type = vc.index[0]
+        top_n = int(vc.iloc[0])
+        parts.append(f"本期共 {total} 件客訴，最多的是 **{top_type}**，"
+                     f"{top_n} 件、佔 {top_n / total:.1%}。")
+    else:
+        parts.append(f"本期共 {total} 件客訴。")
+    parts.append("")
+
+    parts.append(_md_rank(df, type_col, "問題類型分布", top=20, prev=prev))
+    parts.append(_md_rank(df, cols.get("detail"), "問題細項排行（前 15）", top=15, prev=prev))
+    parts.append(_md_rank(df, cols.get("city"), "區域分布", top=15, prev=prev))
+    parts.append(_md_rank(df, cols.get("station"), "站點排行（前 15）", top=15, prev=prev))
+    parts.append(_md_rank(df, cols.get("dept"), "權責部門", top=10, prev=prev))
+    parts.append(_md_rank(df, cols.get("machine"), "機台類型", top=10, prev=prev))
+
+    # 類型 × 細項交叉：看得出同一個類型裡真正的痛點在哪
+    detail_col = cols.get("detail")
+    if type_col and detail_col and not df.empty and {type_col, detail_col} <= set(df.columns):
+        parts.append("### 類型 × 細項交叉\n")
+        groups = sorted(df.groupby(df[type_col].astype(str)), key=lambda kv: -len(kv[1]))
+        for tname, grp in groups:
+            dv = grp[detail_col].astype(str).value_counts()
+            inner = "、".join(f"{k} {int(v)} 件" for k, v in dv.head(8).items())
+            parts.append(f"- **{tname}**（{len(grp)} 件）：{inner}")
+        parts.append("")
+
+    if detail_rows and not df.empty:
+        shown = min(detail_rows, len(df))
+        parts.append(f"### 客訴內容明細（最新 {shown} 筆）\n")
+        show = df
+        if date_col and date_col in df.columns:
+            show = df.assign(_d=pd.to_datetime(df[date_col], errors="coerce"))
+            show = show.sort_values("_d", ascending=False)
+        subj_col = next((c for c in df.columns if "問題主旨" in c), None)
+        cont_col = next((c for c in df.columns if "用戶內容" in c), None)
+        for _, r in show.head(detail_rows).iterrows():
+            when = str(r.get(date_col, ""))[:16] if date_col else ""
+            where = " / ".join(
+                str(r.get(c, "")).strip()
+                for c in (cols.get("city"), cols.get("station"))
+                if c and str(r.get(c, "")).strip()
+            )
+            label = " / ".join(
+                str(r.get(c, "")).strip()
+                for c in (type_col, detail_col)
+                if c and str(r.get(c, "")).strip()
+            )
+            head = " ｜ ".join(x for x in (when, where, label) if x)
+            parts.append(f"**{head}**" if head else "**（無標題）**")
+            for c in (subj_col, cont_col):
+                txt = str(r.get(c, "")).strip() if c else ""
+                if txt and txt.lower() != "nan":
+                    parts.append("> " + txt.replace("\n", " "))
+            parts.append("")
+
+    parts.append("---")
+    parts.append("")
+    parts.append("_本報告由 ECOCO 客訴分析平台產出，數字與產出當下儀表板的篩選條件一致。_")
+    return "\n".join(parts)
+
+
 def section_4():
     """功能四：週/月/季/年度趨勢分析儀表板"""
 
@@ -4044,6 +4180,57 @@ def section_4():
             use_container_width=False,
             key="s4_dl_full_pdf",
         )
+
+    # ── 完整分析報告（Markdown）──────────────────────────────────
+    st.markdown("---")
+    st.markdown('<div class="s4-section">📝 完整客訴分析報告（Markdown）</div>',
+                unsafe_allow_html=True)
+    st.caption("內容跟著上方的時間區間與維度篩選走 —— 篩什麼就產出什麼，"
+               "數字與畫面上看到的一致。")
+
+    md_c1, md_c2 = st.columns([1, 2])
+    with md_c1:
+        md_detail_n = st.number_input(
+            "附上幾筆客訴原文", min_value=0, max_value=500, value=50, step=10,
+            key="s4_md_rows",
+            help="0 = 只要統計不要逐筆內容。數字越大檔案越長。")
+    with md_c2:
+        st.caption(f"目前篩選後共 **{len(df_filt)}** 筆，"
+                   f"區間 **{period_label}**。")
+
+    if st.button("📝 產生 Markdown 報告", key="s4_md_gen"):
+        _md_cols = {"date": date_col, "type": type_col, "detail": detail_col,
+                    "dept": dept_col, "city": city_col,
+                    "station": station_col, "machine": machine_col}
+        _md_filters = {"城市": city_filter, "部門": dept_filter,
+                       "問題類型": type_filter, "機台類型": mach_filter}
+        try:
+            st.session_state["_s4_md_text"] = build_markdown_report(
+                df_filt, df_prev, period_label, _md_cols, _md_filters,
+                detail_rows=int(md_detail_n))
+            st.session_state["_s4_md_label"] = period_label
+        except Exception as exc:
+            st.session_state.pop("_s4_md_text", None)
+            st.error(f"報告產生失敗：{type(exc).__name__}: {exc}")
+
+    if st.session_state.get("_s4_md_text"):
+        _md_text = st.session_state["_s4_md_text"]
+        _md_label = str(st.session_state.get("_s4_md_label", period_label))
+        _safe = (_md_label.replace(" ", "").replace("～", "-")
+                 .replace("/", "-").replace(":", ""))
+        st.download_button(
+            "⬇️ 下載分析報告（.md）",
+            data=_md_text.encode("utf-8"),
+            file_name=f"ECOCO_客訴分析報告_{_safe}.md",
+            mime="text/markdown",
+            key="s4_md_dl",
+        )
+        with st.expander("預覽報告內容", expanded=False):
+            st.markdown(_md_text)
+        # 這個 text_area 刻意不給 key：給了 key 之後 Streamlit 會記住 widget 自己的
+        # 狀態，重新產生報告時畫面上還是舊的那一份，看起來像按鈕沒反應。
+        st.text_area("Markdown 原始碼（可直接複製貼到其他工具）",
+                     _md_text, height=320)
 
     # ── AI 口說報告 ────────────────────────────────────────────────
     st.markdown("---")
